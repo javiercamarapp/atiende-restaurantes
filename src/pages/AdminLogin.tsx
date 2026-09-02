@@ -8,9 +8,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Lock, Mail } from "lucide-react";
 
 // Superadmin único de la plataforma (Javier). Los admins por negocio/tenant
-// (ej. el dueño de Los Taquitos de PM) se dan de alta aparte una vez que
-// exista más de un tenant — ver docs/agente-voz y la nota de arquitectura.
+// (ej. el dueño de Los Taquitos de PM) se dan de alta en `restaurant_staff`.
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
+
+async function routeAfterAuth(navigate: ReturnType<typeof useNavigate>) {
+  const { data: roles } = await supabase.from("user_roles").select("role");
+  const isSuperadmin = roles?.some((r) => r.role === "superadmin");
+  navigate(isSuperadmin ? "/admin/superadmin" : "/admin");
+}
 
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
@@ -22,186 +27,139 @@ const AdminLogin = () => {
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session && session.user.email === ADMIN_EMAIL) {
-        navigate("/admin");
-      }
+      if (session) await routeAfterAuth(navigate);
     };
     checkSession();
   }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      toast({
-        title: "Acceso Denegado",
-        description: "No tienes permisos de administrador",
-        variant: "destructive",
-      });
+      toast({ title: "Acceso denegado", description: "No tienes permisos de administrador", variant: "destructive" });
       return;
     }
 
     setLoading(true);
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      toast({
-        title: "Error de autenticación",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error de autenticación", description: error.message, variant: "destructive" });
       setLoading(false);
       return;
     }
 
     if (data.user) {
-      // Check if admin role exists, if not create it
       const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("*")
-        .eq("user_id", data.user.id)
-        .eq("role", "admin")
-        .maybeSingle();
-
+        .from("user_roles").select("*").eq("user_id", data.user.id).eq("role", "admin").maybeSingle();
       if (!roleData) {
-        // For the specific admin email, auto-assign admin role
-        await supabase.from("user_roles").insert({
-          user_id: data.user.id,
-          role: "admin",
-        });
+        await supabase.from("user_roles").insert({ user_id: data.user.id, role: "admin" });
       }
-
-      toast({
-        title: "¡Bienvenido!",
-        description: "Has iniciado sesión correctamente",
-      });
-      navigate("/admin");
+      toast({ title: "Bienvenido", description: "Sesión iniciada" });
+      await routeAfterAuth(navigate);
     }
-    
+
     setLoading(false);
   };
 
   const handleSignUp = async () => {
     if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      toast({
-        title: "Acceso Denegado",
-        description: "Solo el administrador puede registrarse",
-        variant: "destructive",
-      });
+      toast({ title: "Acceso denegado", description: "Solo el administrador puede registrarse", variant: "destructive" });
       return;
     }
-
     if (!password || password.length < 6) {
-      toast({
-        title: "Error",
-        description: "La contraseña debe tener al menos 6 caracteres",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "La contraseña debe tener al menos 6 caracteres", variant: "destructive" });
       return;
     }
 
     setLoading(true);
-    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/admin`,
-      },
+      options: { emailRedirectTo: `${window.location.origin}/admin` },
     });
 
     if (error) {
-      toast({
-        title: "Error de registro",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error de registro", description: error.message, variant: "destructive" });
       setLoading(false);
       return;
     }
 
     if (data.user) {
-      // Auto-assign admin role for the admin email
-      await supabase.from("user_roles").insert({
-        user_id: data.user.id,
-        role: "admin",
-      });
-
-      toast({
-        title: "¡Cuenta creada!",
-        description: "Ahora puedes iniciar sesión",
-      });
+      await supabase.from("user_roles").insert({ user_id: data.user.id, role: "admin" });
+      toast({ title: "Cuenta creada", description: "Ahora puedes iniciar sesión" });
     }
-    
+
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-primary-foreground/10 backdrop-blur-md rounded-3xl p-8 border border-primary-foreground/20">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <span className="font-display text-3xl font-semibold text-primary-foreground mb-1">atiende.ai</span>
-          <h1 className="text-lg font-medium text-primary-foreground/90">Panel de operación</h1>
-          <p className="text-primary-foreground/70 text-sm">Acceso exclusivo</p>
+          <span className="font-display text-2xl font-semibold tracking-tight text-foreground">atiende.ai</span>
+          <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground mt-2">
+            Panel de operación
+          </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-primary-foreground">Email</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary-foreground/50" />
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="pl-10 bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground placeholder:text-primary-foreground/50"
-                placeholder="admin@email.com"
-                required
-              />
+        <div className="bg-card border border-border rounded-2xl p-7 shadow-[var(--shadow-card)]">
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                Email
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-10"
+                  placeholder="tu@correo.com"
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-primary-foreground">Contraseña</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary-foreground/50" />
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground placeholder:text-primary-foreground/50"
-                placeholder="••••••••"
-                required
-              />
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                Contraseña
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-3">
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-terracotta hover:bg-terracotta/90 text-white"
-            >
-              {loading ? "Cargando..." : "Iniciar Sesión"}
-            </Button>
-            
-            <Button
-              type="button"
-              onClick={handleSignUp}
-              disabled={loading}
-              variant="outline"
-              className="w-full border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
-            >
-              Crear Cuenta Admin
-            </Button>
-          </div>
-        </form>
+            <div className="pt-1 space-y-2.5">
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? "Entrando..." : "Iniciar sesión"}
+              </Button>
+              <button
+                type="button"
+                onClick={handleSignUp}
+                disabled={loading}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                Crear cuenta admin
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground text-center mt-6">
+          Acceso exclusivo
+        </p>
       </div>
     </div>
   );

@@ -32,7 +32,7 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
     throw new OrderValidationError("El pedido no tiene productos");
   }
 
-  const branchQuery = supabase.from("branches").select("id, name, is_active");
+  const branchQuery = supabase.from("branches").select("id, name, is_active, restaurant_id");
   const { data: branch, error: branchError } = await (
     payload.branch_slug
       ? branchQuery.eq("slug", payload.branch_slug)
@@ -73,9 +73,10 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
     });
   }
 
-  // Customer memory: upsert by phone so a returning caller/chatter is recognized
-  // next time (name, order history, saved addresses) regardless of channel.
-  const customer = await upsertCustomer(supabase, payload.customer_phone, payload.customer_name, payload.customer_address);
+  // Customer memory: upsert by phone (scoped to this restaurant — the same phone
+  // can be a separate customer at a different restaurant) so a returning
+  // caller/chatter is recognized next time regardless of channel.
+  const customer = await upsertCustomer(supabase, branch.restaurant_id, payload.customer_phone, payload.customer_name, payload.customer_address);
 
   const { data: order, error: insertError } = await supabase
     .from("orders")
@@ -84,6 +85,7 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
       customer_phone: payload.customer_phone,
       customer_address: payload.customer_address ?? null,
       customer_id: customer.id,
+      restaurant_id: branch.restaurant_id,
       branch: branch.name,
       branch_id: branch.id,
       total,
@@ -101,10 +103,11 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
   return order;
 }
 
-async function upsertCustomer(supabase: any, phone: string, name: string, address?: string) {
+async function upsertCustomer(supabase: any, restaurantId: string, phone: string, name: string, address?: string) {
   const { data: existing } = await supabase
     .from("customers")
     .select("id, name, order_count")
+    .eq("restaurant_id", restaurantId)
     .eq("phone", phone)
     .maybeSingle();
 
@@ -125,7 +128,7 @@ async function upsertCustomer(supabase: any, phone: string, name: string, addres
   } else {
     const { data: created, error } = await supabase
       .from("customers")
-      .insert({ phone, name, order_count: 1, last_order_at: new Date().toISOString() })
+      .insert({ restaurant_id: restaurantId, phone, name, order_count: 1, last_order_at: new Date().toISOString() })
       .select()
       .single();
     if (error) throw error;
@@ -153,10 +156,11 @@ async function upsertCustomer(supabase: any, phone: string, name: string, addres
 // webhook to greet a returning customer by name and offer their saved address
 // before taking the order, per the requested flow: identify -> confirm/offer
 // address -> take order -> recap what's included -> total -> wait time.
-export async function lookupCustomer(supabase: any, phone: string) {
+export async function lookupCustomer(supabase: any, restaurantId: string, phone: string) {
   const { data: customer } = await supabase
     .from("customers")
     .select("id, name, order_count")
+    .eq("restaurant_id", restaurantId)
     .eq("phone", phone)
     .maybeSingle();
 

@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { phone } = (await req.json()) as { phone: string };
+    const { phone, branch_slug } = (await req.json()) as { phone: string; branch_slug?: string };
     if (!phone) {
       return new Response(JSON.stringify({ error: "phone es requerido" }), {
         status: 400,
@@ -30,7 +30,13 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const customer = await lookupCustomer(supabase, phone);
+    const { data: branch } = await supabase
+      .from("branches")
+      .select("restaurant_id")
+      .eq("slug", branch_slug ?? "fco-montejo")
+      .single();
+
+    const customer = await lookupCustomer(supabase, branch.restaurant_id, phone);
 
     return new Response(JSON.stringify(customer), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -102,15 +102,15 @@ Deno.serve(async (req: Request) => {
 
     const { data: branch } = await supabase
       .from("branches")
-      .select("id")
+      .select("id, restaurant_id")
       .eq("slug", PILOT_BRANCH_SLUG)
       .single();
 
     const messages = (convo?.messages ?? []) as { role: string; content: unknown }[];
     messages.push({ role: "user", content: body });
 
-    const customer = await lookupCustomer(supabase, phone);
-    const { reply, updatedMessages, orderId } = await runAgentTurn(supabase, messages, phone, customer);
+    const customer = await lookupCustomer(supabase, branch!.restaurant_id, phone);
+    const { reply, updatedMessages, orderId } = await runAgentTurn(supabase, messages, phone, customer, branch!.restaurant_id);
 
     if (convo) {
       await supabase.from("whatsapp_conversations").update({
@@ -143,6 +143,7 @@ async function runAgentTurn(
   phone: string,
   // deno-lint-ignore no-explicit-any
   customer: any,
+  restaurantId: string,
 ): Promise<{ reply: string; updatedMessages: typeof messages; orderId: string | null }> {
   let orderId: string | null = null;
   const systemPrompt = `${BASE_SYSTEM_PROMPT}\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
@@ -187,6 +188,7 @@ async function runAgentTurn(
           const { data: products } = await supabase
             .from("products")
             .select("id, name, price")
+            .eq("restaurant_id", restaurantId)
             .eq("is_available", true)
             .ilike("name", `%${toolUse.input.query}%`)
             .limit(6);

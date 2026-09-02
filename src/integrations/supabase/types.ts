@@ -49,10 +49,12 @@ export type Database = {
           call_transcript: string | null
           created_at: string | null
           customer_address: string | null
+          customer_id: string | null
           customer_name: string
           customer_phone: string
           id: string
           items: Json
+          restaurant_id: string
           source: string
           status: string | null
           total: number
@@ -64,10 +66,12 @@ export type Database = {
           call_transcript?: string | null
           created_at?: string | null
           customer_address?: string | null
+          customer_id?: string | null
           customer_name: string
           customer_phone: string
           id?: string
           items: Json
+          restaurant_id: string
           source?: string
           status?: string | null
           total: number
@@ -79,10 +83,12 @@ export type Database = {
           call_transcript?: string | null
           created_at?: string | null
           customer_address?: string | null
+          customer_id?: string | null
           customer_name?: string
           customer_phone?: string
           id?: string
           items?: Json
+          restaurant_id?: string
           source?: string
           status?: string | null
           total?: number
@@ -321,6 +327,174 @@ export type Database = {
         }
         Relationships: []
       }
+      restaurants: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      restaurant_staff: {
+        Row: {
+          id: string
+          restaurant_id: string
+          user_id: string
+          role: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          restaurant_id: string
+          user_id: string
+          role: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          restaurant_id?: string
+          user_id?: string
+          role?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_staff_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          id: string
+          restaurant_id: string
+          phone: string
+          name: string | null
+          order_count: number
+          last_order_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          restaurant_id: string
+          phone: string
+          name?: string | null
+          order_count?: number
+          last_order_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          restaurant_id?: string
+          phone?: string
+          name?: string | null
+          order_count?: number
+          last_order_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_addresses: {
+        Row: {
+          id: string
+          customer_id: string
+          label: string | null
+          address: string
+          is_default: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id: string
+          label?: string | null
+          address: string
+          is_default?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string
+          label?: string | null
+          address?: string
+          is_default?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_addresses_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversations: {
+        Row: {
+          id: string
+          phone: string
+          branch_id: string | null
+          messages: Json
+          status: string
+          order_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          phone: string
+          branch_id?: string | null
+          messages?: Json
+          status?: string
+          order_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          phone?: string
+          branch_id?: string | null
+          messages?: Json
+          status?: string
+          order_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -341,7 +515,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user" | "repartidor"
+      app_role: "admin" | "user" | "repartidor" | "superadmin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -469,7 +643,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user", "repartidor"],
+      app_role: ["admin", "user", "repartidor", "superadmin"],
     },
   },
 } as const

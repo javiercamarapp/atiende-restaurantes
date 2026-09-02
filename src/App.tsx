@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import RepartidorDashboard from "./pages/RepartidorDashboard";
 import RepartidorAdminPanel from "./pages/RepartidorAdminPanel";
 
@@ -23,6 +24,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/admin/login" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/superadmin" element={<SuperAdminDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/repartidor/:userId" element={<RepartidorAdminPanel />} />
           <Route path="/repartidor" element={<RepartidorDashboard />} />
