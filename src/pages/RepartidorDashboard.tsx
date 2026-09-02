@@ -27,7 +27,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import RepartidorSidebar from "@/components/repartidor/RepartidorSidebar";
-import logo from "@/assets/logo-admin.avif";
+import { AtiendeWordmark } from "@/components/AtiendeLogo";
 
 interface Order {
   id: string;
@@ -731,7 +731,7 @@ const RepartidorDashboard = () => {
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-white/60 backdrop-blur-xl border-b border-white/20 z-50 safe-area-top">
         <div className="flex items-center justify-between px-4 py-3">
-          <img src={logo} alt="Los Taquitos de PM" className="h-8" />
+          <AtiendeWordmark />
           <button onClick={handleLogout} className="p-2">
             <LogOut className="w-5 h-5 text-terracotta" />
           </button>

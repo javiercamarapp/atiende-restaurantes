@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Truck, Phone, Mail, Calendar, Package, Clock, CheckCircle, DollarSign, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import logoAdmin from "@/assets/logo-admin.avif";
+import { AtiendeMark } from "@/components/AtiendeLogo";
 
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 
@@ -159,7 +159,7 @@ const RepartidorAdminPanel = () => {
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <img src={logoAdmin} alt="Logo" className="h-8" />
+        <AtiendeMark className="h-8 w-auto" />
         <h1 className="font-semibold text-black">Panel del Repartidor</h1>
       </header>
 

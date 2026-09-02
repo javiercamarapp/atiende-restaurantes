@@ -17,7 +17,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, 
 import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, isAfter } from "date-fns";
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
-import logoFull from "@/assets/logo-admin.avif";
+import { AtiendeMark } from "@/components/AtiendeLogo";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
   id: string;
@@ -764,7 +764,7 @@ const AdminDashboard = () => {
         {/* Mobile Header */}
         <header className="md:hidden bg-primary text-primary-foreground p-4 shadow-lg">
           <div className="flex items-center justify-between">
-            <img src={logoFull} alt="Los Taquitos de PM" className="h-8 w-auto" />
+            <AtiendeMark className="h-8 w-auto brightness-0 invert" />
             <Button onClick={handleLogout} variant="ghost" size="icon" className="text-primary-foreground hover:bg-terracotta">
               <LogOut className="w-5 h-5" />
             </Button>

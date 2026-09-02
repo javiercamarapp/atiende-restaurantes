@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import logoFull from '@/assets/logo-admin.avif';
+import { AtiendeWordmark } from '@/components/AtiendeLogo';
 
 interface RepartidorSidebarProps {
   user: { email: string } | null;
@@ -74,7 +74,7 @@ const RepartidorSidebar = ({
       {/* Logo */}
       <div className="p-4 flex items-center justify-between">
         {!collapsed && (
-          <img src={logoFull} alt="Los Taquitos de PM" className="h-10 w-auto" />
+          <AtiendeWordmark />
         )}
         <Button
           variant="ghost"
