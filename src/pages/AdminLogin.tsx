@@ -10,7 +10,11 @@ import "./login.css";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 
 async function routeAfterAuth(navigate: ReturnType<typeof useNavigate>) {
-  const { data: roles } = await supabase.from("user_roles").select("role");
+  const { data: roles, error } = await supabase.from("user_roles").select("role");
+  if (error) {
+    // No tapar un fallo real de RLS/red con un silencioso "no eres superadmin".
+    console.error("routeAfterAuth: no se pudieron leer los roles", error);
+  }
   const isSuperadmin = roles?.some((r) => r.role === "superadmin");
   navigate(isSuperadmin ? "/admin/superadmin" : "/admin");
 }
@@ -39,9 +43,25 @@ const AdminLogin = () => {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    // El link mágico vuelve aquí con el token en el hash de la URL —
-    // supabase-js lo detecta solo al cargar (detectSessionInUrl) y deja la
-    // sesión lista antes de que este efecto corra.
+    // El link mágico vuelve aquí con el token en el hash de la URL. En
+    // teoría supabase-js lo detecta solo al cargar (detectSessionInUrl), pero
+    // eso corre de forma async en el módulo del cliente, antes de que este
+    // componente exista — si por lo que sea no alcanza a terminar, la sesión
+    // nunca se planta y la pantalla vuelve muda al formulario de login. Para
+    // no depender de esa carrera, si el hash trae el token lo consumimos
+    // nosotros mismos de forma directa y determinística.
+    const accessToken = hash.get("access_token");
+    const refreshToken = hash.get("refresh_token");
+    if (accessToken && refreshToken) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error }) => {
+        if (error) {
+          console.error("setSession desde el magic link falló", error);
+          toast({ title: "No se pudo iniciar sesión", description: error.message, variant: "destructive" });
+        }
+        window.history.replaceState(null, "", window.location.pathname);
+      });
+    }
+
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) await routeAfterAuth(navigate);
