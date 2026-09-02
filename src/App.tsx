@@ -9,6 +9,8 @@ import AdminDashboard from "./pages/AdminDashboard";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import RepartidorDashboard from "./pages/RepartidorDashboard";
 import RepartidorAdminPanel from "./pages/RepartidorAdminPanel";
+import Terminos from "./pages/Terminos";
+import Privacidad from "./pages/Privacidad";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +26,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/admin/login" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/terminos" element={<Terminos />} />
+          <Route path="/privacidad" element={<Privacidad />} />
           <Route path="/admin/superadmin" element={<SuperAdminDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/repartidor/:userId" element={<RepartidorAdminPanel />} />

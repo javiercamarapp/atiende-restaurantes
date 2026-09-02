@@ -163,14 +163,23 @@ const AdminLogin = () => {
                     </button>
                   </form>
 
-                  <p className="login-entra mt-7 text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
-                    Te mandamos un enlace de acceso — sin contraseña.
+                  <p className="login-entra mt-7 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
+                    ¿Tu correo no tiene acceso?{" "}
+                    <span className="font-semibold text-foreground">Pídele a tu restaurante que te dé de alta.</span>
                   </p>
                 </>
               )}
 
-              <p className="login-entra mt-10 text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "360ms" }}>
-                Acceso exclusivo — atiende.ai
+              <p className="login-entra mt-10 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "360ms" }}>
+                Al continuar, aceptas los{" "}
+                <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                  Términos de Servicio
+                </a>{" "}
+                y el{" "}
+                <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                  Aviso de Privacidad
+                </a>{" "}
+                de atiende.ai.
               </p>
             </div>
           </div>
