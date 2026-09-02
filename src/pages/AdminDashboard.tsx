@@ -17,6 +17,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, 
 import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, isAfter } from "date-fns";
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import NotificacionesSection from "@/components/admin/NotificacionesSection";
 import { AtiendeMark } from "@/components/AtiendeLogo";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
@@ -782,6 +783,7 @@ const AdminDashboard = () => {
               {activeSection === 'orders' && 'Pedidos'}
               {activeSection === 'users' && 'Usuarios'}
               {activeSection === 'repartidores' && 'Repartidores'}
+              {activeSection === 'notificaciones' && 'Notificaciones'}
               {activeSection === 'help' && 'Centro de Ayuda'}
             </h1>
             <p className="text-sm text-black/50">
@@ -1435,6 +1437,12 @@ const AdminDashboard = () => {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeSection === 'notificaciones' && (
+          <div className="max-w-xl">
+            <NotificacionesSection userId={user?.id} />
           </div>
         )}
 

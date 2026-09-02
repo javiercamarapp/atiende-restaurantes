@@ -361,6 +361,11 @@ export type Database = {
           user_id: string
           role: string
           created_at: string
+          notify_nuevo: boolean
+          notify_preparando: boolean
+          notify_en_camino: boolean
+          notify_entregado: boolean
+          notify_cancelado: boolean
         }
         Insert: {
           id?: string
@@ -368,6 +373,11 @@ export type Database = {
           user_id: string
           role: string
           created_at?: string
+          notify_nuevo?: boolean
+          notify_preparando?: boolean
+          notify_en_camino?: boolean
+          notify_entregado?: boolean
+          notify_cancelado?: boolean
         }
         Update: {
           id?: string
@@ -375,6 +385,11 @@ export type Database = {
           user_id?: string
           role?: string
           created_at?: string
+          notify_nuevo?: boolean
+          notify_preparando?: boolean
+          notify_en_camino?: boolean
+          notify_entregado?: boolean
+          notify_cancelado?: boolean
         }
         Relationships: [
           {

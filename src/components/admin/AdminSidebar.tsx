@@ -11,7 +11,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Percent,
-  Truck
+  Truck,
+  Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -42,6 +43,12 @@ const menuSections = [
       { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
       { id: 'users', label: 'Usuarios', icon: Users },
       { id: 'repartidores', label: 'Repartidores', icon: Truck },
+    ]
+  },
+  {
+    title: 'CUENTA',
+    items: [
+      { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
     ]
   },
   {
