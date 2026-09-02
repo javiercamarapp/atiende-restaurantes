@@ -1,0 +1,14 @@
+project_id = "okvxavwijqacomgtyyou"
+
+[functions.create-order]
+# Called by the public checkout (no logged-in user) and by the voice agent's
+# webhook, neither of which carries a Supabase user JWT.
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+# Called by Twilio's webhook, which doesn't carry a Supabase user JWT either.
+verify_jwt = false
+
+[functions.customer-lookup]
+# Called by the ElevenLabs voice agent's Server Tool, no Supabase user JWT.
+verify_jwt = false
