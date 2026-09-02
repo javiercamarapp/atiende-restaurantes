@@ -23,6 +23,22 @@ const AdminLogin = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    // Si el enlace mágico ya no era válido (caducado, ya usado — típico
+    // cuando el escáner de enlaces de Gmail/Outlook lo "abre" solo antes de
+    // que la persona lo toque), Supabase regresa aquí con el motivo en el
+    // hash en vez de un access_token. Sin esto, esa falla era silenciosa: la
+    // pantalla se quedaba en el login sin decir por qué.
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const errorDescription = hash.get("error_description");
+    if (errorDescription) {
+      toast({
+        title: "El enlace ya no sirve",
+        description: decodeURIComponent(errorDescription.replace(/\+/g, " ")),
+        variant: "destructive",
+      });
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
     // El link mágico vuelve aquí con el token en el hash de la URL —
     // supabase-js lo detecta solo al cargar (detectSessionInUrl) y deja la
     // sesión lista antes de que este efecto corra.
