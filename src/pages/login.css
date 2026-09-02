@@ -70,6 +70,27 @@
 }
 .login-btn:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 3px; }
 
+/* El gesto: el glifo de atiende se revela al pasar el cursor — mismos
+   números que .login-glifo de Likida (login.css), el rebote es la curva
+   cubic-bezier(.34,1.56,.64,1), que se pasa de tamaño y regresa. */
+.login-glifo {
+  display: block;
+  height: 17px;
+  width: 0;
+  margin-right: -9px;
+  opacity: 0;
+  overflow: hidden;
+  transform: scale(0.55) rotate(-35deg);
+  transform-origin: center;
+}
+.login-btn:hover .login-glifo,
+.login-btn:focus-visible .login-glifo {
+  width: 17px;
+  margin-right: 0;
+  opacity: 1;
+  transform: none;
+}
+
 .login-lamina {
   position: relative;
   overflow: hidden;

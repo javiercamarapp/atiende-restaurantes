@@ -121,7 +121,10 @@ const AdminLogin = () => {
                       className="login-campo"
                     />
                     <button type="submit" disabled={loading} className="login-btn login-btn-tinta mt-1">
-                      {loading ? "Enviando…" : "Continuar con correo"}
+                      <span aria-hidden className="login-glifo">
+                        <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                      </span>
+                      <span>{loading ? "Enviando…" : "Continuar con correo"}</span>
                     </button>
                   </form>
 
