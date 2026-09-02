@@ -14,9 +14,12 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ["Amiri", "serif"],
-        body: ["Outfit", "sans-serif"],
-        menu: ["Montserrat", "sans-serif"],
+        // Same type trio as Likida's console (Inter / Inter Tight / IBM Plex Mono),
+        // per the design-system port — only the color tokens changed, not the type system.
+        display: ["Inter Tight", "sans-serif"],
+        body: ["Inter", "sans-serif"],
+        menu: ["Inter", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",
