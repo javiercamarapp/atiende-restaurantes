@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Mail } from "lucide-react";
-import logo from "@/assets/taquitos-logo.avif";
 
-const ADMIN_EMAIL = "omaryaca@gmail.com";
+// Superadmin único de la plataforma (Javier). Los admins por negocio/tenant
+// (ej. el dueño de Los Taquitos de PM) se dan de alta aparte una vez que
+// exista más de un tenant — ver docs/agente-voz y la nota de arquitectura.
+const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
@@ -142,8 +144,8 @@ const AdminLogin = () => {
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-primary-foreground/10 backdrop-blur-md rounded-3xl p-8 border border-primary-foreground/20">
         <div className="flex flex-col items-center mb-8">
-          <img src={logo} alt="Los Taquitos de PM" className="w-28 sm:w-64 h-auto mb-2 sm:mb-4 object-contain" />
-          <h1 className="text-2xl font-bold text-primary-foreground">Panel de Admin</h1>
+          <span className="font-display text-3xl font-semibold text-primary-foreground mb-1">atiende.ai</span>
+          <h1 className="text-lg font-medium text-primary-foreground/90">Panel de operación</h1>
           <p className="text-primary-foreground/70 text-sm">Acceso exclusivo</p>
         </div>
 
@@ -200,12 +202,6 @@ const AdminLogin = () => {
             </Button>
           </div>
         </form>
-
-        <div className="mt-6 text-center">
-          <a href="/" className="text-primary-foreground/70 hover:text-primary-foreground text-sm">
-            ← Volver al sitio
-          </a>
-        </div>
       </div>
     </div>
   );

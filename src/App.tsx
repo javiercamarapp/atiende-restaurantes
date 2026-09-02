@@ -2,30 +2,26 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import Eventos from "./pages/Eventos";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import NotFound from "./pages/NotFound";
-import Auth from "./pages/Auth";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import RepartidorDashboard from "./pages/RepartidorDashboard";
 import RepartidorAdminPanel from "./pages/RepartidorAdminPanel";
-import ScrollToHash from "./components/ScrollToHash";
 
 const queryClient = new QueryClient();
 
+// Este es el software (panel de operación), no el sitio público del
+// restaurante — por eso arranca en login, no en una landing. El storefront
+// de cada negocio vive en su propio repo (para Taquitos DPM: lostaquitosdepm).
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <ScrollToHash />
         <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/eventos" element={<Eventos />} />
-          <Route path="/auth" element={<Auth />} />
+          <Route path="/" element={<Navigate to="/admin/login" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/repartidor/:userId" element={<RepartidorAdminPanel />} />
