@@ -14,5 +14,12 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: brokeredPreviewStorage(),
     persistSession: true,
     autoRefreshToken: true,
+    // Implícito a propósito, no PKCE: PKCE vuelve con "?code=" y exige un
+    // exchangeCodeForSession() que nadie llama a mano aquí — se resuelve
+    // solo dentro del SDK, y si falla (code_verifier no encontrado, etc.) lo
+    // hace en silencio y limpia la URL antes de que se note. El flujo
+    // implícito vuelve con "#access_token=" en el hash, que AdminLogin.tsx
+    // ya consume él mismo de forma explícita y con el error a la vista.
+    flowType: 'implicit',
   }
 });
