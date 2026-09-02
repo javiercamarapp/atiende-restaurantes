@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ThemeSelector } from "@/components/ThemeSelector";
-import { AtiendeMark } from "@/components/AtiendeLogo";
+import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
   LifeBuoy, Bell, UserRound, CreditCard, Settings, Send,
@@ -116,7 +116,7 @@ const SuperAdminDashboard = () => {
       {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-border bg-card h-screen sticky top-0">
         <div className="h-16 flex items-center px-5 border-b border-border">
-          <AtiendeMark className="h-6 w-auto" />
+          <AtiendeWordmark />
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground px-2.5 mb-1.5">Superadmin</p>

@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeSelector } from '@/components/ThemeSelector';
-import { AtiendeMark } from '@/components/AtiendeLogo';
+import { AtiendeMark, AtiendeWordmark } from '@/components/AtiendeLogo';
 import { cn } from '@/lib/utils';
 
 interface AdminSidebarProps {
@@ -64,7 +64,7 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
     >
       {/* Logo */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-border">
-        {!collapsed && <AtiendeMark className="h-6 w-auto" />}
+        {!collapsed ? <AtiendeWordmark /> : <AtiendeMark className="h-6 w-auto" />}
         <Button
           variant="ghost"
           size="icon"

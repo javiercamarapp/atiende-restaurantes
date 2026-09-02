@@ -49,6 +49,13 @@
 
 .login-btn-tinta { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
 .login-btn-tinta:disabled { opacity: 0.6; cursor: default; }
+.login-btn-borde {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.login-btn-borde:hover { border-color: color-mix(in srgb, hsl(var(--foreground)) 26%, transparent); }
+.login-btn-borde:disabled { opacity: 0.6; cursor: default; }
 
 .login-campo {
   width: 100%;
