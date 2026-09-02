@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Mail } from "lucide-react";
+import { AtiendeMark } from "@/components/AtiendeLogo";
+import "./login.css";
 
 // Superadmin único de la plataforma (Javier). Los admins por negocio/tenant
 // (ej. el dueño de Los Taquitos de PM) se dan de alta en `restaurant_staff`.
@@ -19,20 +17,27 @@ async function routeAfterAuth(navigate: ReturnType<typeof useNavigate>) {
 
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [enviado, setEnviado] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
+    // El link mágico vuelve aquí con el token en el hash de la URL —
+    // supabase-js lo detecta solo al cargar (detectSessionInUrl) y deja la
+    // sesión lista antes de que este efecto corra.
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) await routeAfterAuth(navigate);
     };
     checkSession();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) routeAfterAuth(navigate);
+    });
+    return () => sub.subscription.unsubscribe();
   }, [navigate]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
@@ -41,127 +46,122 @@ const AdminLogin = () => {
     }
 
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      toast({ title: "Error de autenticación", description: error.message, variant: "destructive" });
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      const { data: roleData } = await supabase
-        .from("user_roles").select("*").eq("user_id", data.user.id).eq("role", "admin").maybeSingle();
-      if (!roleData) {
-        await supabase.from("user_roles").insert({ user_id: data.user.id, role: "admin" });
-      }
-      toast({ title: "Bienvenido", description: "Sesión iniciada" });
-      await routeAfterAuth(navigate);
-    }
-
-    setLoading(false);
-  };
-
-  const handleSignUp = async () => {
-    if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      toast({ title: "Acceso denegado", description: "Solo el administrador puede registrarse", variant: "destructive" });
-      return;
-    }
-    if (!password || password.length < 6) {
-      toast({ title: "Error", description: "La contraseña debe tener al menos 6 caracteres", variant: "destructive" });
-      return;
-    }
-
-    setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password,
-      options: { emailRedirectTo: `${window.location.origin}/admin` },
+      options: { emailRedirectTo: window.location.origin + "/admin/login" },
     });
+    setLoading(false);
 
     if (error) {
-      toast({ title: "Error de registro", description: error.message, variant: "destructive" });
-      setLoading(false);
+      toast({ title: "No se pudo enviar el enlace", description: error.message, variant: "destructive" });
       return;
     }
-
-    if (data.user) {
-      await supabase.from("user_roles").insert({ user_id: data.user.id, role: "admin" });
-      toast({ title: "Cuenta creada", description: "Ahora puedes iniciar sesión" });
-    }
-
-    setLoading(false);
+    setEnviado(true);
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
-          <span className="font-display text-2xl font-semibold tracking-tight text-foreground">atiende.ai</span>
-          <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground mt-2">
-            Panel de operación
-          </p>
-        </div>
+    <main className="login min-h-screen lg:grid lg:grid-cols-2">
+      {/* Columna del formulario — un solo eje óptico, max-w-[392px] */}
+      <section className="flex min-h-screen flex-col px-6 py-7 sm:px-10 lg:px-14 lg:py-10">
+        <div className="mx-auto flex w-full max-w-[392px] flex-1 flex-col">
+          <header className="login-entra flex items-center">
+            <AtiendeMark className="h-6 w-auto" />
+          </header>
 
-        <div className="bg-card border border-border rounded-2xl p-7 shadow-[var(--shadow-card)]">
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-                Email
-              </Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  placeholder="tu@correo.com"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-                Contraseña
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="pt-1 space-y-2.5">
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Entrando..." : "Iniciar sesión"}
-              </Button>
-              <button
-                type="button"
-                onClick={handleSignUp}
-                disabled={loading}
-                className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+          <div className="flex flex-1 items-center py-12">
+            <div className="w-full">
+              <p className="login-entra login-kicker" style={{ animationDelay: "40ms" }}>
+                Acceso al panel
+              </p>
+              <h1
+                className="login-entra login-serif mt-5 text-[38px] sm:text-[44px] text-foreground"
+                style={{ animationDelay: "90ms" }}
               >
-                Crear cuenta admin
-              </button>
-            </div>
-          </form>
-        </div>
+                Bienvenido a atiende
+              </h1>
+              <p
+                className="login-entra mt-4 text-[15px] leading-[1.6] text-muted-foreground"
+                style={{ animationDelay: "140ms" }}
+              >
+                El panel de operación de tu restaurante.
+              </p>
 
-        <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground text-center mt-6">
-          Acceso exclusivo
-        </p>
-      </div>
-    </div>
+              {enviado && (
+                <div
+                  role="status"
+                  className="login-entra mt-9 rounded-[18px] p-5 bg-muted border border-border"
+                  style={{ animationDelay: "190ms" }}
+                >
+                  <p className="text-[15px] font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
+                  <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">Ábrelo desde este mismo dispositivo.</p>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                    ¿No llega? Revisa spam, o{" "}
+                    <button type="button" onClick={() => setEnviado(false)} className="underline underline-offset-2">
+                      vuelve a escribir tu correo
+                    </button>
+                    .
+                  </p>
+                </div>
+              )}
+
+              {!enviado && (
+                <>
+                  <div className="login-entra mt-9 h-px bg-border" style={{ animationDelay: "180ms" }} />
+
+                  <form onSubmit={handleSubmit} className="login-entra mt-8 flex flex-col gap-3" style={{ animationDelay: "280ms" }}>
+                    <label htmlFor="login-email" className="sr-only">Tu correo</label>
+                    <input
+                      id="login-email"
+                      type="email"
+                      required
+                      placeholder="tu@correo.com"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="login-campo"
+                    />
+                    <button type="submit" disabled={loading} className="login-btn login-btn-tinta mt-1">
+                      {loading ? "Enviando…" : "Continuar con correo"}
+                    </button>
+                  </form>
+
+                  <p className="login-entra mt-7 text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
+                    Te mandamos un enlace de acceso — sin contraseña.
+                  </p>
+                </>
+              )}
+
+              <p className="login-entra mt-10 text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "360ms" }}>
+                Acceso exclusivo — atiende.ai
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* La lámina — mismo material que .login-lamina de Likida, en el azul
+          de este producto en vez de una foto de flota. */}
+      <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
+        <figure className="login-lamina min-h-0 flex-1 flex items-center justify-center">
+          <img
+            src="/images/login-hero.png"
+            alt="Pase de una cocina comercial vacía en la hora azul, con vapor sobre la barra de acero."
+            className="login-foto-marca absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="login-velo" />
+          <figcaption className="absolute inset-x-0 bottom-0 p-9 z-10">
+            <p className="login-kicker" style={{ color: "color-mix(in srgb, white 78%, transparent)" }}>
+              Pedidos por voz y WhatsApp
+            </p>
+            <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
+              Restaurantes en México.
+              <br />
+              El cierre del turno, solo.
+            </p>
+          </figcaption>
+        </figure>
+      </aside>
+    </main>
   );
 };
 

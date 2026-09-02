@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ThemeSelector } from "@/components/ThemeSelector";
+import { AtiendeMark } from "@/components/AtiendeLogo";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
   LifeBuoy, Bell, UserRound, CreditCard, Settings, Send,
@@ -115,7 +116,7 @@ const SuperAdminDashboard = () => {
       {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-border bg-card h-screen sticky top-0">
         <div className="h-16 flex items-center px-5 border-b border-border">
-          <span className="font-display text-lg font-semibold tracking-tight text-foreground">atiende.ai</span>
+          <AtiendeMark className="h-6 w-auto" />
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground px-2.5 mb-1.5">Superadmin</p>
@@ -214,7 +215,7 @@ const SuperAdminDashboard = () => {
             </>
           ) : section === "pregunta" ? (
             <div className="flex flex-col items-center pt-10">
-              <span className="font-display text-xl font-semibold text-foreground mb-1">atiende.ai</span>
+              <AtiendeMark className="h-8 w-auto mb-3" />
               <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
               <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
                 Tu operación, con la cifra que ya calculó el sistema — pregunta por clientes o pedidos en toda la plataforma.

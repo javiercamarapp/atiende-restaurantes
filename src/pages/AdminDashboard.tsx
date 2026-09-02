@@ -18,7 +18,7 @@ import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import logoFull from "@/assets/logo-admin.avif";
-const ADMIN_EMAIL = "omaryaca@gmail.com";
+const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
   id: string;
   name: string;

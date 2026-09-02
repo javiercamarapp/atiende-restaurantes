@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import logoAdmin from "@/assets/logo-admin.avif";
 
-const ADMIN_EMAIL = "omaryaca@gmail.com";
+const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 
 interface Repartidor {
   user_id: string;
