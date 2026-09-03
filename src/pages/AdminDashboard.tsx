@@ -1814,6 +1814,65 @@ const AdminDashboard = () => {
                 </div>
               )}
 
+              {/* Sugerencias — SIEMPRE justo arriba del input, como Likida.
+                  En reposo (sin conversación): píldoras sueltas azul cielo.
+                  Al apretar Consulta con el campo vacío: vista por
+                  categoría — funciona igual a mitad de una conversación
+                  (el hilo se recorre hacia arriba solo, por el layout
+                  justify-end, para hacerle lugar). */}
+              {(mensajesChat.length === 0 || mostrarSugerencias) && (
+                <div className="w-full flex flex-col items-center">
+                  <AnimatePresence mode="wait">
+                    {!mostrarSugerencias ? (
+                      <motion.div
+                        key="plano"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex flex-wrap gap-2 justify-center mb-5 max-w-xl"
+                      >
+                        {preguntasSugeridasPlano.map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => responderPreguntaLocal(p)}
+                            className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="categorias"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        transition={{ duration: 0.25, ease: 'easeOut' }}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mb-5"
+                      >
+                        {categoriasPreguntasRestaurante.map((cat) => (
+                          <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
+                            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
+                            <div className="space-y-1">
+                              {cat.preguntas.map((p) => (
+                                <button
+                                  key={p}
+                                  onClick={() => responderPreguntaLocal(p)}
+                                  className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                                >
+                                  {p}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1863,67 +1922,12 @@ const AdminDashboard = () => {
                 </div>
               </form>
 
-              {/* Por default: sugerencias sueltas en píldoras azul cielo,
-                  igual a Likida en reposo. Al apretar Consulta con el campo
-                  vacío, cambian a la vista por categoría (mismo par de
-                  vistas que Likida). */}
               {mensajesChat.length === 0 && (
-                <div className="w-full flex flex-col items-center">
-                  <AnimatePresence mode="wait">
-                    {!mostrarSugerencias ? (
-                      <motion.div
-                        key="plano"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl"
-                      >
-                        {preguntasSugeridasPlano.map((p) => (
-                          <button
-                            key={p}
-                            onClick={() => responderPreguntaLocal(p)}
-                            className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="categorias"
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.25, ease: 'easeOut' }}
-                        className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-5"
-                      >
-                        {categoriasPreguntasRestaurante.map((cat) => (
-                          <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
-                            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
-                            <div className="space-y-1">
-                              {cat.preguntas.map((p) => (
-                                <button
-                                  key={p}
-                                  onClick={() => responderPreguntaLocal(p)}
-                                  className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
-                                >
-                                  {p}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
-                    Responde con cifras ya calculadas en el servidor — búsqueda simple por ahora, no un motor de
-                    lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos
-                    ni lo analizamos automáticamente.
-                  </p>
-                </div>
+                <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
+                  Responde con cifras ya calculadas en el servidor — búsqueda simple por ahora, no un motor de
+                  lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos
+                  ni lo analizamos automáticamente.
+                </p>
               )}
             </div>
           </div>
