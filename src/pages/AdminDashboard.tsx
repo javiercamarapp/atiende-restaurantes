@@ -2050,24 +2050,35 @@ const AdminDashboard = () => {
     const tramos: { inicio: Date; fin: Date; etiqueta: string }[] = [];
     switch (filtro) {
       case 'today': {
-        for (let i = 23; i >= 0; i--) {
-          const inicio = new Date(ahora.getTime() - i * 60 * 60 * 1000);
-          inicio.setMinutes(0, 0, 0);
+        // Solo horas abiertas (no las 24) — de lo contrario medianoche-6am
+        // sale siempre en cero y aplasta la gráfica real de mediodía/noche.
+        // Ventana amplia que cubre comida (13-16h) y cena (19-22h) con
+        // margen real de antes/después del servicio: 11:00 a 23:00.
+        const HORA_APERTURA = 11;
+        const HORA_CIERRE = 23;
+        for (let h = HORA_APERTURA; h <= HORA_CIERRE; h++) {
+          const inicio = startOfDay(ahora);
+          inicio.setHours(h, 0, 0, 0);
           const fin = new Date(inicio.getTime() + 60 * 60 * 1000);
           tramos.push({ inicio, fin, etiqueta: format(inicio, 'HH:00', { locale: es }) });
         }
         break;
       }
-      case '7':
-      case '30': {
-        const dias = filtro === '7' ? 6 : 29;
-        // '7' muestra nombre de día ("lun"), '30' fecha ("dd MMM") — mismo
-        // formato que ya usaba la gráfica antes de esta corrección.
-        const etiquetaFormato = filtro === '7' ? 'EEE' : 'dd MMM';
-        for (let i = dias; i >= 0; i--) {
+      case '7': {
+        for (let i = 6; i >= 0; i--) {
           const inicio = startOfDay(subDays(ahora, i));
           const fin = subDays(inicio, -1);
-          tramos.push({ inicio, fin, etiqueta: format(inicio, etiquetaFormato, { locale: es }) });
+          tramos.push({ inicio, fin, etiqueta: format(inicio, 'EEE', { locale: es }) });
+        }
+        break;
+      }
+      case '30': {
+        // Un punto cada 3 días (10 tramos) en vez de uno por día — como
+        // antes, para que la gráfica del mes no quede saturada de puntos.
+        for (let i = 27; i >= 0; i -= 3) {
+          const inicio = startOfDay(subDays(ahora, i));
+          const fin = subDays(inicio, -3);
+          tramos.push({ inicio, fin, etiqueta: format(inicio, 'dd MMM', { locale: es }) });
         }
         break;
       }
@@ -2098,20 +2109,39 @@ const AdminDashboard = () => {
       }
       case 'historico':
       default: {
-        // Un punto por mes desde el pedido más antiguo real (tope de 36
-        // meses). `primerPedidoEn` viene de una consulta aparte que solo
-        // pide MIN(created_at) — a diferencia de antes, que lo sacaba del
-        // propio array `orders` ya truncado a 1000 filas (el "más antiguo"
-        // de las 1000 más RECIENTES, casi siempre muy lejos del real).
+        // Granularidad adaptable según cuánta historia real hay —
+        // `primerPedidoEn` viene de una consulta aparte que solo pide
+        // MIN(created_at) (a diferencia de antes, que lo sacaba del propio
+        // array `orders` ya truncado a 1000 filas). Poco histórico (≤12
+        // meses) → un punto por mes, para no dejar la gráfica con 2-3
+        // puntos nada más. Histórico medio (12-36 meses) → un punto cada 3
+        // meses. Histórico largo (>36 meses, varios años operando) → un
+        // punto por año, sin tope — a diferencia de antes, que cortaba
+        // duro en 36 meses y perdía historia real más vieja.
         const inicioReal = primerPedidoEn ?? ahora;
-        const mesesDesdeInicio = Math.min(
-          36,
-          Math.max(0, (ahora.getFullYear() - inicioReal.getFullYear()) * 12 + (ahora.getMonth() - inicioReal.getMonth()))
+        const mesesDesdeInicio = Math.max(
+          0,
+          (ahora.getFullYear() - inicioReal.getFullYear()) * 12 + (ahora.getMonth() - inicioReal.getMonth())
         );
-        for (let i = mesesDesdeInicio; i >= 0; i--) {
-          const inicio = startOfMonth(subMonths(ahora, i));
-          const fin = subMonths(inicio, -1);
-          tramos.push({ inicio, fin, etiqueta: format(inicio, 'MMM yy', { locale: es }) });
+        if (mesesDesdeInicio <= 12) {
+          for (let i = mesesDesdeInicio; i >= 0; i--) {
+            const inicio = startOfMonth(subMonths(ahora, i));
+            const fin = subMonths(inicio, -1);
+            tramos.push({ inicio, fin, etiqueta: format(inicio, 'MMM yy', { locale: es }) });
+          }
+        } else if (mesesDesdeInicio <= 36) {
+          for (let i = mesesDesdeInicio; i >= 0; i -= 3) {
+            const inicio = startOfMonth(subMonths(ahora, i));
+            const fin = subMonths(inicio, -3);
+            tramos.push({ inicio, fin, etiqueta: format(inicio, 'MMM yy', { locale: es }) });
+          }
+        } else {
+          const añosDesdeInicio = Math.ceil(mesesDesdeInicio / 12);
+          for (let i = añosDesdeInicio; i >= 0; i--) {
+            const inicio = startOfMonth(subMonths(ahora, i * 12));
+            const fin = subMonths(inicio, -12);
+            tramos.push({ inicio, fin, etiqueta: format(inicio, 'yyyy', { locale: es }) });
+          }
         }
         break;
       }
