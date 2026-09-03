@@ -93,6 +93,7 @@ Deno.serve(async (req: Request) => {
       // deno-lint-ignore no-explicit-any
       }).map((v: any) => ({
         voice_id: v.voice_id,
+        public_owner_id: v.public_owner_id,
         name: v.name,
         gender: v.gender,
         accent: v.accent,
@@ -103,8 +104,25 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "update") {
-      const { agent_id, first_message, language, prompt, temperature, voice_id, speed, stability, similarity_boost } = body;
+      const { agent_id, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+
+      // Una voz de la biblioteca compartida de ElevenLabs no se puede
+      // asignar a un agente hasta que primero se "añade" a la cuenta
+      // propia — si no, el PATCH del agente responde voice_not_found. Es
+      // idempotente (si ya estaba añadida, responde igual con éxito), así
+      // que se intenta siempre que venga un voice_id nuevo con su dueño.
+      if (voice_id && voice_public_owner_id) {
+        const addRes = await fetch(`https://api.elevenlabs.io/v1/voices/add/${voice_public_owner_id}/${voice_id}`, {
+          method: "POST",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ new_name: `Voz — Los Taquitos de PM` }),
+        });
+        if (!addRes.ok) {
+          const detalle = await addRes.text();
+          if (!detalle.includes("already")) return json({ error: `No se pudo añadir la voz a tu biblioteca: ${detalle}` }, addRes.status);
+        }
+      }
 
       // deno-lint-ignore no-explicit-any
       const agentPatch: Record<string, any> = {};

@@ -201,12 +201,17 @@ function TileDashboardVoz({
   valor,
   nota,
   indice,
+  texto = false,
 }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
   label: string;
   valor: React.ReactNode;
   nota?: string;
   indice: number;
+  /** true para valores de texto largo (nombre de modelo, de voz) — letra
+   *  normal en vez del tratamiento grande/negrita de una cifra corta,
+   *  que se ve pesado y fuera de lugar en una oración larga. */
+  texto?: boolean;
 }) {
   // Misma anatomía que StatCard de "Estadísticas" (caja --canvas interna,
   // chip de ícono sólido, pie con hairline punteado) — sólo agrega el
@@ -225,7 +230,7 @@ function TileDashboardVoz({
           </div>
           <span className="text-[13px] text-muted-foreground truncate">{label}</span>
         </div>
-        <p className="font-display text-xl font-semibold tabular-nums text-foreground">{valor}</p>
+        <p className={texto ? "text-[13px] font-normal text-foreground truncate" : "font-display text-xl font-semibold tabular-nums text-foreground"}>{valor}</p>
       </div>
       {nota && (
         <div className="mx-1.5 mt-1.5 pt-1.5 border-t border-dashed border-border">
@@ -416,18 +421,25 @@ function DashboardAgente({
   // `original` es lo último confirmado guardado, para poder cancelar.
   type ConfigAgente = {
     first_message: string; language: string; prompt: string; temperature: number;
-    voice_id: string | null; speed: number; stability: number; similarity_boost: number;
+    voice_id: string | null; voice_public_owner_id?: string | null; speed: number; stability: number; similarity_boost: number;
   };
-  type VozDisponible = { voice_id: string; name: string; gender: string; accent: string; description: string; preview_url: string };
+  type VozDisponible = { voice_id: string; public_owner_id: string; name: string; gender: string; accent: string; description: string; preview_url: string };
   const [config, setConfig] = useState<ConfigAgente | null>(null);
   const [borrador, setBorrador] = useState<ConfigAgente | null>(null);
   const [voces, setVoces] = useState<VozDisponible[]>([]);
+  const [busquedaVoz, setBusquedaVoz] = useState('');
+  const [filtroGenero, setFiltroGenero] = useState<'todos' | 'male' | 'female'>('todos');
   const [cargandoConfig, setCargandoConfig] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorConfig, setErrorConfig] = useState<string | null>(null);
   const [guardadoOk, setGuardadoOk] = useState(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [voceandoId, setVoceandoId] = useState<string | null>(null);
+  const vocesFiltradas = voces.filter((v) => {
+    if (filtroGenero !== 'todos' && v.gender !== filtroGenero) return false;
+    if (busquedaVoz && !v.name.toLowerCase().includes(busquedaVoz.toLowerCase()) && !v.accent.toLowerCase().includes(busquedaVoz.toLowerCase())) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (canal !== 'voz' || !agentId) return;
@@ -721,8 +733,8 @@ function DashboardAgente({
             {pestana === 'comportamiento' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2.5">
-                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} />
-                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="Claude Sonnet 5" indice={1} />
+                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} texto />
+                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="Claude Haiku 4.5" indice={1} texto />
                 </div>
                 <div className="rounded-xl border border-border bg-card p-3.5">
                   <div className="flex items-center justify-between mb-1">
@@ -755,23 +767,10 @@ function DashboardAgente({
                     <option value="fr">Français</option>
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl border border-border bg-card p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-medium text-foreground">Velocidad</span>
-                      <span className="font-mono text-[13px] tabular-nums text-primary">{borrador.speed.toFixed(2)}x</span>
-                    </div>
-                    <input
-                      type="range" min={0.7} max={1.2} step={0.01}
-                      value={borrador.speed}
-                      onChange={(e) => setBorrador({ ...borrador, speed: Number(e.target.value) })}
-                      className="w-full accent-primary"
-                    />
-                  </div>
+                <div className="grid grid-cols-3 gap-2.5">
                   <div className="rounded-xl border border-border bg-card p-3.5">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[13px] font-medium text-foreground">Estabilidad</span>
-                      <span className="font-mono text-[13px] tabular-nums text-primary">{borrador.stability.toFixed(2)}</span>
                     </div>
                     <input
                       type="range" min={0} max={1} step={0.05}
@@ -779,22 +778,91 @@ function DashboardAgente({
                       onChange={(e) => setBorrador({ ...borrador, stability: Number(e.target.value) })}
                       className="w-full accent-primary"
                     />
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-0.5">
+                      <span>Más expresivo</span><span>Más consistente</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[13px] font-medium text-foreground">Velocidad</span>
+                    </div>
+                    <input
+                      type="range" min={0.7} max={1.2} step={0.01}
+                      value={borrador.speed}
+                      onChange={(e) => setBorrador({ ...borrador, speed: Number(e.target.value) })}
+                      className="w-full accent-primary"
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-0.5">
+                      <span>Más lento</span><span>Más rápido</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[13px] font-medium text-foreground">Similitud</span>
+                    </div>
+                    <input
+                      type="range" min={0} max={1} step={0.05}
+                      value={borrador.similarity_boost}
+                      onChange={(e) => setBorrador({ ...borrador, similarity_boost: Number(e.target.value) })}
+                      className="w-full accent-primary"
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-0.5">
+                      <span>Baja</span><span>Alta</span>
+                    </div>
                   </div>
                 </div>
                 <div>
-                  <p className="text-[13px] font-medium text-foreground mb-1.5">Voz — {voces.length || '…'} voces en español latino/mexicano</p>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[13px] font-medium text-foreground">Voz — {vocesFiltradas.length}/{voces.length || '…'} voces en español latino/mexicano</p>
+                    <span
+                      title="Clonar tu propia voz requiere grabar muestras de audio — todavía no está conectado aquí."
+                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-dashed border-border text-muted-foreground text-[11px] font-medium cursor-not-allowed"
+                    >
+                      <Mic className="w-3 h-3" /> Clonar mi voz
+                      <span className="font-mono text-[9px] uppercase text-muted-foreground/70">Pronto</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="flex-1 flex items-center gap-1.5 h-8 rounded-lg border border-border bg-card px-2.5">
+                      <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <input
+                        value={busquedaVoz}
+                        onChange={(e) => setBusquedaVoz(e.target.value)}
+                        placeholder="Buscar por nombre o acento…"
+                        className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    {(['todos', 'female', 'male'] as const).map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => setFiltroGenero(g)}
+                        className={`h-8 px-2.5 rounded-lg text-[11px] font-medium border transition-colors shrink-0 ${filtroGenero === g ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+                      >
+                        {g === 'todos' ? 'Todas' : g === 'female' ? 'Mujer' : 'Hombre'}
+                      </button>
+                    ))}
+                  </div>
                   <div className="rounded-xl border border-border divide-y divide-border max-h-72 overflow-auto">
-                    {voces.map((v) => (
+                    {vocesFiltradas.map((v) => (
                       <div
                         key={v.voice_id}
-                        onClick={() => setBorrador({ ...borrador, voice_id: v.voice_id })}
+                        onClick={() => setBorrador({ ...borrador, voice_id: v.voice_id, voice_public_owner_id: v.public_owner_id })}
                         className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${borrador.voice_id === v.voice_id ? 'bg-primary/10' : 'hover:bg-muted'}`}
                       >
                         <button
                           onClick={(e) => { e.stopPropagation(); reproducirPreview(v.voice_id, v.preview_url); }}
-                          className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0"
+                          className="relative w-8 h-8 rounded-full shrink-0 overflow-hidden flex items-center justify-center"
+                          style={{ background: `conic-gradient(from ${(v.voice_id.charCodeAt(0) * 37) % 360}deg, #1d4ed8, #38bdf8, #1d4ed8)` }}
                         >
-                          {voceandoId === v.voice_id ? <XCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                          <motion.div
+                            animate={voceandoId === v.voice_id ? { rotate: 360 } : { rotate: 0 }}
+                            transition={voceandoId === v.voice_id ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.3 }}
+                            className="absolute inset-0"
+                            style={{ background: `conic-gradient(from ${(v.voice_id.charCodeAt(1) * 53) % 360}deg, transparent, #ffffff30, transparent)` }}
+                          />
+                          <span className="relative z-10 text-white">
+                            {voceandoId === v.voice_id ? <XCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                          </span>
                         </button>
                         <div className="min-w-0 flex-1">
                           <p className="text-[13px] text-foreground truncate">{v.name}</p>
@@ -803,8 +871,10 @@ function DashboardAgente({
                         {borrador.voice_id === v.voice_id && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
                       </div>
                     ))}
-                    {voces.length === 0 && (
-                      <p className="text-[12px] text-muted-foreground p-3">No se pudo cargar el catálogo de voces.</p>
+                    {vocesFiltradas.length === 0 && (
+                      <p className="text-[12px] text-muted-foreground p-3">
+                        {voces.length === 0 ? 'No se pudo cargar el catálogo de voces.' : 'Sin resultados para ese filtro.'}
+                      </p>
                     )}
                   </div>
                 </div>
