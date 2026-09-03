@@ -3,11 +3,14 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import type { DateRange } from "react-day-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -152,6 +155,190 @@ function TileKpiAgente({
   );
 }
 
+// Cifra chica del "Dashboards" del agente de voz — misma anatomía que
+// TileKpiAgente (motion + N/D honesto) pero sin el "Ver más" ni la meta,
+// porque aquí no hay una meta declarada, sólo la cifra cruda.
+function TileDashboardVoz({
+  icon: Icon,
+  label,
+  valor,
+  nota,
+  indice,
+}: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
+  label: string;
+  valor: string;
+  nota?: string;
+  indice: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: indice * 0.04, ease: 'easeOut' }}
+      className="rounded-xl border border-border bg-muted/40 p-3"
+    >
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <div className="w-5 h-5 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <Icon className="w-3 h-3" strokeWidth={1.75} />
+        </div>
+        <span className="text-[11px] text-muted-foreground truncate">{label}</span>
+      </div>
+      <p className="font-display text-lg font-semibold tabular-nums text-foreground">{valor}</p>
+      {nota && <p className="text-[10px] text-muted-foreground/80 mt-0.5">{nota}</p>}
+    </motion.div>
+  );
+}
+
+// Caja de "no hay datos todavía" — mismo patrón honesto que usa ElevenLabs
+// en sus propias pestañas (Audio/Herramientas/Base de conocimientos) hasta
+// que hay conversaciones reales que analizar. Nunca inventa una cifra.
+function VacioDashboardVoz({ icon: Icon, titulo, detalle }: { icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>; titulo: string; detalle: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center rounded-xl border border-dashed border-border py-10 px-6">
+      <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mb-3">
+        <Icon className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+      </div>
+      <p className="text-[13px] font-medium text-foreground mb-1">{titulo}</p>
+      <p className="text-[11.5px] text-muted-foreground max-w-xs leading-snug">{detalle}</p>
+    </div>
+  );
+}
+
+// Panel "Dashboards" del agente de voz — mismo esqueleto de pestañas que
+// ElevenLabs (General/Audio/Herramientas/Base de conocimientos), con la
+// tipografía compacta y azul del resto del software. La pestaña General
+// usa cifras REALES ya calculadas por cargarDatosAgentes (statsAgentes);
+// el resto son estados vacíos honestos — no hay fuente de datos real para
+// ellas todavía (requeriría la API de ElevenLabs + una función de borde).
+// Nunca muestra costos/créditos: eso es infraestructura interna, no del cliente.
+function DashboardAgenteVoz({
+  onCerrar,
+  nombreAgente,
+  statsAgentes,
+  etiquetaRango,
+}: {
+  onCerrar: () => void;
+  nombreAgente: string;
+  statsAgentes: {
+    totalOrdenes: number;
+    ingresoTotal: number;
+    voz: { total: number; completados: number; cancelados: number; ingreso: number };
+    whatsapp: { total: number; completados: number; cancelados: number; ingreso: number };
+  } | null;
+  etiquetaRango: string;
+}) {
+  const [pestana, setPestana] = useState<'general' | 'audio' | 'herramientas' | 'conocimiento'>('general');
+  const voz = statsAgentes?.voz;
+  const tasaExito = voz && voz.total > 0 ? (voz.completados / voz.total) * 100 : null;
+
+  const PESTANAS = [
+    { id: 'general' as const, etiqueta: 'General', icon: LayoutGrid },
+    { id: 'audio' as const, etiqueta: 'Audio', icon: Volume2 },
+    { id: 'herramientas' as const, etiqueta: 'Herramientas', icon: Wrench },
+    { id: 'conocimiento' as const, etiqueta: 'Base de conocimientos', icon: BookOpen },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden"
+    >
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onCerrar}
+              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              ‹ Atrás
+            </button>
+            <span className="text-border">|</span>
+            <p className="text-[13px] font-medium text-foreground truncate">Dashboard — {nombreAgente}</p>
+          </div>
+          <p className="text-[10.5px] text-muted-foreground mt-0.5">{etiquetaRango}</p>
+        </div>
+        <button
+          onClick={onCerrar}
+          className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 px-4 pt-3 overflow-x-auto">
+        {PESTANAS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setPestana(p.id)}
+            className={`flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium transition-colors shrink-0 ${
+              pestana === p.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <p.icon className="w-3 h-3" /> {p.etiqueta}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-4">
+        {pestana === 'general' && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+            <TileDashboardVoz icon={Phone} label="Conversaciones" valor={voz ? String(voz.total) : '—'} indice={0} />
+            <TileDashboardVoz
+              icon={CheckCircle2}
+              label="Tasa de éxito"
+              valor={tasaExito === null ? 'N/D' : `${tasaExito.toFixed(1)}%`}
+              nota={tasaExito === null ? 'Aún sin conversaciones para calcularla' : undefined}
+              indice={1}
+            />
+            <TileDashboardVoz icon={XCircle} label="Canceladas" valor={voz ? String(voz.cancelados) : '—'} indice={2} />
+            <TileDashboardVoz icon={ShoppingCart} label="Pedidos completados" valor={voz ? String(voz.completados) : '—'} indice={3} />
+            <TileDashboardVoz
+              icon={DollarSign}
+              label="Ingresos generados"
+              valor={voz ? `$${voz.ingreso.toLocaleString('es-MX')}` : '—'}
+              indice={4}
+            />
+            <TileDashboardVoz
+              icon={Clock}
+              label="Duración media"
+              valor="N/D"
+              nota="Falta guardar la duración de cada llamada"
+              indice={5}
+            />
+          </div>
+        )}
+
+        {pestana === 'audio' && (
+          <VacioDashboardVoz
+            icon={Volume2}
+            titulo="No se han recopilado datos de audio"
+            detalle="Calidad de voz, interrupciones y latencia de respuesta aparecerán aquí cuando conectemos la analítica de llamadas de ElevenLabs."
+          />
+        )}
+
+        {pestana === 'herramientas' && (
+          <VacioDashboardVoz
+            icon={Wrench}
+            titulo="No se han recopilado datos de herramientas"
+            detalle="Qué tanto usa el agente buscar_cliente, buscar_producto y crear_pedido en cada llamada aparecerá aquí próximamente."
+          />
+        )}
+
+        {pestana === 'conocimiento' && (
+          <VacioDashboardVoz
+            icon={BookOpen}
+            titulo="No se han recopilado datos de la base de conocimientos"
+            detalle="Qué tan seguido consulta el agente tu menú al responder todavía no se está midiendo."
+          />
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -227,32 +414,60 @@ const AdminDashboard = () => {
   // Selector de sucursal del encabezado de Agente de voz/WhatsApp — "global"
   // ve todo el restaurante, o se puede acotar a una sucursal puntual. El
   // agente de voz real (ElevenLabs) vive por sucursal, no por restaurante:
-  // solo la sucursal que de verdad tiene uno configurado (branches.elevenlabs_agent_id)
-  // puede abrir la Vista previa.
+  // solo la sucursal que de verdad tiene uno configurado
+  // (branches.elevenlabs_agent_id) muestra el globo del widget.
   const [sucursalesAgente, setSucursalesAgente] = useState<{ id: string; name: string; elevenlabs_agent_id: string | null }[]>([]);
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string>('global');
   const [mostrarSelectorSucursal, setMostrarSelectorSucursal] = useState(false);
-  const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
+  const [mostrarDashboardVoz, setMostrarDashboardVoz] = useState(false);
 
-  // Sucursal con agente real para la Vista previa: la seleccionada si tiene
-  // uno, o la primera que sí tenga cuando el filtro está en "global".
+  // Rango de fecha del "Llamadas recientes" de Agente de voz — presets +
+  // rango personalizado con calendario real, mismo esqueleto que el
+  // selector de ElevenLabs. Filtra la lista ya cargada (client-side); no
+  // vuelve a pedir a Supabase, así que no depende de la función de borde
+  // pendiente de ElevenLabs para ser real y funcional.
+  const PRESETS_RANGO_AGENTE = [
+    { id: '24h', etiqueta: 'Últimas 24 horas', dias: 1 },
+    { id: '7d', etiqueta: 'Últimos 7 días', dias: 7 },
+    { id: '30d', etiqueta: 'Últimos 30 días', dias: 30 },
+    { id: '90d', etiqueta: 'Últimos 90 días', dias: 90 },
+  ] as const;
+  const [presetRangoAgente, setPresetRangoAgente] = useState<string>('7d');
+  const [rangoAgenteBorrador, setRangoAgenteBorrador] = useState<DateRange | undefined>(undefined);
+  const [rangoAgenteAplicado, setRangoAgenteAplicado] = useState<DateRange | undefined>(undefined);
+  const [mostrarSelectorRango, setMostrarSelectorRango] = useState(false);
+
+  const rangoAgenteActivo: DateRange = rangoAgenteAplicado ?? (() => {
+    const preset = PRESETS_RANGO_AGENTE.find((p) => p.id === presetRangoAgente) ?? PRESETS_RANGO_AGENTE[1];
+    const hasta = new Date();
+    const desde = subDays(hasta, preset.dias);
+    return { from: desde, to: hasta };
+  })();
+  const etiquetaRangoAgente = rangoAgenteAplicado
+    ? `${format(rangoAgenteAplicado.from ?? new Date(), 'd MMM', { locale: es })} – ${format(rangoAgenteAplicado.to ?? new Date(), 'd MMM yyyy', { locale: es })}`
+    : (PRESETS_RANGO_AGENTE.find((p) => p.id === presetRangoAgente)?.etiqueta ?? 'Últimos 7 días');
+
+  // Sucursal con agente real: la seleccionada si tiene uno, o la primera
+  // que sí tenga cuando el filtro está en "global".
   const sucursalConAgente = sucursalSeleccionada === 'global'
     ? sucursalesAgente.find((s) => s.elevenlabs_agent_id)
     : sucursalesAgente.find((s) => s.id === sucursalSeleccionada);
   const agentIdActivo = sucursalConAgente?.elevenlabs_agent_id ?? null;
 
-  // El widget real de ElevenLabs (mismo componente que usan ellos mismos,
-  // no una recreación) — se carga una sola vez cuando se abre la Vista
-  // previa por primera vez.
+  // El widget REAL de ElevenLabs (el mismo componente que usan ellos, no
+  // una recreación) — su propio globo flotante siempre está ahí en la
+  // página del agente, sin que haya que apretar un botón aparte; al
+  // apretarlo, ellos mismos abren su panel lateral con la animación del
+  // orbe y el botón de pantalla completa nativos.
   useEffect(() => {
-    if (!mostrarVistaPrevia) return;
+    if (activeSection !== 'agente-voz' || !agentIdActivo) return;
     if (document.getElementById('elevenlabs-convai-script')) return;
     const script = document.createElement('script');
     script.id = 'elevenlabs-convai-script';
     script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
     script.async = true;
     document.body.appendChild(script);
-  }, [mostrarVistaPrevia]);
+  }, [activeSection, agentIdActivo]);
 
   const cargarDatosAgentes = async (branchId?: string) => {
     if (!restaurantId) return;
@@ -2232,11 +2447,63 @@ const AdminDashboard = () => {
         {activeSection === 'agente-voz' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <p className="text-[13px] text-muted-foreground truncate">
-                  Desempeño real de tu agente de voz — se llena solo con la actividad real, sin datos de ejemplo.
-                </p>
-              </div>
+              {/* Selector de rango — mismo esqueleto que el de ElevenLabs
+                  (presets + calendario real), en azul. Filtra la lista de
+                  "Llamadas recientes" ya cargada. */}
+              <Popover open={mostrarSelectorRango} onOpenChange={(v) => { setMostrarSelectorRango(v); if (v) setRangoAgenteBorrador(rangoAgenteAplicado); }}>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1.5 h-7 pl-1 pr-2.5 rounded-full border border-border bg-card text-[11px] text-foreground hover:bg-muted transition-colors">
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground">‹</span>
+                    <History className="w-3 h-3 text-primary" />
+                    <span className="font-medium">{etiquetaRangoAgente}</span>
+                    <span className="font-mono text-[9px] text-muted-foreground">· UTC-6</span>
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground">›</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-0 overflow-hidden">
+                  <div className="flex">
+                    <div className="w-40 border-r border-border p-1.5 space-y-0.5">
+                      {PRESETS_RANGO_AGENTE.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => { setPresetRangoAgente(p.id); setRangoAgenteAplicado(undefined); setMostrarSelectorRango(false); }}
+                          className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${!rangoAgenteAplicado && presetRangoAgente === p.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                        >
+                          {p.etiqueta}
+                          {!rangoAgenteAplicado && presetRangoAgente === p.id && <span className="text-primary">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="p-2">
+                      <Calendar
+                        mode="range"
+                        selected={rangoAgenteBorrador}
+                        onSelect={setRangoAgenteBorrador}
+                        numberOfMonths={1}
+                        locale={es}
+                      />
+                      <div className="flex items-center justify-between px-2 pb-2">
+                        <span className="font-mono text-[10px] text-muted-foreground">America/Merida (UTC-6)</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setMostrarSelectorRango(false)}
+                            className="h-7 px-3 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => { if (rangoAgenteBorrador?.from && rangoAgenteBorrador?.to) setRangoAgenteAplicado(rangoAgenteBorrador); setMostrarSelectorRango(false); }}
+                            disabled={!rangoAgenteBorrador?.from || !rangoAgenteBorrador?.to}
+                            className="h-7 px-3 rounded-full bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+                          >
+                            Aplicar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <div className="flex items-center gap-2 shrink-0 relative">
                 {/* Selector de sucursal — Global o una puntual, para ver las
                     cifras acotadas a esa sucursal. */}
@@ -2245,7 +2512,7 @@ const AdminDashboard = () => {
                   className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
                 >
                   {sucursalSeleccionada === 'global' ? <Globe className="w-3 h-3 text-muted-foreground" /> : <Store className="w-3 h-3 text-muted-foreground" />}
-                  {sucursalSeleccionada === 'global' ? 'Global' : (sucursalesAgente.find((s) => s.id === sucursalSeleccionada)?.name ?? 'Sucursal')}
+                  {sucursalSeleccionada === 'global' ? 'Todas las sucursales' : (sucursalesAgente.find((s) => s.id === sucursalSeleccionada)?.name ?? 'Sucursal')}
                   <ChevronDown className="w-3 h-3 text-muted-foreground" />
                 </button>
                 {mostrarSelectorSucursal && (
@@ -2254,7 +2521,7 @@ const AdminDashboard = () => {
                       onClick={() => { setSucursalSeleccionada('global'); setMostrarSelectorSucursal(false); }}
                       className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === 'global' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
                     >
-                      <Globe className="w-3.5 h-3.5 shrink-0" /> Global (todas)
+                      <Globe className="w-3.5 h-3.5 shrink-0" /> Todas las sucursales
                     </button>
                     <div className="my-1 border-t border-border" />
                     {sucursalesAgente.map((s) => (
@@ -2270,12 +2537,18 @@ const AdminDashboard = () => {
                   </div>
                 )}
                 <button
-                  onClick={() => setMostrarVistaPrevia(true)}
+                  onClick={() => document.querySelector('elevenlabs-convai')?.scrollIntoView({ behavior: 'smooth', block: 'end' })}
                   disabled={!agentIdActivo}
-                  title={agentIdActivo ? undefined : 'Esta sucursal todavía no tiene un agente de voz configurado'}
-                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-foreground text-background text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={agentIdActivo ? 'El globo del agente ya está abajo a la derecha — abre la conversación de prueba real de ElevenLabs' : 'Esta sucursal todavía no tiene un agente de voz configurado'}
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <PlayCircle className="w-3 h-3" /> Vista previa
+                </button>
+                <button
+                  onClick={() => setMostrarDashboardVoz(true)}
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                >
+                  <LayoutGrid className="w-3 h-3 text-muted-foreground" /> Dashboards
                 </button>
                 <button
                   onClick={() => cargarDatosAgentes(sucursalSeleccionada)}
@@ -2288,26 +2561,25 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Vista previa real — el widget embebible oficial de ElevenLabs
-                (el mismo componente que usan ellos, no una recreación): trae
-                su propio globo flotante, animación del orbe, y botón de
-                pantalla completa nativos. */}
-            {mostrarVistaPrevia && agentIdActivo && (
-              <div className="fixed inset-0 z-40 bg-foreground/20 flex items-end justify-end p-4" onClick={() => setMostrarVistaPrevia(false)}>
-                <div onClick={(e) => e.stopPropagation()} className="relative">
-                  <button
-                    onClick={() => setMostrarVistaPrevia(false)}
-                    className="absolute -top-3 -left-3 z-50 w-7 h-7 rounded-full bg-card border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                  {(() => {
-                    const ConvaiWidget = 'elevenlabs-convai' as any;
-                    return <ConvaiWidget agent-id={agentIdActivo} />;
-                  })()}
-                </div>
-              </div>
+            {mostrarDashboardVoz && (
+              <DashboardAgenteVoz
+                onCerrar={() => setMostrarDashboardVoz(false)}
+                nombreAgente={sucursalConAgente?.name ?? 'tu sucursal'}
+                statsAgentes={statsAgentes}
+                etiquetaRango={etiquetaRangoAgente}
+              />
             )}
+
+            {/* El widget REAL de ElevenLabs vive montado siempre en la
+                página (ver el useEffect de arriba) — trae su propio globo
+                flotante abajo a la derecha, y al apretarlo abre su panel
+                lateral con el orbe animado y pantalla completa nativos, sin
+                que nosotros construyamos nada de eso. "Vista previa" en el
+                encabezado solo baja la vista hasta él. */}
+            {agentIdActivo && (() => {
+              const ConvaiWidget = 'elevenlabs-convai' as any;
+              return <ConvaiWidget agent-id={agentIdActivo} />;
+            })()}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <TileKpiAgente
