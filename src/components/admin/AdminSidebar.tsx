@@ -57,8 +57,8 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-border shrink-0">
+      {/* Logo — sin línea divisoria, igual que Likida */}
+      <div className="h-14 px-3.5 flex items-center justify-between shrink-0">
         {!collapsed ? <AtiendeWordmark /> : <AtiendeMark className="h-6 w-auto" />}
         <Button
           variant="ghost"
@@ -71,12 +71,12 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 py-4">
-        <nav className="space-y-6 px-2">
+      <ScrollArea className="flex-1 py-2">
+        <nav className="space-y-4 px-2">
           {menuSections.map((section) => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="px-3 mb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                <p className="px-3 mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
                   {section.title}
                 </p>
               )}
@@ -86,7 +86,7 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
                     key={item.id}
                     onClick={() => onSectionChange(item.id)}
                     className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors",
                       activeSection === item.id
                         ? "bg-primary text-primary-foreground font-medium"
                         : "text-muted-foreground hover:bg-muted"
@@ -102,34 +102,32 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
         </nav>
       </ScrollArea>
 
-      {/* Bloque de cuenta — su propio recuadro gris, separado de la lista de
-          navegación de arriba (mismo patrón que el sidebar real de Likida:
-          logo arriba suelto, todo lo de cuenta abajo metido en un recuadro
-          más gris aparte). */}
-      <div className="p-3 space-y-2 shrink-0">
+      {/* Bloque de cuenta — plano, sin recuadro, igual que Likida: todo el
+          mismo tamaño de letra que la navegación de arriba. */}
+      <div className="p-2 space-y-0.5 shrink-0">
         {!collapsed && (
-          <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
-              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
+          <>
+            <button className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-full text-sm font-medium border border-border bg-card hover:bg-muted transition-colors">
+              <HelpCircle className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
               <span className="truncate">Centro de ayuda</span>
             </button>
             <button
               onClick={() => onSectionChange('notificaciones')}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-background transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm text-muted-foreground hover:bg-muted transition-colors"
             >
-              <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+              <Bell className="w-5 h-5 shrink-0" strokeWidth={1.75} />
               <span className="truncate">Notificaciones</span>
             </button>
-            <div className="pt-1 flex justify-center">
+            <div className="pt-2 pb-1 flex justify-center">
               <ThemeSelector />
             </div>
-          </div>
+          </>
         )}
 
-        {/* Usuario — recuadro aparte, blanco */}
-        <div className={cn("rounded-xl border border-border bg-card", collapsed ? "p-2" : "p-2.5")}>
+        {/* Usuario — plano, separado solo por un borde superior fino */}
+        <div className={cn("border-t border-border pt-2", collapsed ? "px-0" : "px-1")}>
           {!collapsed ? (
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 px-2 py-1">
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || 'A'}
               </div>

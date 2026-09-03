@@ -166,12 +166,13 @@ const SuperAdminDashboard = () => {
           ))}
         </nav>
 
-        <div className="p-3 space-y-2 shrink-0">
-          {/* Recuadro de cuenta — bg-muted, visualmente separado de la nav */}
+        <div className="p-2 space-y-0.5 shrink-0">
+          {/* Cuenta — plana, sin recuadro, igual que el sidebar real de
+              Likida: mismo tamaño de letra que la nav de arriba. */}
           {!collapsed && (
-            <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
-              <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
-                <LifeBuoy className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
+            <>
+              <button className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-full text-sm font-medium border border-border bg-card hover:bg-muted transition-colors">
+                <LifeBuoy className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
                 <span className="truncate">Centro de ayuda</span>
               </button>
               {[
@@ -180,31 +181,31 @@ const SuperAdminDashboard = () => {
                 { label: "Plan y facturación", icon: CreditCard },
                 { label: "Configuración", icon: Settings },
               ].map((it) => (
-                <button key={it.label} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-background transition-colors">
-                  <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <button key={it.label} className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm text-muted-foreground hover:bg-muted transition-colors">
+                  <it.icon className="w-5 h-5 shrink-0" strokeWidth={1.75} />
                   <span className="truncate">{it.label}</span>
                 </button>
               ))}
-              <div className="pt-1 flex justify-center">
+              <div className="pt-2 pb-1 flex justify-center">
                 <ThemeSelector />
               </div>
-            </div>
+            </>
           )}
 
-          {/* Chip de usuario — recuadro aparte, blanco */}
-          <div className={`rounded-xl border border-border bg-card ${collapsed ? "p-2" : "p-2.5"}`}>
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-medium shrink-0">
+          {/* Usuario — plano, separado solo por un borde superior fino */}
+          <div className={`border-t border-border pt-2 ${collapsed ? "px-0" : "px-1"}`}>
+            <div className="flex items-center gap-2.5 px-2 py-1">
+              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium shrink-0">
                 {(userName || userEmail).charAt(0).toUpperCase()}
               </div>
               {!collapsed && (
                 <>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-foreground truncate">{userName}</p>
-                    <p className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Superadmin</p>
+                    <p className="text-sm text-foreground truncate">{userName}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Superadmin</p>
                   </div>
                   <button onClick={handleLogout} className="text-destructive hover:opacity-70 shrink-0">
-                    <LogOut className="w-3.5 h-3.5" />
+                    <LogOut className="w-4 h-4" />
                   </button>
                 </>
               )}
@@ -217,7 +218,7 @@ const SuperAdminDashboard = () => {
           blanco arriba, cuerpo gris abajo con las tarjetas encima, todo dentro
           del mismo recuadro redondeado. */}
       <div className="flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
-        <div className="h-14 flex items-center justify-between px-6 shrink-0 border-b border-border bg-card sticky top-0 z-10">
+        <div className="h-12 flex items-center justify-between px-4 shrink-0 border-b border-border bg-card sticky top-0 z-10">
           <div className="flex items-center gap-2 text-sm text-foreground">
             <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
             <span className="font-medium">
@@ -231,7 +232,7 @@ const SuperAdminDashboard = () => {
             <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
               <Bell className="w-4 h-4" strokeWidth={1.75} />
             </button>
-            <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5">
+            <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
               {new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
             </span>
           </div>
