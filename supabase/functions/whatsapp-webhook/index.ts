@@ -4,19 +4,18 @@
 // history is persisted in `whatsapp_conversations` between turns).
 //
 // El LLM corre por OpenRouter (API compatible con OpenAI), no directo contra
-// Anthropic — mismo patrón que ya usan en producción real tanto atiende.ai
-// (src/lib/sales/llm-router.ts: DeepSeek V3.2 por default, vía OpenRouter)
-// como Likida (src/lib/llm/models.ts: modelo barato para el chat de alto
-// volumen, el caro solo para lo que de verdad lo amerita). DeepSeek V3.2 le
-// gana a Claude Haiku en costo por ~4-6x sin perder nada en los benchmarks
-// de tool-calling que importan aquí (buscar_producto / crear_pedido).
+// Anthropic, en una cascada de dos escalones (ver detalle junto a
+// MODEL_DEFAULT/MODEL_ESCALADO abajo) — mismo patrón que usan de verdad
+// tanto atiende.ai (src/lib/sales/llm-router.ts) como Likida
+// (src/lib/llm/models.ts).
 //
 // Setup needed (Supabase project secrets):
-//   OPENROUTER_API_KEY       - de openrouter.ai (una sola key para cualquier modelo/proveedor)
-//   TWILIO_ACCOUNT_SID       - from the Twilio console
-//   TWILIO_AUTH_TOKEN        - from the Twilio console
-//   TWILIO_WHATSAPP_FROM     - e.g. "whatsapp:+14155238886" for the sandbox number
-//   OPENROUTER_MODEL (opcional) - default: deepseek/deepseek-v3.2
+//   OPENROUTER_API_KEY                - de openrouter.ai (una sola key para cualquier modelo/proveedor)
+//   TWILIO_ACCOUNT_SID                - from the Twilio console
+//   TWILIO_AUTH_TOKEN                 - from the Twilio console
+//   TWILIO_WHATSAPP_FROM              - e.g. "whatsapp:+14155238886" for the sandbox number
+//   OPENROUTER_MODEL (opcional)          - default: google/gemini-2.5-flash-lite
+//   OPENROUTER_MODEL_ESCALADO (opcional) - default: anthropic/claude-sonnet-4.6
 //
 // Twilio webhook URL to configure (Sandbox settings -> "When a message comes in"):
 //   https://<project-ref>.supabase.co/functions/v1/whatsapp-webhook
@@ -24,7 +23,30 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createOrderCore, lookupCustomer, OrderValidationError } from "../_shared/create-order-core.ts";
 
-const MODEL = Deno.env.get("OPENROUTER_MODEL") ?? "deepseek/deepseek-v3.2";
+// Cascada de dos escalones, mismo patrón que usan de verdad Likida y
+// atiende.ai: modelo barato para el 95% del tráfico, uno caro solo cuando
+// el barato ya falló una vez en esta conversación.
+//
+// Escalón 1 (default): Gemini 2.5 Flash-Lite — $0.10/$0.40 por millón de
+// tokens, el más barato de los que de verdad sirven. Es el modelo que
+// Likida usa de verdad en su propio chat de alto volumen (citado en su
+// código como "mejor español barato + baja latencia"), con evidencia real
+// de calidad de español (top del índice multilingüe de Artificial
+// Analysis) — a diferencia de DeepSeek, que no tiene ese dato verificado.
+// Se compararon también Gemini 3.1/3.5/3.6/3.7/3.8 Flash y Flash-Lite,
+// GPT-5/5.4 nano/mini, GLM-4.5-air/4.6 y DeepSeek V3.2/V4 Flash (precios
+// de OpenRouter, sept-2026): las variantes "Flash" sin "lite" de Gemini
+// 3.x salen 3-7x más caras sin mejorar tool-calling para este caso de uso,
+// y DeepSeek V4 Flash mostró en benchmarks públicos un patrón real de
+// "finalización forzada" en dos tercios de sus corridas agénticas
+// multi-paso — justo lo que este bot hace todo el rato (buscar_producto
+// varias veces seguidas). No vale la pena apostarle eso a la demo.
+//
+// Escalón 2 (solo tras un fallo de herramienta en esta conversación):
+// Claude Sonnet — el mismo escalón caro que usan Likida y atiende.ai para
+// lo que de verdad no se puede permitir fallar dos veces.
+const MODEL_DEFAULT = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash-lite";
+const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "anthropic/claude-sonnet-4.6";
 const PILOT_BRANCH_SLUG = "fco-montejo";
 
 const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida.
@@ -164,9 +186,11 @@ async function runAgentTurn(
   restaurantId: string,
 ): Promise<{ reply: string; updatedMessages: typeof messages; orderId: string | null }> {
   let orderId: string | null = null;
+  let huboFalloDeHerramienta = false; // dispara el escalón caro en el siguiente turno
   const systemPrompt = `${BASE_SYSTEM_PROMPT}\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
 
   for (let turn = 0; turn < 4; turn++) {
+    const modeloDeEsteTurno = huboFalloDeHerramienta ? MODEL_ESCALADO : MODEL_DEFAULT;
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -176,7 +200,7 @@ async function runAgentTurn(
         "X-Title": "atiende.ai — Los Taquitos de PM",
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: modeloDeEsteTurno,
         max_tokens: 1024,
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools: TOOLS,
@@ -237,6 +261,13 @@ async function runAgentTurn(
         } catch (err) {
           result = { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" };
         }
+      }
+      // crear_pedido fallando es justo el caso que el escalón caro existe
+      // para rescatar — un producto no encontrado, una cantidad mal
+      // formada, etc. buscar_producto sin resultados NO cuenta como fallo:
+      // es una respuesta normal ("no tenemos eso"), no un error del modelo.
+      if (call.function.name === "crear_pedido" && result && typeof result === "object" && "error" in result) {
+        huboFalloDeHerramienta = true;
       }
       messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
     }
