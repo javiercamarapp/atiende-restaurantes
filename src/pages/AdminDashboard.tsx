@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -116,8 +116,11 @@ const AdminDashboard = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<'today' | '7' | '30' | '90'>('today');
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
+  const [restaurantName, setRestaurantName] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const {
     toast
   } = useToast();
@@ -212,7 +215,27 @@ const AdminDashboard = () => {
         return;
       }
       setUser(session.user);
-      await fetchData();
+
+      // Un superadmin llega aquí con "?restaurante=<id>" desde "Ver cuenta"
+      // en su panel — ve esa cuenta puntual. Sin ese parámetro, se resuelve
+      // el restaurante propio desde restaurant_staff (dueño/staff normal).
+      const paramRestaurantId = searchParams.get("restaurante");
+      let effectiveRestaurantId = paramRestaurantId;
+      if (!effectiveRestaurantId) {
+        const { data: staffRow } = await supabase
+          .from("restaurant_staff")
+          .select("restaurant_id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        effectiveRestaurantId = staffRow?.restaurant_id ?? null;
+      }
+      setRestaurantId(effectiveRestaurantId);
+      if (effectiveRestaurantId) {
+        const { data: r } = await supabase.from("restaurants").select("name").eq("id", effectiveRestaurantId).maybeSingle();
+        setRestaurantName(r?.name ?? null);
+      }
+
+      await fetchData(effectiveRestaurantId);
       setLoading(false);
     };
     checkAuth();
@@ -227,20 +250,26 @@ const AdminDashboard = () => {
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
-  const fetchData = async () => {
+  const fetchData = async (scopedRestaurantId: string | null) => {
+    let productsQuery = supabase.from("products").select("*").order("display_order");
+    let categoriesQuery = supabase.from("categories").select("*").order("display_order");
+    let ordersQuery = supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(50);
+    if (scopedRestaurantId) {
+      productsQuery = productsQuery.eq("restaurant_id", scopedRestaurantId);
+      categoriesQuery = categoriesQuery.eq("restaurant_id", scopedRestaurantId);
+      ordersQuery = ordersQuery.eq("restaurant_id", scopedRestaurantId);
+    }
     const {
       data: productsData
-    } = await supabase.from("products").select("*").order("display_order");
+    } = await productsQuery;
     setProducts(productsData || []);
     const {
       data: categoriesData
-    } = await supabase.from("categories").select("*").order("display_order");
+    } = await categoriesQuery;
     setCategories(categoriesData || []);
     const {
       data: ordersData
-    } = await supabase.from("orders").select("*").order("created_at", {
-      ascending: false
-    }).limit(50);
+    } = await ordersQuery;
     setOrders(ordersData || []);
     const {
       data: profilesData
@@ -576,7 +605,7 @@ const AdminDashboard = () => {
     } else {
       const {
         error
-      } = await supabase.from("products").insert(productData);
+      } = await supabase.from("products").insert(restaurantId ? { ...productData, restaurant_id: restaurantId } : productData);
       if (error) {
         toast({
           title: "Error",
@@ -593,7 +622,7 @@ const AdminDashboard = () => {
     setProductDialogOpen(false);
     setEditingProduct(null);
     resetProductForm();
-    await fetchData();
+    await fetchData(restaurantId);
   };
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
@@ -625,7 +654,7 @@ const AdminDashboard = () => {
       title: "Eliminado",
       description: "Producto eliminado correctamente"
     });
-    await fetchData();
+    await fetchData(restaurantId);
   };
   const handleCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -633,7 +662,8 @@ const AdminDashboard = () => {
       error
     } = await supabase.from("categories").insert({
       name: categoryForm.name,
-      slug: categoryForm.slug.toLowerCase().replace(/\s+/g, "-")
+      slug: categoryForm.slug.toLowerCase().replace(/\s+/g, "-"),
+      ...(restaurantId ? { restaurant_id: restaurantId } : {}),
     });
     if (error) {
       toast({
@@ -652,7 +682,7 @@ const AdminDashboard = () => {
       name: "",
       slug: ""
     });
-    await fetchData();
+    await fetchData(restaurantId);
   };
   const resetProductForm = () => {
     setProductForm({
@@ -710,7 +740,7 @@ const AdminDashboard = () => {
     setPromoDialogOpen(false);
     setEditingPromo(null);
     resetPromoForm();
-    await fetchData();
+    await fetchData(restaurantId);
   };
   const handleEditPromo = (promo: Promo) => {
     setEditingPromo(promo);
@@ -740,7 +770,7 @@ const AdminDashboard = () => {
       title: "Eliminada",
       description: "Promoción eliminada correctamente"
     });
-    await fetchData();
+    await fetchData(restaurantId);
   };
   const resetPromoForm = () => {
     setPromoForm({
@@ -794,8 +824,19 @@ const AdminDashboard = () => {
           </div>
         </header>
 
+        {searchParams.get("restaurante") && (
+          <div className="bg-primary/10 border-b border-primary/20 px-4 md:px-6 py-2 flex items-center justify-between text-sm">
+            <span className="text-primary font-medium">
+              Viendo la cuenta de {restaurantName ?? "este restaurante"} como superadmin
+            </span>
+            <button onClick={() => navigate("/admin/superadmin")} className="text-primary underline underline-offset-2">
+              Volver a superadmin
+            </button>
+          </div>
+        )}
+
         <main className="flex-1 p-4 md:p-6 space-y-6 overflow-auto bg-gray-50/50">
-        
+
         {/* Dashboard Stats - Only show on dashboard section */}
         {activeSection === 'dashboard' && (
           <>

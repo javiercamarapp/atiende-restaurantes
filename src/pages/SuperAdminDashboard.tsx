@@ -210,7 +210,7 @@ const SuperAdminDashboard = () => {
               </div>
 
               <SectionCard title="Restaurantes">
-                <RestaurantsTable restaurants={restaurants} statsByRestaurant={statsByRestaurant} onOpen={() => navigate("/admin")} />
+                <RestaurantsTable restaurants={restaurants} statsByRestaurant={statsByRestaurant} onOpen={(id) => navigate(`/admin?restaurante=${id}`)} />
               </SectionCard>
             </>
           ) : section === "pregunta" ? (
@@ -279,7 +279,7 @@ const SuperAdminDashboard = () => {
             </div>
           ) : section === "restaurantes" ? (
             <SectionCard title={`${restaurants.length} restaurante${restaurants.length === 1 ? "" : "s"}`}>
-              <RestaurantsTable restaurants={restaurants} statsByRestaurant={statsByRestaurant} onOpen={() => navigate("/admin")} />
+              <RestaurantsTable restaurants={restaurants} statsByRestaurant={statsByRestaurant} onOpen={(id) => navigate(`/admin?restaurante=${id}`)} />
             </SectionCard>
           ) : (
             <SectionCard title={`${customers.length} clientes registrados`}>
