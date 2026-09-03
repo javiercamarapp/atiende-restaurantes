@@ -242,6 +242,29 @@ function TileDashboardVoz({
 // reales de latencia de ElevenLabs, pero con una línea plana punteada en
 // vez de datos: comunica "esto es lo que va a vivir aquí" sin inventar
 // una sola cifra.
+// Detecta la zona horaria REAL del navegador (Intl, sin pedir permiso de
+// geolocalización) y la muestra al apretar el botón — no hay nada que
+// guardar todavía (el agente sigue fijo a America/Merida), así que sólo
+// informa, no finge configurar algo que no cambia nada real.
+function BotonZonaHoraria({ compacto = false }: { compacto?: boolean }) {
+  const [zona, setZona] = useState<string | null>(null);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setZona((z) => (z ? null : Intl.DateTimeFormat().resolvedOptions().timeZone))}
+        className={`flex items-center gap-1.5 rounded-full border border-border text-foreground hover:bg-muted transition-colors ${compacto ? 'h-6 px-2 text-[10.5px]' : 'h-7 px-2.5 text-[11.5px]'}`}
+      >
+        <Globe className={compacto ? 'w-3 h-3 text-muted-foreground' : 'w-3.5 h-3.5 text-muted-foreground'} /> Establecer zona horaria
+      </button>
+      {zona && (
+        <div className="absolute right-0 bottom-9 z-10 rounded-lg border border-border bg-card shadow-lg px-2.5 py-1.5 text-[10.5px] text-muted-foreground whitespace-nowrap">
+          Tu navegador detecta: <span className="text-foreground font-medium">{zona}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GraficaFantasma({ titulo }: { titulo: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3 flex flex-col">
@@ -386,7 +409,6 @@ function DashboardAgente({
   nombreAgente,
   statsAgentes,
   mensajesPromedioWhatsapp,
-  etiquetaRango,
   sucursalesAgente = [],
   sucursalSeleccionada = 'global',
   onCambiarSucursal,
@@ -404,7 +426,6 @@ function DashboardAgente({
     whatsapp: { total: number; completados: number; cancelados: number; ingreso: number };
   } | null;
   mensajesPromedioWhatsapp?: number | null;
-  etiquetaRango: string;
   sucursalesAgente?: { id: string; name: string; elevenlabs_agent_id: string | null }[];
   sucursalSeleccionada?: string;
   onCambiarSucursal?: (id: string) => void;
@@ -666,29 +687,39 @@ function DashboardAgente({
             </div>
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[13px] font-medium text-foreground">Mensaje del sistema</p>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-                  <DialogHeader>
-                    <DialogTitle className="text-[15px]">Mensaje del sistema</DialogTitle>
-                  </DialogHeader>
-                  <div className="overflow-auto rounded-xl border border-primary/40 p-4">
-                    <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed">{MENSAJE_SISTEMA_REAL}</p>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <div className="relative rounded-xl border border-primary/40 p-3">
-              <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed max-h-52 overflow-hidden">
-                {MENSAJE_SISTEMA_REAL}
-              </p>
-              <div className="absolute inset-x-0 bottom-0 h-10 rounded-b-xl bg-gradient-to-t from-background to-transparent pointer-events-none" />
+            <p className="text-[13px] font-medium text-foreground mb-1.5">Mensaje del sistema</p>
+            <div className="relative rounded-xl border border-primary/40 overflow-hidden">
+              <div className="relative p-3 pr-9">
+                <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed max-h-52 overflow-hidden">
+                  {MENSAJE_SISTEMA_REAL}
+                </p>
+                <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <button className="absolute top-2.5 right-2.5 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-5 gap-3">
+                    <DialogHeader className="space-y-0">
+                      <DialogTitle className="text-[14px] font-medium tracking-normal">Mensaje del sistema</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-primary/40 overflow-hidden">
+                      <div className="flex-1 overflow-auto p-4">
+                        <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed">{MENSAJE_SISTEMA_REAL}</p>
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/40">
+                        <span className="text-[12px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
+                        <BotonZonaHoraria />
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/40">
+                <span className="text-[11px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
+                <BotonZonaHoraria compacto />
+              </div>
             </div>
           </div>
           <p className="text-[10.5px] text-muted-foreground">
@@ -3383,7 +3414,6 @@ const AdminDashboard = () => {
             onCerrar={() => setActiveSection('agente-voz')}
             nombreAgente={sucursalSeleccionada === 'global' ? 'Todas las sucursales' : (sucursalConAgente?.name ?? 'tu sucursal')}
             statsAgentes={statsAgentes}
-            etiquetaRango={etiquetaRangoAgente}
             sucursalesAgente={sucursalesAgente}
             sucursalSeleccionada={sucursalSeleccionada}
             onCambiarSucursal={setSucursalSeleccionada}
@@ -3400,7 +3430,6 @@ const AdminDashboard = () => {
             nombreAgente={restaurantName ?? 'tu restaurante'}
             statsAgentes={statsAgentes}
             mensajesPromedioWhatsapp={conversacionesWhatsapp?.promedioMensajes ?? null}
-            etiquetaRango={etiquetaRangoAgente}
             presets={PRESETS_RANGO_AGENTE}
             presetActivo={presetRangoAgente}
             onCambiarPreset={(id) => { setPresetRangoAgente(id); setRangoAgenteAplicado(undefined); }}
