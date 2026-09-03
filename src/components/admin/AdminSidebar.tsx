@@ -17,6 +17,15 @@ import {
   UserRound,
   CreditCard,
   Settings,
+  History,
+  Clock,
+  LineChart,
+  Calendar,
+  Megaphone,
+  Store,
+  Lock,
+  IdCard,
+  GraduationCap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeSelector } from '@/components/ThemeSelector';
@@ -30,24 +39,58 @@ interface AdminSidebarProps {
   onLogout: () => void;
 }
 
+// Estructura calcada de la anatomía real del panel de restaurantes de Rappi
+// (INICIO/MARKETING/ADMINISTRAR/SOPORTE) — items sin página real detrás van
+// `disabled` con etiqueta "Pronto", no fingen funcionar. "RappiAds" se
+// adapta como "Anuncios" (no tiene sentido usar la marca de un competidor
+// dentro de nuestro propio producto).
 const menuSections = [
+  {
+    title: 'INICIO',
+    items: [
+      { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
+      { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
+      { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History, disabled: true },
+      { id: 'pagos', label: 'Pagos', icon: CreditCard, disabled: true },
+      { id: 'estados-solicitudes', label: 'Estados de solicitudes', icon: Clock, disabled: true },
+    ],
+  },
   {
     title: 'ANÁLISIS',
     items: [
       { id: 'dashboard', label: 'Estadísticas', icon: BarChart3 },
       { id: 'pregunta', label: 'Pregunta a tus datos', icon: MessageCircle },
-    ]
+    ],
+  },
+  {
+    title: 'MARKETING',
+    items: [
+      { id: 'promos', label: 'Promociones', icon: Percent },
+      { id: 'campanas', label: 'Campañas', icon: LineChart, disabled: true },
+      { id: 'eventos', label: 'Eventos', icon: Calendar, disabled: true },
+      { id: 'anuncios', label: 'Anuncios', icon: Megaphone, disabled: true },
+    ],
   },
   {
     title: 'ADMINISTRAR',
     items: [
-      { id: 'products', label: 'Productos', icon: Package },
+      {
+        id: 'products', label: 'Productos', icon: Package,
+        children: ['Catálogo de marca', 'Inventario por tienda'],
+      },
       { id: 'categories', label: 'Categorías', icon: Tag },
-      { id: 'promos', label: 'Promociones', icon: Percent },
-      { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
       { id: 'users', label: 'Usuarios', icon: Users },
       { id: 'repartidores', label: 'Repartidores', icon: Truck },
-    ]
+      { id: 'puntos-venta', label: 'Puntos de venta', icon: Store, disabled: true },
+      { id: 'cuentas-accesos', label: 'Cuentas & Accesos', icon: Lock, disabled: true },
+      { id: 'info-cuenta', label: 'Información de cuenta', icon: IdCard, disabled: true },
+    ],
+  },
+  {
+    title: 'SOPORTE',
+    items: [
+      { id: 'capacitacion', label: 'Capacitación', icon: GraduationCap, disabled: true },
+    ],
   },
 ];
 
@@ -83,19 +126,47 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
             )}
             <div className="space-y-0.5">
               {section.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => onSectionChange(item.id)}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors",
-                    activeSection === item.id
-                      ? "bg-primary text-primary-foreground font-medium"
-                      : "text-muted-foreground hover:bg-muted"
+                <div key={item.id}>
+                  <button
+                    onClick={() => !item.disabled && onSectionChange(item.id)}
+                    disabled={item.disabled}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors",
+                      item.disabled
+                        ? "text-muted-foreground/50 cursor-not-allowed"
+                        : activeSection === item.id
+                          ? "bg-primary text-primary-foreground font-medium"
+                          : "text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                    {!collapsed && (
+                      <span className="flex-1 flex items-center justify-between min-w-0 gap-2">
+                        <span className="truncate">{item.label}</span>
+                        {item.disabled && (
+                          <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">
+                            Pronto
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </button>
+                  {!collapsed && 'children' in item && item.children && (
+                    <div className="ml-[1.15rem] pl-3 border-l border-border/60 space-y-0.5 mt-0.5">
+                      {item.children.map((hijo) => (
+                        <div
+                          key={hijo}
+                          className="flex items-center justify-between gap-2 px-2 py-1 text-[13px] text-muted-foreground/50 cursor-not-allowed"
+                        >
+                          <span className="truncate">{hijo}</span>
+                          <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">
+                            Pronto
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                >
-                  <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -111,13 +182,6 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
             <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[13px] border border-border bg-card hover:bg-muted transition-colors">
               <HelpCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
               <span className="truncate">Centro de ayuda</span>
-            </button>
-            <button
-              onClick={() => onSectionChange('notificaciones')}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] text-muted-foreground hover:bg-background transition-colors"
-            >
-              <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-              <span className="truncate">Notificaciones</span>
             </button>
             {[
               { label: 'Mi perfil', icon: UserRound },
