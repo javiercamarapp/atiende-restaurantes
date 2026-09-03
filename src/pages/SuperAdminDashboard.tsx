@@ -230,7 +230,10 @@ const SuperAdminDashboard = () => {
       <div className="flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
         <div className="h-12 flex items-center justify-between px-4 shrink-0 border-b border-border bg-card sticky top-0 z-10">
           <div className="flex items-center gap-2 text-sm text-foreground">
-            <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+            {section === "resumen" && <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            {section === "pregunta" && <MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            {section === "restaurantes" && <Store className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            {section === "clientes" && <Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
             <span className="font-medium">
               {section === "resumen" && "Consola de Atiende Restaurantes"}
               {section === "pregunta" && "Pregunta a tus datos"}

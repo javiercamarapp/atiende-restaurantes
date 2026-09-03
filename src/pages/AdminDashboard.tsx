@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1008,16 +1008,16 @@ const AdminDashboard = () => {
           )}
           {activeSection !== 'pregunta' && (
             <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card">
-              <h1 className="text-sm font-semibold text-foreground">
-                {activeSection === 'dashboard' && 'Estadísticas'}
-                {activeSection === 'products' && 'Productos'}
-                {activeSection === 'categories' && 'Categorías'}
-                {activeSection === 'promos' && 'Promociones'}
-                {activeSection === 'orders' && 'Pedidos'}
-                {activeSection === 'users' && 'Usuarios'}
-                {activeSection === 'repartidores' && 'Repartidores'}
-                {activeSection === 'notificaciones' && 'Notificaciones'}
-                {activeSection === 'help' && 'Centro de Ayuda'}
+              <h1 className="flex items-center gap-2 text-sm font-medium text-foreground">
+                {activeSection === 'dashboard' && (<><LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Estadísticas</>)}
+                {activeSection === 'products' && (<><Package className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Productos</>)}
+                {activeSection === 'categories' && (<><Tag className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Categorías</>)}
+                {activeSection === 'promos' && (<><Percent className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Promociones</>)}
+                {activeSection === 'orders' && (<><ShoppingCart className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Pedidos</>)}
+                {activeSection === 'users' && (<><Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Usuarios</>)}
+                {activeSection === 'repartidores' && (<><Truck className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
+                {activeSection === 'notificaciones' && (<><Bell className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Notificaciones</>)}
+                {activeSection === 'help' && (<><HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Centro de Ayuda</>)}
               </h1>
               {activeSection === 'dashboard' && (
                 <div className="flex items-center gap-2">
