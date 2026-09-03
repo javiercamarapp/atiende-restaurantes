@@ -20,7 +20,7 @@
 //   OPENROUTER_MODEL_ESCALADO (opcional) - default: openai/gpt-5.4-mini
 
 // deno-lint-ignore-file no-explicit-any
-import { createOrderCore, OrderValidationError, vipNote } from "./create-order-core.ts";
+import { createOrderCore, OrderValidationError, tokenizeForProductSearch, vipNote } from "./create-order-core.ts";
 
 // OPENROUTER_API_KEY vive en Supabase Vault (mismo mecanismo real que
 // ELEVENLABS_API_KEY y las credenciales de WhatsApp Cloud API) — no como
@@ -315,19 +315,9 @@ export async function runAgentTurn(
             if (!branch) {
               result = { error: "branch_slug desconocido — confirma la sucursal antes de buscar productos" };
             } else {
-              // Mismo fix que buscar-producto/index.ts (agente de voz): un
-              // solo ILIKE de la query completa fallaba en silencio para
-              // queries de varias palabras que no coinciden contiguas con el
-              // nombre real ("pastor individual" vs "Taco Al Pastor
-              // (individual)"). Se tokeniza y se exige cada palabra
-              // significativa como substring.
-              const STOPWORDS = new Set(["de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al"]);
-              const queryStr = String(input.query ?? "");
-              const tokens = queryStr
-                .toLowerCase()
-                .split(/\s+/)
-                .filter((t) => t.length > 1 && !STOPWORDS.has(t));
-              const tokensAUsar = tokens.length > 0 ? tokens : [queryStr];
+              // Tokenizado compartido con el agente de voz (buscar-producto/index.ts)
+              // — ver create-order-core.ts para el historial completo.
+              const tokensAUsar = tokenizeForProductSearch(String(input.query ?? ""));
 
               let builder = supabase
                 .from("branch_products")

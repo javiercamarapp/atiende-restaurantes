@@ -10,6 +10,7 @@
 // `products`, que hoy solo sirve de catálogo maestro de nombres/categorías.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { tokenizeForProductSearch } from "../_shared/create-order-core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,21 +60,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Antes esto era un solo ILIKE de la query completa como substring
-    // literal — un cliente real dice "pastor individual" o "taco de bistec"
-    // (el orden/las palabras de en medio no coinciden con el nombre real
-    // "Taco Al Pastor (individual)" o "Tacos de Bistec de Res (orden de
-    // 3)") y el match fallaba en silencio, devolviendo 0 resultados para un
-    // producto que sí existe. Se tokeniza la query y se exige cada palabra
-    // significativa como substring (AND, no necesariamente contigua) —
-    // encontrado y corregido el 3-sep-2026 verificando en vivo con curl
-    // directo antes de asumir que el catálogo estaba completo.
-    const STOPWORDS = new Set(["de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al"]);
-    const tokens = query
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((t) => t.length > 1 && !STOPWORDS.has(t));
-    const tokensAUsar = tokens.length > 0 ? tokens : [query];
+    // Tokenizado compartido con WhatsApp (whatsapp-agent-core.ts) — ver
+    // create-order-core.ts para el historial completo de por qué existe.
+    const tokensAUsar = tokenizeForProductSearch(query);
 
     let builder = supabase
       .from("branch_products")

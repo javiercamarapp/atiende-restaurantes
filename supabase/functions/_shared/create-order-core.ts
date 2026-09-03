@@ -77,6 +77,43 @@ export function redactSensitiveInfo(text: string): string {
     .replace(/\b\d{1,2}\/\d{2,4}\b/g, "[vencimiento oculto]");
 }
 
+const STOPWORDS_BUSQUEDA = new Set(["de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al"]);
+
+// Tokenizador compartido de buscar_producto (voz vía buscar-producto/index.ts
+// y WhatsApp vía whatsapp-agent-core.ts) — antes cada canal tenía su propia
+// copia duplicada de esta lógica (riesgo real de que un fix se aplicara a
+// un canal y no al otro, señalado en la auditoría del 3-sep-2026).
+//
+// Dos gaps reales encontrados DESPUÉS de la tokenización básica, verificando
+// en vivo con curl: (1) "tacos al pastor" (plural, como diría un cliente
+// real) no encontraba "Taco Al Pastor (individual)" — el catálogo mezcla
+// nombres en singular y en plural, y el ILIKE exacto de "tacos" no es
+// substring de "Taco"; (2) "500g"/"1kg" (pegado, sin espacio, como lo
+// escribiría el modelo o un cliente) no encontraba "Arrachera — 500 g" —
+// el nombre real SIEMPRE lleva espacio antes de la unidad.
+export function tokenizeForProductSearch(query: string): string[] {
+  const raw = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
+
+  const tokens: string[] = [];
+  for (const t of raw) {
+    const pesoMatch = t.match(/^(\d+)(kg|gr|g)$/);
+    if (pesoMatch) {
+      // separa el número de la unidad — así hace match sin importar si el
+      // nombre real trae espacio entre ellos o no.
+      tokens.push(pesoMatch[1], pesoMatch[2] === "gr" ? "g" : pesoMatch[2]);
+      continue;
+    }
+    // singulariza un plural regular simple (tacos -> taco) — de sobra para
+    // encontrar más, nunca para encontrar menos: un token más corto es un
+    // substring MÁS permisivo, nunca más estricto.
+    tokens.push(t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t);
+  }
+  return tokens.length > 0 ? tokens : [query.toLowerCase()];
+}
+
 export async function createOrderCore(supabase: any, payload: CreateOrderPayload) {
   if ((!payload.branch_slug && !payload.branch_name) || !payload.customer_name || !payload.customer_phone) {
     throw new OrderValidationError("branch_slug (o branch_name), customer_name y customer_phone son requeridos");
