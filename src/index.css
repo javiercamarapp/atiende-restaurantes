@@ -277,3 +277,15 @@
     }
   }
 }
+
+/* Pantalla de carga del producto: el logo respira, no parpadea — tomado del
+   mismo patrón que usa Likida (proyect-x-, `likida-respira`) en vez de un
+   `animate-pulse` genérico que salta entre dos opacidades. */
+@keyframes atiende-respira {
+  0%, 100% { opacity: 0.35; transform: scale(0.985); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+.atiende-respira { animation: atiende-respira 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .atiende-respira { animation: none; opacity: 0.6; }
+}

@@ -18,7 +18,7 @@ import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import NotificacionesSection from "@/components/admin/NotificacionesSection";
-import { StatCard, TrendStatCard } from "@/components/admin/ui/StatCard";
+import { StatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark } from "@/components/AtiendeLogo";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
@@ -799,8 +799,8 @@ const AdminDashboard = () => {
     });
   };
   if (loading) {
-    return <div className="min-h-screen bg-primary flex items-center justify-center">
-        <div className="text-primary-foreground">Cargando...</div>
+    return <div className="min-h-screen bg-background flex items-center justify-center" role="status" aria-label="Cargando">
+        <AtiendeMark className="h-9 w-auto atiende-respira" />
       </div>;
   }
   return <div className="min-h-screen bg-muted/30 flex md:gap-3 md:p-3">
@@ -819,9 +819,11 @@ const AdminDashboard = () => {
           </div>
         </header>
 
-        {/* Desktop Header — su propio panel flotante, no fundido con el sidebar ni el contenido */}
-        <header className="hidden md:flex items-center justify-between rounded-2xl border border-border bg-card h-16 px-6 shrink-0 sticky top-3 z-10">
-          <h1 className="text-lg font-semibold text-foreground">
+        {/* Desktop Header — una sola barra fina, como barra-acciones.tsx de
+            Likida: sin barra de búsqueda, botones h-8 dentro de la misma
+            barra en vez de un banner aparte para el modo superadmin. */}
+        <header className="hidden md:flex items-center justify-between rounded-2xl border border-border bg-card h-12 px-4 shrink-0 sticky top-3 z-10">
+          <h1 className="text-sm font-semibold text-foreground">
             {activeSection === 'dashboard' && 'Estadísticas'}
             {activeSection === 'products' && 'Productos'}
             {activeSection === 'categories' && 'Categorías'}
@@ -832,23 +834,27 @@ const AdminDashboard = () => {
             {activeSection === 'notificaciones' && 'Notificaciones'}
             {activeSection === 'help' && 'Centro de Ayuda'}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {format(new Date(), "EEEE d 'de' MMMM, yyyy", {
-            locale: es
-          })}
-          </p>
-        </header>
-
-        {searchParams.get("restaurante") && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/10 px-4 md:px-6 py-2 flex items-center justify-between text-sm shrink-0">
-            <span className="text-primary font-medium">
-              Viendo la cuenta de {restaurantName ?? "este restaurante"} como superadmin
+          <div className="flex items-center gap-2">
+            {searchParams.get("restaurante") && (
+              <span className="text-primary text-[13px] font-medium mr-1">
+                Viendo la cuenta de {restaurantName ?? "este restaurante"} como superadmin
+              </span>
+            )}
+            {searchParams.get("restaurante") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/admin/superadmin")}
+                className="h-8 text-[13px] shrink-0"
+              >
+                Volver a superadmin
+              </Button>
+            )}
+            <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
+              {format(new Date(), "d MMM yyyy", { locale: es })}
             </span>
-            <Button variant="link" onClick={() => navigate("/admin/superadmin")} className="h-auto p-0 text-primary">
-              Volver a superadmin
-            </Button>
           </div>
-        )}
+        </header>
 
         <main className="flex-1 p-4 space-y-6 overflow-auto">
 
@@ -883,36 +889,37 @@ const AdminDashboard = () => {
               </p>
             </div>
 
-            {/* Tus ventas Section — anatomía exacta de Likida: chip claro,
-                "Ver más", píldora de variación (verde/roja) contra el
-                periodo anterior. */}
+            {/* Tus ventas Section — anatomía exacta del StatCard de Likida:
+                chip de ícono sólido, cifra grande, pie con hairline punteado
+                (sin píldora de color ni "Ver más" — la tarjeta completa es
+                el link, como en el dashboard real de Likida). */}
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-foreground">Tus ventas</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <TrendStatCard
-                  icon={DollarSign}
-                  label="Ventas netas"
-                  value={`$${filteredStats.revenue.toLocaleString()}`}
-                  deltaPct={filteredStats.revenueChange}
-                  deltaLabel={getPeriodLabel()}
-                  onVerMas={() => openStatsDialog('revenue')}
-                />
-                <TrendStatCard
-                  icon={ShoppingCart}
-                  label="Número de órdenes"
-                  value={String(filteredStats.orders)}
-                  deltaPct={filteredStats.ordersChange}
-                  deltaLabel={getPeriodLabel()}
-                  onVerMas={() => openStatsDialog('orders')}
-                />
-                <TrendStatCard
-                  icon={DollarSign}
-                  label="Valor promedio"
-                  value={`$${filteredStats.averageOrder.toFixed(2)}`}
-                  deltaPct={filteredStats.avgOrderChange}
-                  deltaLabel={getPeriodLabel()}
-                  onVerMas={() => openStatsDialog('customers')}
-                />
+                <button onClick={() => openStatsDialog('revenue')} className="w-full text-left">
+                  <StatCard
+                    icon={DollarSign}
+                    label="Ventas netas"
+                    value={`$${filteredStats.revenue.toLocaleString()}`}
+                    nota={`${filteredStats.revenueChange >= 0 ? '+' : ''}${filteredStats.revenueChange.toFixed(1)}% ${getPeriodLabel()}`}
+                  />
+                </button>
+                <button onClick={() => openStatsDialog('orders')} className="w-full text-left">
+                  <StatCard
+                    icon={ShoppingCart}
+                    label="Número de órdenes"
+                    value={String(filteredStats.orders)}
+                    nota={`${filteredStats.ordersChange >= 0 ? '+' : ''}${filteredStats.ordersChange.toFixed(1)}% ${getPeriodLabel()}`}
+                  />
+                </button>
+                <button onClick={() => openStatsDialog('customers')} className="w-full text-left">
+                  <StatCard
+                    icon={DollarSign}
+                    label="Valor promedio"
+                    value={`$${filteredStats.averageOrder.toFixed(2)}`}
+                    nota={`${filteredStats.avgOrderChange >= 0 ? '+' : ''}${filteredStats.avgOrderChange.toFixed(1)}% ${getPeriodLabel()}`}
+                  />
+                </button>
               </div>
             </div>
 
