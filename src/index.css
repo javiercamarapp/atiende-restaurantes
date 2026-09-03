@@ -310,53 +310,6 @@
   .atiende-glifo-animado .atiende-linea { animation: none; }
 }
 
-/* Fondo de puntos de "Pregunta a tus datos": dos capas de puntos que se
-   mueven y aparecen/desaparecen (opacidad) de forma continua, como el fondo
-   animado de Likida — en azul (--primary) en vez de negro. Sigue de fondo
-   detrás del hilo del chat, no solo en la pantalla de bienvenida. */
-.fondo-puntos-animado {
-  position: relative;
-  z-index: 0; /* forma su propio contexto de apilamiento: sin esto, las
-                 capas de z-index negativo se escapan detrás del panel
-                 blanco (bg-card) y quedan invisibles. */
-  overflow: hidden;
-}
-.fondo-puntos-animado::before,
-.fondo-puntos-animado::after,
-.fondo-puntos-animado .fondo-puntos-capa-3 {
-  content: "";
-  position: absolute;
-  inset: -20px;
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(hsl(var(--primary) / 0.28) 1px, transparent 1px);
-}
-.fondo-puntos-animado::before {
-  background-size: 18px 18px;
-  animation: fondo-puntos-deriva-a 8s ease-in-out infinite;
-}
-.fondo-puntos-animado::after {
-  background-size: 26px 26px;
-  animation: fondo-puntos-deriva-b 13s ease-in-out infinite;
-}
-.fondo-puntos-animado .fondo-puntos-capa-3 {
-  background-size: 34px 34px;
-  animation: fondo-puntos-deriva-c 17s ease-in-out infinite;
-}
-@keyframes fondo-puntos-deriva-a {
-  0%, 100% { background-position: -9px -9px; opacity: 0.45; }
-  50%      { background-position: 9px 6px;   opacity: 1; }
-}
-@keyframes fondo-puntos-deriva-b {
-  0%, 100% { background-position: 0px 0px;   opacity: 0.25; }
-  50%      { background-position: -16px 11px; opacity: 0.65; }
-}
-@keyframes fondo-puntos-deriva-c {
-  0%, 100% { background-position: 6px -10px; opacity: 0.2; }
-  50%      { background-position: -10px 14px; opacity: 0.55; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .fondo-puntos-animado::before,
-  .fondo-puntos-animado::after,
-  .fondo-puntos-animado .fondo-puntos-capa-3 { animation: none; opacity: 0.6; }
-}
+/* El fondo animado de "Pregunta a tus datos" ahora es CampoPixeles.tsx —
+   puerto directo del canvas real de Likida (dashboard/pixeles.tsx), no CSS.
+   Ver ese componente para el porqué. */

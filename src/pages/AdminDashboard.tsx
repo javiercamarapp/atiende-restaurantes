@@ -23,6 +23,7 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import NotificacionesSection from "@/components/admin/NotificacionesSection";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
+import { CampoPixeles } from "@/components/CampoPixeles";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
   id: string;
@@ -1661,7 +1662,8 @@ const AdminDashboard = () => {
         )}
 
         {activeSection === 'pregunta' && (
-          <div className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 fondo-puntos-animado">
+          <div className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 overflow-hidden">
+            <CampoPixeles />
             <div className="flex justify-end mb-6">
               <button
                 onClick={() => setMostrarHistorial((v) => !v)}
@@ -1814,64 +1816,39 @@ const AdminDashboard = () => {
                 </div>
               )}
 
-              {/* Sugerencias — SIEMPRE justo arriba del input, como Likida.
-                  En reposo (sin conversación): píldoras sueltas azul cielo.
-                  Al apretar Consulta con el campo vacío: vista por
-                  categoría — funciona igual a mitad de una conversación
-                  (el hilo se recorre hacia arriba solo, por el layout
-                  justify-end, para hacerle lugar). */}
-              {(mensajesChat.length === 0 || mostrarSugerencias) && (
-                <div className="w-full flex flex-col items-center">
-                  <AnimatePresence mode="wait">
-                    {!mostrarSugerencias ? (
-                      <motion.div
-                        key="plano"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex flex-wrap gap-2 justify-center mb-5 max-w-xl"
-                      >
-                        {preguntasSugeridasPlano.map((p) => (
-                          <button
-                            key={p}
-                            onClick={() => responderPreguntaLocal(p)}
-                            className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="categorias"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        transition={{ duration: 0.25, ease: 'easeOut' }}
-                        className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mb-5"
-                      >
-                        {categoriasPreguntasRestaurante.map((cat) => (
-                          <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
-                            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
-                            <div className="space-y-1">
-                              {cat.preguntas.map((p) => (
-                                <button
-                                  key={p}
-                                  onClick={() => responderPreguntaLocal(p)}
-                                  className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
-                                >
-                                  {p}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
+              {/* Vista por categoría — sólo cuando se aprieta Consulta con
+                  el campo vacío (en reposo o a mitad de un chat). Va ARRIBA
+                  del input; si hay conversación, el hilo se recorre hacia
+                  arriba solo, por el layout justify-end, para hacerle lugar. */}
+              <AnimatePresence>
+                {mostrarSugerencias && (
+                  <motion.div
+                    key="categorias"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                    className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mb-5"
+                  >
+                    {categoriasPreguntasRestaurante.map((cat) => (
+                      <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
+                        <div className="space-y-1">
+                          {cat.preguntas.map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => responderPreguntaLocal(p)}
+                              className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <form
                 onSubmit={(e) => {
@@ -1921,6 +1898,22 @@ const AdminDashboard = () => {
                   </div>
                 </div>
               </form>
+
+              {/* Sugerencias sueltas — sólo en reposo, DEBAJO del input,
+                  como el estado inicial real de Likida. */}
+              {mensajesChat.length === 0 && !mostrarSugerencias && (
+                <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
+                  {preguntasSugeridasPlano.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => responderPreguntaLocal(p)}
+                      className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {mensajesChat.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
