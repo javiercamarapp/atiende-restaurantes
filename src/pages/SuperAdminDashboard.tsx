@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ThemeSelector } from "@/components/ThemeSelector";
-import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
+import { AtiendeWordmark } from "@/components/AtiendeLogo";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
@@ -215,7 +215,7 @@ const SuperAdminDashboard = () => {
           </span>
         </div>
 
-        <div className="max-w-6xl p-6 pt-4">
+        <div className="w-full p-6 pt-4">
           {loading ? (
             <p className="text-sm text-muted-foreground">Cargando…</p>
           ) : section === "resumen" ? (
@@ -237,68 +237,140 @@ const SuperAdminDashboard = () => {
               </SectionCard>
             </>
           ) : section === "pregunta" ? (
-            <div className="flex flex-col items-center pt-10">
-              <AtiendeMark className="h-8 w-auto mb-3" />
-              <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
-                Tu operación, con la cifra que ya calculó el sistema — pregunta por clientes o pedidos en toda la plataforma.
-              </p>
-              <form
-                onSubmit={(e) => { e.preventDefault(); responderPregunta(pregunta); }}
-                className="w-full max-w-xl bg-card border border-border rounded-2xl p-2 flex items-center gap-2"
-              >
-                <input
-                  value={pregunta}
-                  onChange={(e) => setPregunta(e.target.value)}
-                  placeholder="Pregunta sobre tu operación…"
-                  className="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
-                />
-                <Button type="submit" size="icon" className="rounded-full shrink-0">
-                  <Send className="w-4 h-4" />
-                </Button>
-              </form>
-              <div className="flex flex-wrap gap-2 justify-center mt-4 max-w-xl">
-                {preguntasSugeridas.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => { setPregunta(p); responderPregunta(p); }}
-                    className="text-xs border border-border rounded-full px-3 py-1.5 text-muted-foreground hover:bg-muted transition-colors"
-                  >
-                    {p}
-                  </button>
-                ))}
+            <div
+              className="relative min-h-[calc(100vh-6.5rem)] -m-6 pt-4 px-6"
+              style={{
+                backgroundImage: "radial-gradient(hsl(var(--border)) 1px, transparent 1px)",
+                backgroundSize: "18px 18px",
+                backgroundPosition: "-9px -9px",
+              }}
+            >
+              <div className="flex justify-end mb-8">
+                <button
+                  onClick={() => setMostrarHistorial((v) => !v)}
+                  className="relative flex items-center gap-1.5 text-xs border border-border rounded-full pl-3 pr-2.5 py-1.5 bg-card text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  Historial
+                  <span className="font-mono text-[10px] bg-muted rounded-full px-1.5 py-0.5 text-foreground">{historial.length}</span>
+                </button>
               </div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground text-center mt-6 max-w-md">
-                Responde con cifras ya calculadas en el servidor — búsqueda simple por ahora, no un motor de lenguaje natural completo.
-              </p>
 
-              {respuesta && (
-                <div className="w-full max-w-xl mt-8">
-                  <SectionCard title={`${respuesta.length} resultado${respuesta.length === 1 ? "" : "s"}`}>
-                    {respuesta.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Sin resultados.</p>
-                    ) : (
-                      <ul className="space-y-2 text-sm">
-                        {respuesta.slice(0, 10).map((r, i) => (
-                          <li key={i} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
-                            {"phone" in r ? (
-                              <>
-                                <span>{r.name || "Sin nombre"} · {r.phone}</span>
-                                <span className="font-mono tabular-nums text-muted-foreground">{r.order_count} pedidos</span>
-                              </>
-                            ) : (
-                              <>
-                                <span>{new Date(r.created_at).toLocaleString("es-MX")}</span>
-                                <span className="font-mono tabular-nums text-muted-foreground">${Number(r.total).toLocaleString("es-MX")}</span>
-                              </>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </SectionCard>
+              {mostrarHistorial && (
+                <div className="absolute right-6 top-16 z-20 w-72 max-h-80 overflow-y-auto rounded-xl border border-border bg-card shadow-lg p-2">
+                  {historial.length === 0 ? (
+                    <p className="text-xs text-muted-foreground p-3">Todavía no has hecho preguntas.</p>
+                  ) : (
+                    historial.map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setPregunta(h); responderPregunta(h); }}
+                        className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate"
+                      >
+                        {h}
+                      </button>
+                    ))
+                  )}
                 </div>
               )}
+
+              <div className="flex flex-col items-center pt-6 pb-16">
+                <AtiendeWordmark className="mb-6 scale-125" />
+                <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
+                <p className="text-sm text-muted-foreground text-center max-w-md mb-8">
+                  Tu operación, con la cifra que ya calculó el sistema — pregunta por clientes o pedidos en toda la plataforma.
+                </p>
+
+                <form
+                  onSubmit={(e) => { e.preventDefault(); responderPregunta(pregunta); }}
+                  className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3"
+                >
+                  <input
+                    value={pregunta}
+                    onChange={(e) => setPregunta(e.target.value)}
+                    placeholder="Pregunta sobre tu operación…"
+                    className="w-full bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                  {archivoAdjunto && (
+                    <div className="flex items-center gap-1.5 mt-1 mb-2 px-2">
+                      <span className="text-xs bg-muted rounded-full px-2.5 py-1 text-muted-foreground truncate max-w-[200px]">
+                        {archivoAdjunto.name}
+                      </span>
+                      <button type="button" onClick={() => setArchivoAdjunto(null)} className="text-muted-foreground hover:text-foreground">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-1">
+                    <button
+                      type="submit"
+                      className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 transition-opacity"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      Consulta
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <label className="p-2 rounded-full text-muted-foreground hover:bg-muted transition-colors cursor-pointer">
+                        <Paperclip className="w-4 h-4" />
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <Button type="submit" size="icon" className="rounded-full shrink-0 w-8 h-8">
+                        <ArrowUp className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+
+                <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
+                  {preguntasSugeridas.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => { setPregunta(p); responderPregunta(p); }}
+                      className="text-xs border border-border rounded-full px-3 py-1.5 bg-card text-muted-foreground hover:bg-muted transition-colors"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
+                  Responde con cifras ya calculadas en el servidor — búsqueda simple por nombre, teléfono y estatus por ahora, no
+                  un motor de lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos ni lo
+                  analizamos automáticamente.
+                </p>
+
+                {respuesta && (
+                  <div className="w-full max-w-xl mt-8">
+                    <SectionCard title={`${respuesta.length} resultado${respuesta.length === 1 ? "" : "s"}`}>
+                      {respuesta.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sin resultados.</p>
+                      ) : (
+                        <ul className="space-y-2 text-sm">
+                          {respuesta.slice(0, 10).map((r, i) => (
+                            <li key={i} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
+                              {"phone" in r ? (
+                                <>
+                                  <span>{r.name || "Sin nombre"} · {r.phone}</span>
+                                  <span className="font-mono tabular-nums text-muted-foreground">{r.order_count} pedidos</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>{new Date(r.created_at).toLocaleString("es-MX")}</span>
+                                  <span className="font-mono tabular-nums text-muted-foreground">${Number(r.total).toLocaleString("es-MX")}</span>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </SectionCard>
+                  </div>
+                )}
+              </div>
             </div>
           ) : section === "restaurantes" ? (
             <SectionCard title={`${restaurants.length} restaurante${restaurants.length === 1 ? "" : "s"}`}>

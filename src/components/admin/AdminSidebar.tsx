@@ -45,32 +45,20 @@ const menuSections = [
       { id: 'repartidores', label: 'Repartidores', icon: Truck },
     ]
   },
-  {
-    title: 'CUENTA',
-    items: [
-      { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
-    ]
-  },
-  {
-    title: 'SOPORTE',
-    items: [
-      { id: 'help', label: 'Centro de Ayuda', icon: HelpCircle },
-    ]
-  }
 ];
 
 const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <aside 
+    <aside
       className={cn(
-        "hidden md:flex flex-col bg-white border-r border-border h-screen sticky top-0 transition-all duration-300",
+        "hidden md:flex flex-col bg-card border border-border rounded-2xl sticky top-3 h-[calc(100vh-1.5rem)] overflow-hidden transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-border">
+      <div className="h-16 px-4 flex items-center justify-between border-b border-border shrink-0">
         {!collapsed ? <AtiendeWordmark /> : <AtiendeMark className="h-6 w-auto" />}
         <Button
           variant="ghost"
@@ -114,17 +102,34 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
         </nav>
       </ScrollArea>
 
-      {!collapsed && (
-        <div className="px-3 pb-2 flex justify-center">
-          <ThemeSelector />
-        </div>
-      )}
+      {/* Bloque de cuenta — su propio recuadro gris, separado de la lista de
+          navegación de arriba (mismo patrón que el sidebar real de Likida:
+          logo arriba suelto, todo lo de cuenta abajo metido en un recuadro
+          más gris aparte). */}
+      <div className="p-3 space-y-2 shrink-0">
+        {!collapsed && (
+          <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
+              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
+              <span className="truncate">Centro de ayuda</span>
+            </button>
+            <button
+              onClick={() => onSectionChange('notificaciones')}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-background transition-colors"
+            >
+              <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+              <span className="truncate">Notificaciones</span>
+            </button>
+            <div className="pt-1 flex justify-center">
+              <ThemeSelector />
+            </div>
+          </div>
+        )}
 
-      {/* User section at bottom */}
-      <div className="border-t border-border p-4">
-        {!collapsed ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2.5 px-1">
+        {/* Usuario — recuadro aparte, blanco */}
+        <div className={cn("rounded-xl border border-border bg-card", collapsed ? "p-2" : "p-2.5")}>
+          {!collapsed ? (
+            <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || 'A'}
               </div>
@@ -132,17 +137,16 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
                 <p className="text-sm text-foreground truncate">{user?.email}</p>
                 <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Administrador</p>
               </div>
+              <button onClick={onLogout} className="text-destructive hover:opacity-70 shrink-0">
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
-            <Button onClick={onLogout} variant="outline" className="w-full justify-start">
-              <LogOut className="w-4 h-4 mr-2" />
-              Cerrar sesión
+          ) : (
+            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full">
+              <LogOut className="w-5 h-5" />
             </Button>
-          </div>
-        ) : (
-          <Button onClick={onLogout} variant="ghost" size="icon" className="w-full">
-            <LogOut className="w-5 h-5" />
-          </Button>
-        )}
+          )}
+        </div>
       </div>
     </aside>
   );
