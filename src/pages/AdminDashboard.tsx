@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -224,30 +224,64 @@ const AdminDashboard = () => {
     promedioMensajes: number;
   } | null>(null);
 
-  const cargarDatosAgentes = async () => {
+  // Selector de sucursal del encabezado de Agente de voz/WhatsApp — "global"
+  // ve todo el restaurante, o se puede acotar a una sucursal puntual. El
+  // agente de voz real (ElevenLabs) vive por sucursal, no por restaurante:
+  // solo la sucursal que de verdad tiene uno configurado (branches.elevenlabs_agent_id)
+  // puede abrir la Vista previa.
+  const [sucursalesAgente, setSucursalesAgente] = useState<{ id: string; name: string; elevenlabs_agent_id: string | null }[]>([]);
+  const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string>('global');
+  const [mostrarSelectorSucursal, setMostrarSelectorSucursal] = useState(false);
+  const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
+
+  // Sucursal con agente real para la Vista previa: la seleccionada si tiene
+  // uno, o la primera que sí tenga cuando el filtro está en "global".
+  const sucursalConAgente = sucursalSeleccionada === 'global'
+    ? sucursalesAgente.find((s) => s.elevenlabs_agent_id)
+    : sucursalesAgente.find((s) => s.id === sucursalSeleccionada);
+  const agentIdActivo = sucursalConAgente?.elevenlabs_agent_id ?? null;
+
+  // El widget real de ElevenLabs (mismo componente que usan ellos mismos,
+  // no una recreación) — se carga una sola vez cuando se abre la Vista
+  // previa por primera vez.
+  useEffect(() => {
+    if (!mostrarVistaPrevia) return;
+    if (document.getElementById('elevenlabs-convai-script')) return;
+    const script = document.createElement('script');
+    script.id = 'elevenlabs-convai-script';
+    script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
+    script.async = true;
+    document.body.appendChild(script);
+  }, [mostrarVistaPrevia]);
+
+  const cargarDatosAgentes = async (branchId?: string) => {
     if (!restaurantId) return;
     setCargandoAgentes(true);
     const sb: any = supabase;
+    const filtroSucursal = branchId && branchId !== 'global' ? { branch_id: branchId } : null;
+    const conFiltro = (q: any) => (filtroSucursal ? q.eq('branch_id', filtroSucursal.branch_id) : q);
 
     const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
       { count: waTotal }, { count: waCompletados }, { count: waCancelados },
       { data: vozRecientes }, { data: waRecientes }, { data: sucursales },
       { data: todasLasOrdenes }] = await Promise.all([
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId),
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice"),
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"]),
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado"),
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp"),
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"]),
-      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado"),
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8),
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8),
-      sb.from("branches").select("id").eq("restaurant_id", restaurantId),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId)),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice")),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"])),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado")),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"])),
+      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado")),
+      conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8)),
+      conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8)),
+      sb.from("branches").select("id, name, elevenlabs_agent_id").eq("restaurant_id", restaurantId).order("display_order"),
       // Ingreso real por canal — se necesita el total de cada pedido, no solo
       // el conteo, así que aquí sí se trae `total` y `source` de todas las
       // filas (a diferencia de los counts de arriba, que no bajan datos).
-      sb.from("orders").select("total, source").eq("restaurant_id", restaurantId),
+      conFiltro(sb.from("orders").select("total, source").eq("restaurant_id", restaurantId)),
     ]);
+
+    setSucursalesAgente(sucursales ?? []);
 
     const filasIngreso: { total: number; source: string | null }[] = todasLasOrdenes ?? [];
     const ingresoTotal = filasIngreso.reduce((s, o) => s + Number(o.total), 0);
@@ -263,7 +297,9 @@ const AdminDashboard = () => {
     setOrdenesVoz(vozRecientes ?? []);
     setOrdenesWhatsapp(waRecientes ?? []);
 
-    const idsSucursales = (sucursales ?? []).map((s: { id: string }) => s.id);
+    const idsSucursales = filtroSucursal
+      ? [filtroSucursal.branch_id]
+      : (sucursales ?? []).map((s: { id: string }) => s.id);
     if (idsSucursales.length > 0) {
       const { data: conversaciones } = await sb
         .from("whatsapp_conversations")
@@ -285,11 +321,11 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    if ((activeSection === 'agente-voz' || activeSection === 'agente-whatsapp' || activeSection === 'dashboard') && restaurantId && !statsAgentes) {
-      cargarDatosAgentes();
+    if ((activeSection === 'agente-voz' || activeSection === 'agente-whatsapp' || activeSection === 'dashboard') && restaurantId) {
+      cargarDatosAgentes(sucursalSeleccionada);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, restaurantId]);
+  }, [activeSection, restaurantId, sucursalSeleccionada]);
   const [pregunta, setPregunta] = useState("");
   const [nombreAdmin, setNombreAdmin] = useState('');
   const [refrescando, setRefrescando] = useState(false);
@@ -2196,12 +2232,53 @@ const AdminDashboard = () => {
         {activeSection === 'agente-voz' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <p className="text-[13px] text-muted-foreground">
-                Desempeño real de tu agente de voz — se llena solo con la actividad real, sin datos de ejemplo.
-              </p>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="text-[13px] text-muted-foreground truncate">
+                  Desempeño real de tu agente de voz — se llena solo con la actividad real, sin datos de ejemplo.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 relative">
+                {/* Selector de sucursal — Global o una puntual, para ver las
+                    cifras acotadas a esa sucursal. */}
                 <button
-                  onClick={cargarDatosAgentes}
+                  onClick={() => setMostrarSelectorSucursal((v) => !v)}
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                >
+                  {sucursalSeleccionada === 'global' ? <Globe className="w-3 h-3 text-muted-foreground" /> : <Store className="w-3 h-3 text-muted-foreground" />}
+                  {sucursalSeleccionada === 'global' ? 'Global' : (sucursalesAgente.find((s) => s.id === sucursalSeleccionada)?.name ?? 'Sucursal')}
+                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                </button>
+                {mostrarSelectorSucursal && (
+                  <div className="absolute right-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
+                    <button
+                      onClick={() => { setSucursalSeleccionada('global'); setMostrarSelectorSucursal(false); }}
+                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === 'global' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                    >
+                      <Globe className="w-3.5 h-3.5 shrink-0" /> Global (todas)
+                    </button>
+                    <div className="my-1 border-t border-border" />
+                    {sucursalesAgente.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => { setSucursalSeleccionada(s.id); setMostrarSelectorSucursal(false); }}
+                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0"><Store className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{s.name}</span></span>
+                        {!s.elevenlabs_agent_id && <span className="font-mono text-[9px] uppercase text-muted-foreground/60 shrink-0">Sin agente</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => setMostrarVistaPrevia(true)}
+                  disabled={!agentIdActivo}
+                  title={agentIdActivo ? undefined : 'Esta sucursal todavía no tiene un agente de voz configurado'}
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-foreground text-background text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <PlayCircle className="w-3 h-3" /> Vista previa
+                </button>
+                <button
+                  onClick={() => cargarDatosAgentes(sucursalSeleccionada)}
                   disabled={cargandoAgentes}
                   className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
                 >
@@ -2210,6 +2287,27 @@ const AdminDashboard = () => {
                 </button>
               </div>
             </div>
+
+            {/* Vista previa real — el widget embebible oficial de ElevenLabs
+                (el mismo componente que usan ellos, no una recreación): trae
+                su propio globo flotante, animación del orbe, y botón de
+                pantalla completa nativos. */}
+            {mostrarVistaPrevia && agentIdActivo && (
+              <div className="fixed inset-0 z-40 bg-foreground/20 flex items-end justify-end p-4" onClick={() => setMostrarVistaPrevia(false)}>
+                <div onClick={(e) => e.stopPropagation()} className="relative">
+                  <button
+                    onClick={() => setMostrarVistaPrevia(false)}
+                    className="absolute -top-3 -left-3 z-50 w-7 h-7 rounded-full bg-card border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  {(() => {
+                    const ConvaiWidget = 'elevenlabs-convai' as any;
+                    return <ConvaiWidget agent-id={agentIdActivo} />;
+                  })()}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <TileKpiAgente
@@ -2295,7 +2393,7 @@ const AdminDashboard = () => {
                 Desempeño real del bot de WhatsApp — se llena solo con la actividad real, sin datos de ejemplo.
               </p>
               <button
-                onClick={cargarDatosAgentes}
+                onClick={() => cargarDatosAgentes(sucursalSeleccionada)}
                 disabled={cargandoAgentes}
                 className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70 shrink-0"
               >
