@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -161,6 +161,22 @@ function TileKpiAgente({
 // Cuenta regresiva/ascendente animada — mismas cifras reales de siempre,
 // solo que suben de 0 hasta el valor real al entrar a la pestaña en vez de
 // aparecer estáticas.
+// Revela el último mensaje capturado letra por letra, para que la
+// transcripción de la vista previa se sienta "escribiéndose" en vivo en
+// vez de aparecer de golpe. El texto en sí sigue siendo el real capturado
+// del widget — esto sólo cambia el ritmo en que se muestra.
+function TextoEscribiendose({ texto }: { texto: string }) {
+  const [visibles, setVisibles] = useState(0);
+  useEffect(() => {
+    setVisibles(0);
+    const intervalo = setInterval(() => {
+      setVisibles((v) => (v >= texto.length ? v : v + 1));
+    }, 18);
+    return () => clearInterval(intervalo);
+  }, [texto]);
+  return <>{texto.slice(0, visibles)}</>;
+}
+
 function CifraAnimada({ valor, formato = (n: number) => String(Math.round(n)), duracionMs = 900 }: { valor: number; formato?: (n: number) => string; duracionMs?: number }) {
   const [mostrado, setMostrado] = useState(0);
   useEffect(() => {
@@ -222,6 +238,25 @@ function TileDashboardVoz({
 // Caja de "no hay datos todavía" — mismo patrón honesto que usa ElevenLabs
 // en sus propias pestañas (Audio/Herramientas/Base de conocimientos) hasta
 // que hay conversaciones reales que analizar. Nunca inventa una cifra.
+// "Gráfica fantasma" — mismo esqueleto de eje/rejilla que las gráficas
+// reales de latencia de ElevenLabs, pero con una línea plana punteada en
+// vez de datos: comunica "esto es lo que va a vivir aquí" sin inventar
+// una sola cifra.
+function GraficaFantasma({ titulo }: { titulo: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <p className="text-[12px] text-muted-foreground mb-1">{titulo}</p>
+      <p className="font-display text-lg font-semibold text-muted-foreground/50 mb-2">—</p>
+      <svg viewBox="0 0 200 60" className="w-full h-14">
+        <line x1="0" y1="0" x2="0" y2="60" stroke="hsl(var(--border))" strokeWidth="1" />
+        <line x1="0" y1="59" x2="200" y2="59" stroke="hsl(var(--border))" strokeWidth="1" />
+        <line x1="0" y1="30" x2="200" y2="30" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="2 4" />
+        <line x1="0" y1="45" x2="200" y2="45" stroke="hsl(var(--muted-foreground))" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.4" />
+      </svg>
+    </div>
+  );
+}
+
 function VacioDashboardVoz({ icon: Icon, titulo, detalle }: { icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>; titulo: string; detalle: string }) {
   return (
     <div className="flex flex-col items-center justify-center text-center rounded-xl border border-dashed border-border py-10 px-6">
@@ -524,11 +559,18 @@ function DashboardAgente({
       )}
 
       {pestana === 'audio' && (
-        <VacioDashboardVoz
-          icon={Volume2}
-          titulo="No se han recopilado datos de audio"
-          detalle="Calidad de voz, interrupciones y latencia de respuesta aparecerán aquí cuando conectemos la analítica de llamadas de ElevenLabs."
-        />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          <GraficaFantasma titulo="Tiempo de respuesta del agente" />
+          <GraficaFantasma titulo="Latencia en la generación de respuestas" />
+          <GraficaFantasma titulo="Latencia en la toma de turnos" />
+          <div className="md:col-span-3">
+            <VacioDashboardVoz
+              icon={Volume2}
+              titulo="No se han recopilado datos de audio"
+              detalle="Calidad de voz, interrupciones y latencia de respuesta aparecerán aquí cuando conectemos la analítica de llamadas de ElevenLabs."
+            />
+          </div>
+        </div>
       )}
 
       {pestana === 'herramientas' && (
@@ -670,8 +712,34 @@ function VistaPreviaAgentePantallaCompleta({
 }) {
   const [llamadaActiva, setLlamadaActiva] = useState(false);
   const [mensajes, setMensajes] = useState<string[]>([]);
+  const videoOrbeRef = useRef<HTMLVideoElement>(null);
 
-  const iniciarLlamadaReal = () => {
+  // El video de 4s generado con Higgsfield no cierra en loop perfecto (se
+  // nota el corte al reiniciar) — en vez de eso lo reproducimos como
+  // "boomerang" (adelante hasta el final, luego hacia atrás hasta el
+  // inicio, repite) manejando currentTime a mano vía rAF: nunca hay un
+  // salto brusco porque siempre vuelve por donde ya pasó.
+  useEffect(() => {
+    const video = videoOrbeRef.current;
+    if (!video) return;
+    let direccion = 1;
+    let raf: number;
+    const paso = 1 / 30;
+    const tick = () => {
+      if (video.duration && !Number.isNaN(video.duration)) {
+        let t = video.currentTime + direccion * paso;
+        if (t >= video.duration) { direccion = -1; t = video.duration; }
+        else if (t <= 0) { direccion = 1; t = 0; }
+        video.currentTime = t;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    video.pause();
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const alternarLlamadaReal = () => {
     const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
     const boton = widget?.shadowRoot?.querySelector('button') as HTMLElement | undefined;
     boton?.click();
@@ -682,8 +750,22 @@ function VistaPreviaAgentePantallaCompleta({
   // mejor esfuerzo: el widget no documenta eventos de mensaje, así que se
   // lee su propio DOM interno (shadow root) cada vez que cambia, tomando
   // el texto de los nodos hoja nuevos — mismo mecanismo ya usado para
-  // forzar el color de su botón, sobre el contenido REAL que renderiza.
+  // forzar el color de su botón. Filtrado contra ruido de UI real que se
+  // observó capturado (etiquetas de botones/estado, no habla) — lista
+  // hecha con lo que de verdad apareció, no una adivinanza.
   useEffect(() => {
+    const RUIDO_UI = new Set([
+      'escuchando', '¿necesitas ayuda?', 'iniciar llamada', 'iniciar llamada de prueba',
+      'powered by', 'elevenagents', 'habla para interrumpir', 'enviar un mensaje',
+      'silenciar', 'desactivado', 'atrás', 'historial', 'finalizar llamada', 'colgar',
+    ]);
+    const pareceMensajeReal = (texto: string) => {
+      const limpio = texto.trim();
+      if (!limpio || RUIDO_UI.has(limpio.toLowerCase())) return false;
+      const palabras = limpio.split(/\s+/).length;
+      return palabras >= 3 && limpio.length >= 8 && limpio.length < 400;
+    };
+
     const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
     if (!widget) return;
     const onStart = () => { setLlamadaActiva(true); setMensajes([]); };
@@ -703,7 +785,7 @@ function VistaPreviaAgentePantallaCompleta({
         root.querySelectorAll('*').forEach((el) => {
           if (el.children.length > 0 || el.tagName === 'BUTTON' || el.tagName === 'SVG') return;
           const texto = el.textContent?.trim();
-          if (texto && texto.length > 1 && texto.length < 400) vistos.push(texto);
+          if (texto && pareceMensajeReal(texto)) vistos.push(texto);
         });
         setMensajes((prev) => {
           const nuevos = vistos.filter((v, i) => v !== vistos[i - 1]);
@@ -750,18 +832,24 @@ function VistaPreviaAgentePantallaCompleta({
       <div className="flex-1 flex min-h-0">
         <div className="flex-[3] relative flex items-center justify-center overflow-hidden">
           <CampoPixeles />
-          <video
-            src="/media/orbe-agente.mp4"
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="relative w-56 h-56 rounded-full object-cover shadow-[0_0_60px_-10px_rgba(29,78,216,0.5)]"
-          />
+          <button
+            onClick={alternarLlamadaReal}
+            title={llamadaActiva ? 'Terminar llamada' : 'Iniciar llamada'}
+            className="relative w-56 h-56 rounded-full overflow-hidden shadow-[0_0_60px_-10px_rgba(29,78,216,0.5)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <video
+              ref={videoOrbeRef}
+              src="/media/orbe-agente.mp4"
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          </button>
         </div>
 
         <div className="flex-[2] border-l border-border flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 overflow-auto p-5">
+          <div className="flex-1 min-h-0 overflow-auto px-5 py-6">
             {mensajes.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center">
                 <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mb-3">
@@ -771,25 +859,22 @@ function VistaPreviaAgentePantallaCompleta({
                   {llamadaActiva ? 'Llamada iniciada' : 'Aún no hay una llamada activa'}
                 </p>
                 <p className="text-[11.5px] text-muted-foreground max-w-[220px] leading-snug">
-                  {llamadaActiva ? 'Esperando el primer mensaje…' : 'Inicia una llamada real de prueba y la conversación aparecerá aquí en vivo.'}
+                  {llamadaActiva ? 'Esperando el primer mensaje…' : 'Toca el orbe o el botón de abajo para iniciar una llamada real de prueba.'}
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {mensajes.map((texto, i) => (
                   <motion.div
                     key={i}
-                    initial={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={`flex items-start gap-2 ${i % 2 === 1 ? 'flex-row-reverse text-right' : ''}`}
+                    className={`flex items-start gap-2.5 ${i % 2 === 1 ? 'justify-end' : ''}`}
                   >
-                    {i % 2 === 0 && (
-                      <div
-                        className="w-6 h-6 rounded-full shrink-0 mt-0.5"
-                        style={{ background: 'linear-gradient(135deg, #38bdf8, #1d4ed8)' }}
-                      />
-                    )}
-                    <p className="text-[13px] text-foreground leading-snug">{texto}</p>
+                    {i % 2 === 0 && <AtiendeMark className="w-5 h-5 shrink-0 mt-0.5" />}
+                    <p className={`text-[14px] leading-relaxed max-w-[85%] ${i % 2 === 1 ? 'text-right text-foreground' : 'text-foreground'}`}>
+                      {i === mensajes.length - 1 ? <TextoEscribiendose texto={texto} /> : texto}
+                    </p>
                   </motion.div>
                 ))}
               </div>
@@ -797,10 +882,11 @@ function VistaPreviaAgentePantallaCompleta({
           </div>
           <div className="p-4 border-t border-border">
             <button
-              onClick={iniciarLlamadaReal}
+              onClick={alternarLlamadaReal}
               className="w-full flex items-center justify-center gap-2 h-10 rounded-full bg-primary text-primary-foreground text-[13px] font-medium hover:opacity-90 transition-opacity"
             >
-              <PlayCircle className="w-4 h-4" /> Iniciar llamada de prueba
+              {llamadaActiva ? <XCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+              {llamadaActiva ? 'Terminar llamada' : 'Iniciar llamada de prueba'}
             </button>
           </div>
         </div>
