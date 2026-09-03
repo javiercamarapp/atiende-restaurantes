@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, ExternalLink } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, ExternalLink, Clock } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1432,28 +1432,18 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Tu Operación Section */}
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tu operación</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('products')}>
-                  <StatCard icon={Package} label="Total de productos" value={String(stats.products)} verMas />
-                </button>
-                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('users')}>
-                  <StatCard icon={Users} label="Usuarios registrados" value={String(stats.users)} verMas />
-                </button>
-                <StatCard icon={Users} label="Clientes únicos" value={String(filteredStats.customers)} />
-                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('categories')}>
-                  <StatCard icon={Tag} label="Categorías" value={String(categories.length)} verMas />
-                </button>
-              </div>
-            </div>
-
-            {/* Impacto de tus agentes — el resumen de ROI que se ve sin
-                entrar a cada página de agente: cuánto de tu operación ya
-                corre por IA, y si esos pedidos se completan. Reusa el mismo
-                statsAgentes exacto (no el `orders` capado a 50 filas) que
-                usan las páginas de Agente de voz/WhatsApp. */}
+            {/* Impacto de tus agentes — arriba de "Tu operación" a propósito:
+                es el resumen de ROI que un dueño de restaurante quiere ver
+                primero (¿están funcionando los agentes?), antes que conteos
+                de catálogo. KPIs elegidos contra lo que de verdad usan
+                Slang.ai/ConverseNow/Presto (voz para restaurantes) e
+                Intercom/Ada (bots de chat) en sus propios dashboards:
+                adopción de canal (% pedidos/% ingresos vía IA — prueba que
+                se está usando), horas de atención humana ahorradas (el
+                argumento de ROI que un dueño entiende de inmediato, con el
+                supuesto declarado a la vista), y el desglose real por canal.
+                Reusa statsAgentes (conteos exactos, no el `orders` capado a
+                50 filas del dashboard). */}
             <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
               <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Impacto de tus agentes</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1469,12 +1459,20 @@ const AdminDashboard = () => {
                   valor={statsAgentes && statsAgentes.ingresoTotal > 0 ? ((statsAgentes.voz.ingreso + statsAgentes.whatsapp.ingreso) / statsAgentes.ingresoTotal) * 100 : null}
                   meta="50%"
                 />
-                <TileKpiAgente
-                  indice={2}
-                  label="Tasa de conversión de agentes"
-                  valor={statsAgentes && (statsAgentes.voz.total + statsAgentes.whatsapp.total) > 0 ? ((statsAgentes.voz.completados + statsAgentes.whatsapp.completados) / (statsAgentes.voz.total + statsAgentes.whatsapp.total)) * 100 : null}
-                  meta="85%"
-                />
+                <div className="rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
+                      <span className="text-[13px] font-medium text-foreground truncate">Horas de atención ahorradas</span>
+                    </div>
+                  </div>
+                  <p className="font-display text-xl font-semibold tabular-nums text-foreground mb-0.5">
+                    {statsAgentes ? `${(((statsAgentes.voz.completados + statsAgentes.whatsapp.completados) * 5) / 60).toFixed(1)} h` : '—'}
+                  </p>
+                  <p className="text-[10.5px] text-muted-foreground leading-snug">
+                    Estimado: ≈5 min de atención humana por pedido resuelto por un agente. Supuesto ajustable, no es una medición real.
+                  </p>
+                </div>
                 <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('agente-voz')}>
                   <StatCard icon={Mic} label="Pedidos por voz" value={String(statsAgentes?.voz.total ?? '—')} verMas />
                 </button>
@@ -1486,6 +1484,23 @@ const AdminDashboard = () => {
                   label="Ingresos generados por IA"
                   value={statsAgentes ? `$${(statsAgentes.voz.ingreso + statsAgentes.whatsapp.ingreso).toLocaleString('es-MX')}` : '—'}
                 />
+              </div>
+            </div>
+
+            {/* Tu Operación Section */}
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tu operación</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('products')}>
+                  <StatCard icon={Package} label="Total de productos" value={String(stats.products)} verMas />
+                </button>
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('users')}>
+                  <StatCard icon={Users} label="Usuarios registrados" value={String(stats.users)} verMas />
+                </button>
+                <StatCard icon={Users} label="Clientes únicos" value={String(filteredStats.customers)} />
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('categories')}>
+                  <StatCard icon={Tag} label="Categorías" value={String(categories.length)} verMas />
+                </button>
               </div>
             </div>
           </>
