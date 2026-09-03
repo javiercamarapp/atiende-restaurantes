@@ -94,34 +94,41 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createServiceClient();
 
-    const { data: convo } = await supabase
-      .from("whatsapp_conversations")
-      .select("*")
-      .eq("phone", phone)
-      .maybeSingle();
-
+    // Bug crítico real encontrado en la auditoría adversarial del
+    // 3-sep-2026: mensajes casi-simultáneos del mismo cliente (mandar 2-3
+    // mensajes seguidos sin esperar respuesta, comportamiento normal de
+    // WhatsApp) corrompían y perdían historial de forma silenciosa — el
+    // patrón anterior (SELECT messages -> push() en JS -> UPDATE del
+    // arreglo completo) no tenía ningún lock: dos requests traslapados para
+    // el mismo phone hacían que el segundo UPDATE sobreescribiera por
+    // completo lo que el primero ya había guardado. Fix: whatsapp_append_turn
+    // hace el append en una sola sentencia SQL (messages = messages ||
+    // nuevos) — el row lock de Postgres serializa escrituras concurrentes
+    // al mismo phone sin perder ningún mensaje. Se llama dos veces: primero
+    // para el mensaje del usuario (así queda a salvo aunque el LLM tarde),
+    // luego para lo que generó el turno.
+    const userMessage = { role: "user", content: redactSensitiveInfo(body) };
+    const { data: messagesAfterUser, error: appendUserError } = await supabase.rpc("whatsapp_append_turn", {
+      p_phone: phone,
+      p_new_messages: [userMessage],
+    });
+    if (appendUserError) throw appendUserError;
     // deno-lint-ignore no-explicit-any
-    const messages = (convo?.messages ?? []) as any[];
-    messages.push({ role: "user", content: redactSensitiveInfo(body) });
+    const messages = (messagesAfterUser ?? [userMessage]) as any[];
 
     const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone);
     const { reply, updatedMessages, orderId, branchId } = await runAgentTurn(supabase, messages, phone, customer, RESTAURANT_ID);
 
-    if (convo) {
-      await supabase.from("whatsapp_conversations").update({
-        messages: updatedMessages,
-        status: orderId ? "completed" : "active",
-        order_id: orderId ?? convo.order_id,
-        branch_id: branchId ?? convo.branch_id,
-      }).eq("phone", phone);
-    } else {
-      await supabase.from("whatsapp_conversations").insert({
-        phone,
-        branch_id: branchId,
-        messages: updatedMessages,
-        status: orderId ? "completed" : "active",
-        order_id: orderId ?? null,
+    const nuevosDelTurno = updatedMessages.slice(messages.length);
+    if (nuevosDelTurno.length > 0) {
+      const { error: appendTurnError } = await supabase.rpc("whatsapp_append_turn", {
+        p_phone: phone,
+        p_new_messages: nuevosDelTurno,
+        p_status: orderId ? "completed" : "active",
+        p_order_id: orderId,
+        p_branch_id: branchId,
       });
+      if (appendTurnError) throw appendTurnError;
     }
 
     await sendWhatsAppMessage(supabase, message.from, reply);

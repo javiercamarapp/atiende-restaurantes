@@ -85,11 +85,13 @@ REGLAS DE NEGOCIO:
 - No inventes horarios de apertura/cierre — ese dato no está confirmado todavía.
 - No inventes sucursales ni branch_slugs que no estén en la lista de arriba.
 - Si el mensaje NO es para hacer un pedido (queja, facturación, empleo, u otro motivo que no sea ordenar comida): sé honesto, di que este número es para pedidos, pide su nombre si no lo tienes, y llama a registrar_contacto con nombre, motivo y un resumen breve de lo que dijo — así alguien del restaurante le contesta de verdad, no lo prometas sin registrarlo. Usa exactamente el nombre que el cliente te dio en ESTE chat para registrar_contacto — nunca inventes o supongas un nombre que no te haya dado.
+- Si el cliente pide que le entregue un repartidor específico (por nombre o "el de siempre"), sé honesto de inmediato: no hay forma de elegir o garantizar qué repartidor hace la entrega — dilo con naturalidad en vez de decir "ya lo anoté" o "se lo hago saber", porque esa preferencia no queda guardada en ningún lado y sería una promesa falsa.
+- Si crear_pedido devuelve un error para un producto que ya confirmaste con buscar_producto (ej. "producto no disponible"), no lo repitas como excusa fabricada ("el sistema lo marca no disponible") sin haberlo vuelto a confirmar: llama a buscar_producto de nuevo para ese producto antes de reintentar crear_pedido. Si sigue fallando después de eso, sé honesto con el cliente ("se me está atorando este producto en el sistema, ¿lo dejamos fuera o lo intentamos de nuevo en un momento?") en vez de inventar un motivo o quitarlo del pedido sin decírselo con claridad.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda presentándote como Los Taquitos de PM (sin mencionar sucursal todavía — aún no la sabes) y pregunta si quiere hacer un pedido. En cuanto confirme que sí, pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir). En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante — ya lo tienes.
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
-3. En cuanto tengas la dirección/colonia, decide con naturalidad cuál de las sucursales de arriba está más cerca — si la colonia no es clara, pregunta la colonia o una referencia cercana antes de decidir. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien. Si el cliente prefiere que se lo mandes desde otra sucursal (por ejemplo, porque le queda mejor otra zona que conoce), no insistas en que sea forzosamente la más cercana — acepta con gusto cualquiera de las sucursales reales de la lista de arriba que el cliente prefiera, y sigue con esa.
+3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si la colonia no es clara, pregunta la colonia o una referencia cercana ANTES de llamar la herramienta. Si responde encontrada:false, pide otra referencia (colonia vecina, cruce de calles, plaza conocida) e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien. Si el cliente prefiere que se lo mandes desde otra sucursal (por ejemplo, porque le queda mejor otra zona que conoce), no insistas en que sea forzosamente la más cercana — acepta con gusto cualquiera de las sucursales reales de la lista de arriba que el cliente prefiera, y sigue con esa.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal que ya confirmaste en el paso 3 — el precio real varía por sucursal). Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
    - IMPORTANTE: lee bien el nombre exacto que devuelve buscar_producto — si dice "(orden de N)" (ej. "Tacos de Bistec de Res (orden de 3)"), es un paquete fijo indivisible de N piezas, no piezas sueltas, y el precio ya es el del paquete completo. Si el cliente pide una cantidad de ese sabor que no es múltiplo de N, explícaselo con naturalidad y ofrécele ajustar a un múltiplo de N o cambiar a un sabor "(individual)" (ese sí se vende por pieza suelta).
    - Si buscar_producto devuelve más de un producto real parecido a lo que pidió el cliente (ej. "Guacamole" el platillo completo vs. "Extra Guacamole" la porción chica) y no está claro cuál quiere, no elijas tú solo — dile los nombres y precios de las opciones y que el cliente escoja.
@@ -137,6 +139,25 @@ export async function getAgentConfig(supabase: any, restaurantId: string): Promi
 // Formato OpenAI/OpenRouter: los tools van bajo function.parameters, no
 // input_schema directo como en la API de Anthropic.
 export const TOOLS = [
+  {
+    type: "function",
+    function: {
+      // Bug alto confirmado en la auditoría adversarial del 3-sep-2026: la
+      // sucursal "más cercana" se decidía a ojo por el LLM sin ningún dato
+      // geográfico real — falló 3 de 4 colonias reales probadas (hasta ~2x
+      // más lejos). Este tool llama a sucursal_mas_cercana() (distancia
+      // Haversine real sobre lat/lng reales de branches) en vez de adivinar.
+      name: "buscar_sucursal_cercana",
+      description: "Dado el nombre de una colonia/zona/referencia que dio el cliente, devuelve la sucursal real MÁS CERCANA calculada por distancia real (no adivines tú cuál está más cerca). Llámala en cuanto tengas la colonia o una referencia clara, antes de decirle al cliente de qué sucursal va a salir su pedido.",
+      parameters: {
+        type: "object",
+        properties: {
+          colonia: { type: "string", description: "La colonia, zona o referencia que dio el cliente, tal cual (ej. 'Cholul', 'cerca de Plaza Las Américas'). Puede ser una frase, no hace falta que sea solo el nombre exacto." },
+        },
+        required: ["colonia"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -306,7 +327,17 @@ export async function runAgentTurn(
       }
       if (result === undefined) {
         try {
-          if (call.function.name === "buscar_producto") {
+          if (call.function.name === "buscar_sucursal_cercana") {
+            const { data: matches, error: sucursalError } = await supabase.rpc("sucursal_mas_cercana", {
+              p_restaurant_id: restaurantId,
+              p_colonia: String(input.colonia ?? ""),
+            });
+            if (sucursalError) throw sucursalError;
+            const match = matches?.[0];
+            result = match
+              ? { encontrada: true, branch_slug: match.branch_slug, branch_name: match.branch_name, distancia_km: match.distancia_km, colonia_reconocida: match.colonia_encontrada }
+              : { encontrada: false, mensaje: "No reconozco esa colonia — pide al cliente otra referencia cercana (colonia vecina, cruce de calles, plaza conocida) e intenta de nuevo." };
+          } else if (call.function.name === "buscar_producto") {
             // Precio real de la sucursal confirmada — branch_products, no el
             // precio plano de `products` (los precios sí varían de verdad
             // entre sucursales, verificado contra el menú fotografiado real).
