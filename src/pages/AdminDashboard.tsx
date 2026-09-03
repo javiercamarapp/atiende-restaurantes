@@ -360,6 +360,112 @@ function DashboardAgente({
   );
 }
 
+// Pantalla completa de "Vista previa" del agente de voz — clon del layout
+// real de ElevenLabs (orbe a la izquierda sobre franjas diagonales, panel
+// de conversación a la derecha), pero con nuestra tipografía/colores y sin
+// las herramientas internas de ElevenLabs (Historial/Configuración de
+// voz/Herramientas simuladas son de su dashboard, no algo que el cliente
+// deba ver). No inventa una transcripción — el panel derecho es un estado
+// honesto hasta que la conversación real empieza, y el botón de abajo
+// dispara la llamada REAL simulando el click dentro del shadow DOM del
+// widget verdadero (mismo mecanismo ya usado para forzar el color del botón).
+function VistaPreviaAgentePantallaCompleta({
+  onCerrar,
+  nombreAgente,
+  nombreSucursal,
+}: {
+  onCerrar: () => void;
+  nombreAgente: string;
+  nombreSucursal: string;
+}) {
+  const iniciarLlamadaReal = () => {
+    const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
+    const boton = widget?.shadowRoot?.querySelector('button') as HTMLElement | undefined;
+    boton?.click();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-40 bg-background flex flex-col"
+    >
+      <header className="h-14 shrink-0 border-b border-border flex items-center justify-between px-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={onCerrar}
+            className="text-[13px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            ‹ Atrás
+          </button>
+          <span className="text-border shrink-0">|</span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-foreground truncate">{nombreAgente}</p>
+            <p className="text-[10.5px] text-muted-foreground truncate">{nombreSucursal}</p>
+          </div>
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground border border-border rounded-full px-2.5 py-1 shrink-0">
+          Vista previa
+        </span>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        <div
+          className="flex-[3] relative flex items-center justify-center overflow-hidden"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(135deg, hsl(var(--border)) 0px, hsl(var(--border)) 1.5px, transparent 1.5px, transparent 16px)',
+            maskImage: 'linear-gradient(to bottom, black 0%, black 35%, transparent 85%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 35%, transparent 85%)',
+          }}
+        >
+          <div className="relative w-56 h-56 flex items-center justify-center">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
+              className="absolute inset-0 rounded-full"
+              style={{
+                background:
+                  'conic-gradient(from 0deg, #1d4ed8, #0ea5e9, transparent 40%, #1d4ed8 90%, #1d4ed8)',
+                filter: 'blur(2px)',
+              }}
+            />
+            <motion.div
+              animate={{ scale: [1, 1.05, 1], opacity: [0.85, 1, 0.85] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute inset-6 rounded-full"
+              style={{
+                background: 'radial-gradient(circle at 35% 30%, #38bdf8, #1d4ed8 60%, #0f2f8f 100%)',
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="flex-[2] border-l border-border flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 overflow-auto p-5 flex flex-col items-center justify-center text-center">
+            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mb-3">
+              <Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+            </div>
+            <p className="text-[13px] font-medium text-foreground mb-1">Aún no hay una llamada activa</p>
+            <p className="text-[11.5px] text-muted-foreground max-w-[220px] leading-snug">
+              Inicia una llamada real de prueba y la conversación aparecerá aquí en vivo.
+            </p>
+          </div>
+          <div className="p-4 border-t border-border">
+            <button
+              onClick={iniciarLlamadaReal}
+              className="w-full flex items-center justify-center gap-2 h-10 rounded-full bg-primary text-primary-foreground text-[13px] font-medium hover:opacity-90 transition-opacity"
+            >
+              <PlayCircle className="w-4 h-4" /> Iniciar llamada de prueba
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -440,8 +546,8 @@ const AdminDashboard = () => {
   const [sucursalesAgente, setSucursalesAgente] = useState<{ id: string; name: string; elevenlabs_agent_id: string | null }[]>([]);
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string>('global');
   const [mostrarSelectorSucursal, setMostrarSelectorSucursal] = useState(false);
-  // "Vista previa" sólo se ve azul/activo mientras el panel del widget real
-  // está abierto — el resto del tiempo es un botón neutro más, como los demás.
+  // "Vista previa" sólo se ve azul/activo mientras la pantalla completa
+  // propia está abierta — el resto del tiempo es un botón neutro más.
   const [vistaPreviaActiva, setVistaPreviaActiva] = useState(false);
 
   // Rango de fecha del "Llamadas recientes" de Agente de voz — presets +
@@ -491,23 +597,6 @@ const AdminDashboard = () => {
     script.async = true;
     document.body.appendChild(script);
   }, [activeSection, agentIdActivo]);
-
-  // "Vista previa" no tiene forma de escuchar el evento real de "el
-  // usuario cerró el panel del widget" (no lo expone la API pública) — así
-  // que lo inferimos: mientras está activo, medimos el tamaño real del
-  // widget en pantalla cada 800ms. Colapsado es una burbuja chica; abierto
-  // es un panel grande. En cuanto vuelve a ser chico, se apaga el azul.
-  useEffect(() => {
-    if (!vistaPreviaActiva) return;
-    const intervalo = setInterval(() => {
-      const widget = document.querySelector('elevenlabs-convai');
-      const caja = widget?.getBoundingClientRect();
-      if (!caja || (caja.width < 150 && caja.height < 150)) {
-        setVistaPreviaActiva(false);
-      }
-    }, 800);
-    return () => clearInterval(intervalo);
-  }, [vistaPreviaActiva]);
 
   // El color del botón ("Iniciar llamada") del widget real sólo se puede
   // fijar desde el dashboard de ElevenLabs (Agente → Widget) o su API —
@@ -615,21 +704,11 @@ const AdminDashboard = () => {
     setCargandoAgentes(false);
   };
 
-  // "Vista previa" del agente de voz — el widget real de ElevenLabs sólo
-  // abre su panel lateral cuando el usuario hace click en SU propio botón
-  // flotante (dentro del shadow DOM del custom element), no con scrollIntoView
-  // solo. Simulamos ese click además de bajar la vista hasta él.
+  // "Vista previa" abre nuestra propia pantalla completa (clon del layout
+  // de ElevenLabs, con nuestro diseño) — el widget real sigue viviendo
+  // aparte como su burbuja flotante nativa, sin tocarla desde aquí.
   const abrirVistaPreviaAgente = () => {
-    const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
-    if (!widget) return;
     setVistaPreviaActiva(true);
-    widget.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    const intentarClick = () => {
-      const boton = widget.shadowRoot?.querySelector('button');
-      boton?.click();
-    };
-    intentarClick();
-    setTimeout(intentarClick, 350);
   };
 
   // Se refresca sola cada 45s mientras el usuario está en cualquier página
@@ -2876,6 +2955,14 @@ const AdminDashboard = () => {
           </main>
         </div>
       </div>
+
+      {vistaPreviaActiva && (
+        <VistaPreviaAgentePantallaCompleta
+          onCerrar={() => setVistaPreviaActiva(false)}
+          nombreAgente="Agente de voz"
+          nombreSucursal={sucursalConAgente?.name ?? 'Sucursal'}
+        />
+      )}
     </div>;
 };
 export default AdminDashboard;
