@@ -40,9 +40,22 @@ export class OrderValidationError extends Error {}
 // Normaliza a los últimos 10 dígitos (número nacional significativo
 // mexicano) — absorbe "+", espacios, guiones, "52"/"521" de país, y es
 // estable sin importar cuál de los formatos reales llegue primero.
+//
+// Bug real encontrado en la auditoría adversarial del 3-sep-2026: la
+// versión original devolvía soloDigitos SIN mínimo de longitud — un
+// identificador sin dígitos reales (ej. un phone de prueba "widget-<texto
+// sin números>") se reducía a "" (string vacío), y CUALQUIER otra
+// conversación cuyo identificador tampoco tuviera dígitos colapsaba en el
+// MISMO customer_id vacío — mezclando historial/order_count entre clientes
+// que no tienen nada que ver. Confirmado en la base real: dos customers
+// distintos con phone "" y "01". Fix: exigir un mínimo real de dígitos (7,
+// el mínimo plausible de un teléfono real) antes de normalizar — si no se
+// alcanza, se usa el string original completo (no el fragmento de dígitos)
+// para no perder la unicidad de identificadores no numéricos.
 export function normalizePhone(phone: string): string {
   const soloDigitos = phone.replace(/\D/g, "");
-  return soloDigitos.slice(-10) || soloDigitos;
+  if (soloDigitos.length >= 7) return soloDigitos.slice(-10);
+  return phone.trim();
 }
 
 export async function createOrderCore(supabase: any, payload: CreateOrderPayload) {
