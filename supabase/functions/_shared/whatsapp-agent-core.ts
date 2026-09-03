@@ -22,6 +22,20 @@
 // deno-lint-ignore-file no-explicit-any
 import { createOrderCore, OrderValidationError, vipNote } from "./create-order-core.ts";
 
+// OPENROUTER_API_KEY vive en Supabase Vault (mismo mecanismo real que
+// ELEVENLABS_API_KEY y las credenciales de WhatsApp Cloud API) — no como
+// Edge Function secret real, porque no hay ninguna herramienta MCP
+// disponible para configurar esos. Se lee vía la función SQL get_secret()
+// que el proyecto ya tenía. Ver supabase-vault-vs-edge-function-secrets.
+async function getOpenRouterKey(supabase: any): Promise<string | null> {
+  const { data, error } = await supabase.rpc("get_secret", { secret_name: "OPENROUTER_API_KEY" });
+  if (error) {
+    console.error("get_secret(OPENROUTER_API_KEY) falló:", error);
+    return null;
+  }
+  return (data as string | null) ?? null;
+}
+
 export const MODEL_DEFAULT = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash-lite";
 export const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "openai/gpt-5.4-mini";
 export const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
@@ -225,6 +239,10 @@ export async function runAgentTurn(
   // temperatura, todos editables desde el admin sin tocar código.
   const agentConfig = await getAgentConfig(supabase, restaurantId);
   const systemPrompt = `${agentConfig.system_prompt}\n\nTONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[agentConfig.tone_style] ?? TONE_INSTRUCTIONS.calido_cercano}\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
+  const openRouterKey = await getOpenRouterKey(supabase);
+  if (!openRouterKey) {
+    return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId, branchId };
+  }
 
   for (let turn = 0; turn < 4; turn++) {
     // El escalón caro de respaldo (MODEL_ESCALADO, fijo por env var) sigue
@@ -236,7 +254,7 @@ export async function runAgentTurn(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${Deno.env.get("OPENROUTER_API_KEY")!}`,
+        authorization: `Bearer ${openRouterKey}`,
         "HTTP-Referer": "https://atiende-restaurantes.vercel.app",
         // "atiende.ai — Los Taquitos de PM" (con em dash) rompía CADA llamada
         // real a OpenRouter: los headers HTTP deben ser ByteString ASCII, y
