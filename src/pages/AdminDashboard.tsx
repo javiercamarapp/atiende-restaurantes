@@ -2791,6 +2791,50 @@ const AdminDashboard = () => {
                     <Plus className="w-4 h-4 mr-2" /> Agregar
                   </Button>
                 </DialogTrigger>
+                <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingProduct ? 'Editar producto' : 'Agregar producto'}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleProductSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="product-name">Nombre</Label>
+                      <Input id="product-name" required value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="product-desc">Descripción</Label>
+                      <Textarea id="product-desc" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="product-price">Precio</Label>
+                      <Input id="product-price" type="number" step="0.01" required value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Categoría</Label>
+                      <Select value={productForm.category_id} onValueChange={(v) => setProductForm({ ...productForm, category_id: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
+                        <SelectContent>
+                          {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="product-image">Imagen</Label>
+                      <Input id="product-image" type="file" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />
+                      {productForm.image_url && <img src={productForm.image_url} alt="" className="w-16 h-16 rounded-lg object-cover mt-1" />}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="product-popular">Popular</Label>
+                      <Switch id="product-popular" checked={productForm.is_popular} onCheckedChange={(v) => setProductForm({ ...productForm, is_popular: v })} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="product-available">Disponible</Label>
+                      <Switch id="product-available" checked={productForm.is_available} onCheckedChange={(v) => setProductForm({ ...productForm, is_available: v })} />
+                    </div>
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={uploadingImage}>
+                      {editingProduct ? 'Guardar cambios' : 'Agregar producto'}
+                    </Button>
+                  </form>
+                </DialogContent>
               </Dialog>
             </div>
             
@@ -2849,10 +2893,27 @@ const AdminDashboard = () => {
               </h2>
               <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-primary hover:bg-primary/90">
+                  <Button onClick={() => setCategoryForm({ name: "", slug: "" })} className="bg-primary hover:bg-primary/90">
                     <Plus className="w-4 h-4 mr-2" /> Agregar
                   </Button>
                 </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Agregar categoría</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCategorySubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="category-name">Nombre</Label>
+                      <Input
+                        id="category-name"
+                        required
+                        value={categoryForm.name}
+                        onChange={(e) => setCategoryForm({ name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90">Agregar categoría</Button>
+                  </form>
+                </DialogContent>
               </Dialog>
             </div>
             
@@ -3057,6 +3118,37 @@ const AdminDashboard = () => {
                     <Plus className="w-4 h-4 mr-2" /> Agregar
                   </Button>
                 </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>{editingPromo ? 'Editar promoción' : 'Agregar promoción'}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handlePromoSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="promo-title">Título</Label>
+                      <Input id="promo-title" required value={promoForm.title} onChange={(e) => setPromoForm({ ...promoForm, title: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="promo-desc">Descripción</Label>
+                      <Textarea id="promo-desc" value={promoForm.description} onChange={(e) => setPromoForm({ ...promoForm, description: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="promo-discount">Texto del descuento</Label>
+                      <Input id="promo-discount" placeholder="Ej. 2x1, 20% off" value={promoForm.discount_text} onChange={(e) => setPromoForm({ ...promoForm, discount_text: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="promo-image">URL de imagen</Label>
+                      <Input id="promo-image" placeholder="https://…" value={promoForm.image_url} onChange={(e) => setPromoForm({ ...promoForm, image_url: e.target.value })} />
+                      {promoForm.image_url && <img src={promoForm.image_url} alt="" className="w-16 h-16 rounded-lg object-cover mt-1" />}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="promo-active">Activa</Label>
+                      <Switch id="promo-active" checked={promoForm.is_active} onCheckedChange={(v) => setPromoForm({ ...promoForm, is_active: v })} />
+                    </div>
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
+                      {editingPromo ? 'Guardar cambios' : 'Agregar promoción'}
+                    </Button>
+                  </form>
+                </DialogContent>
               </Dialog>
             </div>
             
