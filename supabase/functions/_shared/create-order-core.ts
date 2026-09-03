@@ -20,6 +20,10 @@ export interface CreateOrderPayload {
   source?: "web" | "voice" | "whatsapp" | "admin";
   call_transcript?: string;
   call_recording_url?: string;
+  // Instrucciones especiales del cliente ("sin cebolla", "tocar el
+  // timbre") — antes se reconocían y repetían en el chat pero nunca
+  // llegaban a cocina porque `orders` no tenía dónde guardarlas.
+  notes?: string;
 }
 
 export class OrderValidationError extends Error {}
@@ -92,8 +96,22 @@ const STOPWORDS_BUSQUEDA = new Set(["de", "del", "la", "el", "los", "las", "un",
 // escribiría el modelo o un cliente) no encontraba "Arrachera — 500 g" —
 // el nombre real SIEMPRE lleva espacio antes de la unidad.
 export function tokenizeForProductSearch(query: string): string[] {
-  const raw = query
+  // Bug real encontrado el 3-sep-2026 (pruebas de "vida cotidiana"): un
+  // cliente real dice "un kilo de bistec" o "medio kilo de arrachera" — la
+  // palabra "kilo" nunca aparece en el nombre real del producto (que dice
+  // "1 kg" o "500 g", nunca "kilo"), así que el token "kilo" no hacía match
+  // con nada y el agente decía (falso) que el producto no existía, aunque
+  // sí estaba disponible. Se normalizan las frases reales de kilos ANTES
+  // de tokenizar, a la forma pegada que ya sabe resolver el bloque de abajo
+  // (igual que "500g"/"1kg").
+  const normalizada = query
     .toLowerCase()
+    .replace(/tres\s+cuartos?\s+de\s+kilo/g, "750g")
+    .replace(/cuarto\s+de\s+kilo/g, "250g")
+    .replace(/medio\s+kilo/g, "500g")
+    .replace(/\bkilos?\b/g, "kg");
+
+  const raw = normalizada
     .split(/\s+/)
     .filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
 
@@ -190,6 +208,7 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
       source: payload.source ?? "web",
       call_transcript: payload.call_transcript ?? null,
       call_recording_url: payload.call_recording_url ?? null,
+      notes: payload.notes ?? null,
     })
     .select()
     .single();

@@ -1624,6 +1624,23 @@ const AdminDashboard = () => {
   const [dateFilter, setDateFilter] = useState<'today' | '7' | '30' | '90' | '180' | '365' | 'historico'>('today');
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
+  // Campanita del header: antes el badge/animación se quedaban prendidos
+  // para siempre mientras hubiera CUALQUIER callback_request sin resolver,
+  // aunque el admin ya la hubiera visto — pedido explícito de Javier (con
+  // screenshot): al entrar a "Notificaciones" se debe apagar, y quedarse
+  // apagada hasta que llegue una NUEVA de verdad. Se guarda en localStorage
+  // el timestamp de la última vez que se vio la sección — el badge solo
+  // cuenta sin-resolver creadas DESPUÉS de ese momento, así que una
+  // notificación ya vista no reaparece aunque siga sin resolverse.
+  const [notifLastViewedAt, setNotifLastViewedAt] = useState<string>(
+    () => localStorage.getItem("atiende_notif_last_viewed_at") ?? new Date(0).toISOString(),
+  );
+  useEffect(() => {
+    if (activeSection !== "notificaciones") return;
+    const ahora = new Date().toISOString();
+    localStorage.setItem("atiende_notif_last_viewed_at", ahora);
+    setNotifLastViewedAt(ahora);
+  }, [activeSection]);
 
   // filteredStats/salesTrendData ("Tus ventas" y "Tendencias" de
   // Estadísticas) — antes eran useMemo derivados de `orders` completo, pero
@@ -2919,9 +2936,9 @@ const AdminDashboard = () => {
                     className="relative w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
                   >
                     <Bell className="w-4 h-4" strokeWidth={1.75} />
-                    {callbackRequests.filter((c) => !c.resolved).length > 0 && (
+                    {callbackRequests.filter((c) => !c.resolved && c.created_at > notifLastViewedAt).length > 0 && (
                       <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-medium leading-4 text-center animate-pulse">
-                        {callbackRequests.filter((c) => !c.resolved).length}
+                        {callbackRequests.filter((c) => !c.resolved && c.created_at > notifLastViewedAt).length}
                       </span>
                     )}
                   </button>
