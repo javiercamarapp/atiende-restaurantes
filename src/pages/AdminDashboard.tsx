@@ -212,8 +212,9 @@ const AdminDashboard = () => {
   const [cargandoAgentes, setCargandoAgentes] = useState(false);
   const [statsAgentes, setStatsAgentes] = useState<{
     totalOrdenes: number;
-    voz: { total: number; completados: number; cancelados: number };
-    whatsapp: { total: number; completados: number; cancelados: number };
+    ingresoTotal: number;
+    voz: { total: number; completados: number; cancelados: number; ingreso: number };
+    whatsapp: { total: number; completados: number; cancelados: number; ingreso: number };
   } | null>(null);
   const [ordenesVoz, setOrdenesVoz] = useState<Order[]>([]);
   const [ordenesWhatsapp, setOrdenesWhatsapp] = useState<Order[]>([]);
@@ -230,7 +231,8 @@ const AdminDashboard = () => {
 
     const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
       { count: waTotal }, { count: waCompletados }, { count: waCancelados },
-      { data: vozRecientes }, { data: waRecientes }, { data: sucursales }] = await Promise.all([
+      { data: vozRecientes }, { data: waRecientes }, { data: sucursales },
+      { data: todasLasOrdenes }] = await Promise.all([
       sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId),
       sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice"),
       sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"]),
@@ -241,12 +243,22 @@ const AdminDashboard = () => {
       sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8),
       sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8),
       sb.from("branches").select("id").eq("restaurant_id", restaurantId),
+      // Ingreso real por canal — se necesita el total de cada pedido, no solo
+      // el conteo, así que aquí sí se trae `total` y `source` de todas las
+      // filas (a diferencia de los counts de arriba, que no bajan datos).
+      sb.from("orders").select("total, source").eq("restaurant_id", restaurantId),
     ]);
+
+    const filasIngreso: { total: number; source: string | null }[] = todasLasOrdenes ?? [];
+    const ingresoTotal = filasIngreso.reduce((s, o) => s + Number(o.total), 0);
+    const ingresoVoz = filasIngreso.filter((o) => o.source === 'voice').reduce((s, o) => s + Number(o.total), 0);
+    const ingresoWhatsapp = filasIngreso.filter((o) => o.source === 'whatsapp').reduce((s, o) => s + Number(o.total), 0);
 
     setStatsAgentes({
       totalOrdenes: totalOrdenes ?? 0,
-      voz: { total: vozTotal ?? 0, completados: vozCompletados ?? 0, cancelados: vozCancelados ?? 0 },
-      whatsapp: { total: waTotal ?? 0, completados: waCompletados ?? 0, cancelados: waCancelados ?? 0 },
+      ingresoTotal,
+      voz: { total: vozTotal ?? 0, completados: vozCompletados ?? 0, cancelados: vozCancelados ?? 0, ingreso: ingresoVoz },
+      whatsapp: { total: waTotal ?? 0, completados: waCompletados ?? 0, cancelados: waCancelados ?? 0, ingreso: ingresoWhatsapp },
     });
     setOrdenesVoz(vozRecientes ?? []);
     setOrdenesWhatsapp(waRecientes ?? []);
@@ -273,7 +285,7 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    if ((activeSection === 'agente-voz' || activeSection === 'agente-whatsapp') && restaurantId && !statsAgentes) {
+    if ((activeSection === 'agente-voz' || activeSection === 'agente-whatsapp' || activeSection === 'dashboard') && restaurantId && !statsAgentes) {
       cargarDatosAgentes();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1439,6 +1451,46 @@ const AdminDashboard = () => {
                 <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('categories')}>
                   <StatCard icon={Tag} label="Categorías" value={String(categories.length)} verMas />
                 </button>
+              </div>
+            </div>
+
+            {/* Impacto de tus agentes — el resumen de ROI que se ve sin
+                entrar a cada página de agente: cuánto de tu operación ya
+                corre por IA, y si esos pedidos se completan. Reusa el mismo
+                statsAgentes exacto (no el `orders` capado a 50 filas) que
+                usan las páginas de Agente de voz/WhatsApp. */}
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Impacto de tus agentes</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <TileKpiAgente
+                  indice={0}
+                  label="Pedidos por agentes IA"
+                  valor={statsAgentes && statsAgentes.totalOrdenes > 0 ? ((statsAgentes.voz.total + statsAgentes.whatsapp.total) / statsAgentes.totalOrdenes) * 100 : null}
+                  meta="50%"
+                />
+                <TileKpiAgente
+                  indice={1}
+                  label="Ingresos por agentes IA"
+                  valor={statsAgentes && statsAgentes.ingresoTotal > 0 ? ((statsAgentes.voz.ingreso + statsAgentes.whatsapp.ingreso) / statsAgentes.ingresoTotal) * 100 : null}
+                  meta="50%"
+                />
+                <TileKpiAgente
+                  indice={2}
+                  label="Tasa de conversión de agentes"
+                  valor={statsAgentes && (statsAgentes.voz.total + statsAgentes.whatsapp.total) > 0 ? ((statsAgentes.voz.completados + statsAgentes.whatsapp.completados) / (statsAgentes.voz.total + statsAgentes.whatsapp.total)) * 100 : null}
+                  meta="85%"
+                />
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('agente-voz')}>
+                  <StatCard icon={Mic} label="Pedidos por voz" value={String(statsAgentes?.voz.total ?? '—')} verMas />
+                </button>
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('agente-whatsapp')}>
+                  <StatCard icon={MessageCircle} label="Pedidos por WhatsApp" value={String(statsAgentes?.whatsapp.total ?? '—')} verMas />
+                </button>
+                <StatCard
+                  icon={DollarSign}
+                  label="Ingresos generados por IA"
+                  value={statsAgentes ? `$${(statsAgentes.voz.ingreso + statsAgentes.whatsapp.ingreso).toLocaleString('es-MX')}` : '—'}
+                />
               </div>
             </div>
           </>
