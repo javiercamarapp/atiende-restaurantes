@@ -147,7 +147,14 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
   // Antes, un pedido nuevo (voz/WhatsApp/web) solo aparecía en "Recibidas"
   // hasta el siguiente poll de 60s — sin ninguna notificación real de que
   // había llegado. Suscripción en vivo a INSERT de `orders`: refresca la
-  // lista de inmediato y avisa con un toast, sin esperar el poll.
+  // lista de inmediato sin esperar el poll. El toast de "Pedido nuevo" YA NO
+  // vive aquí — se subió a AdminDashboard.tsx (componente raíz, montado sin
+  // importar la sección activa) porque este componente solo está montado
+  // cuando activeSection === 'orders', y un pedido real llegado mientras el
+  // admin veía otra sección (ej. el dashboard inicial) no disparaba ningún
+  // aviso — bug real reportado por Javier el 3-sep-2026. Duplicar el toast
+  // aquí también causaría un doble aviso mientras se está viendo esta
+  // sección, así que aquí solo se refresca la lista.
   useEffect(() => {
     const canal = supabase
       .channel(`pedidos-nuevos-${restaurantId ?? "todos"}`)
@@ -164,10 +171,6 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
           if (String(nuevo.customer_phone ?? "").startsWith("widget-")) return;
           setAhora(Date.now());
           cargar();
-          toast({
-            title: "Pedido nuevo",
-            description: `${nuevo.customer_name} — $${Number(nuevo.total).toFixed(0)} (${nuevo.source === "voice" ? "llamada" : nuevo.source === "whatsapp" ? "WhatsApp" : nuevo.source})`,
-          });
         },
       )
       .subscribe();

@@ -1642,6 +1642,43 @@ const AdminDashboard = () => {
     setNotifLastViewedAt(ahora);
   }, [activeSection]);
 
+  // Toast real de "Pedido nuevo": bug real reportado por Javier el 3-sep-2026
+  // ("se hizo todo bien en la llamada, únicamente no me llegó la
+  // notificación cuando se hizo el pedido en el dashboard inicial, pero sí
+  // salía en la página de notificaciones") — esta suscripción vivía SOLO
+  // dentro de PedidosSection (ver ese archivo), que solo está montado
+  // cuando activeSection === 'orders'. Si el admin estaba en cualquier otra
+  // sección (el dashboard inicial, en este caso) cuando llegó el pedido real
+  // de la llamada, no había ningún componente montado escuchando el INSERT,
+  // así que el toast nunca se disparaba — aunque el pedido sí quedaba
+  // guardado y por eso sí aparecía al entrar a Notificaciones (esa sección
+  // hace su propio fetch, no depende de este toast). Se sube aquí, al
+  // componente raíz que está montado sin importar la sección activa.
+  useEffect(() => {
+    const canal = supabase
+      .channel(`pedido-nuevo-toast-${restaurantId ?? "todos"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "orders",
+          ...(restaurantId ? { filter: `restaurant_id=eq.${restaurantId}` } : {}),
+        },
+        (payload) => {
+          const nuevo = payload.new as { customer_name: string; total: number; source: string; customer_phone?: string };
+          if (String(nuevo.customer_phone ?? "").startsWith("widget-")) return;
+          toast({
+            title: "Pedido nuevo",
+            description: `${nuevo.customer_name} — $${Number(nuevo.total).toFixed(0)} (${nuevo.source === "voice" ? "llamada" : nuevo.source === "whatsapp" ? "WhatsApp" : nuevo.source})`,
+          });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId]);
+
   // filteredStats/salesTrendData ("Tus ventas" y "Tendencias" de
   // Estadísticas) — antes eran useMemo derivados de `orders` completo, pero
   // `orders` viene de un fetch con `.limit(50000)` que en la práctica NUNCA
