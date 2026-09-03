@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
 import {
-  Store, Copy, Check, Edit, Clock, Trash2, RotateCcw, Loader2, MapPin, Navigation,
+  Store, Copy, Check, Edit, Clock, Trash2, RotateCcw, Loader2, MapPin, Navigation, Search,
 } from "lucide-react";
 
 interface Branch {
@@ -258,6 +258,34 @@ async function geocodificarInverso(lat: number, lng: number): Promise<string | n
   }
 }
 
+interface ResultadoBusquedaUbicacion {
+  lat: number;
+  lng: number;
+  etiqueta: string;
+}
+
+// Búsqueda directa por texto — alterna a "usar mi ubicación actual" cuando
+// el navegador niega el permiso de geolocalización (común en demo/desktop).
+// Sesgado a Yucatán con viewbox + bounded=1, pero no exclusivo (por si la
+// sucursal de verdad está fuera, ej. un caso raro).
+async function buscarUbicacion(texto: string): Promise<ResultadoBusquedaUbicacion[]> {
+  if (!texto.trim()) return [];
+  try {
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(texto)}&limit=5&viewbox=-90.4,21.4,-88.7,20.4&bounded=0`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .map((r: any) => ({ lat: Number(r.lat), lng: Number(r.lon), etiqueta: String(r.display_name ?? "") }))
+      .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  } catch {
+    return [];
+  }
+}
+
 const SucursalesSection = ({ restaurantId }: Props) => {
   const { toast } = useToast();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -271,6 +299,9 @@ const SucursalesSection = ({ restaurantId }: Props) => {
   }>({ name: "", address: "", phone: "", lat: null, lng: null });
   const [guardandoTienda, setGuardandoTienda] = useState(false);
   const [ubicando, setUbicando] = useState(false);
+  const [buscarTexto, setBuscarTexto] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [resultadosBusqueda, setResultadosBusqueda] = useState<ResultadoBusquedaUbicacion[]>([]);
 
   const [modalHorario, setModalHorario] = useState<Branch | null>(null);
   const [horarioSemana, setHorarioSemana] = useState<HorarioSemana>(() => horarioSemanaDefault());
@@ -347,7 +378,27 @@ const SucursalesSection = ({ restaurantId }: Props) => {
 
   const abrirEditarTienda = (b: Branch) => {
     setFormTienda({ name: b.name, address: b.address ?? "", phone: b.phone ?? "", lat: b.lat, lng: b.lng });
+    setBuscarTexto("");
+    setResultadosBusqueda([]);
     setModalTienda(b);
+  };
+
+  const buscarYMostrarResultados = async () => {
+    if (!buscarTexto.trim()) return;
+    setBuscando(true);
+    const resultados = await buscarUbicacion(buscarTexto);
+    setBuscando(false);
+    if (resultados.length === 0) {
+      toast({ title: "No encontramos esa ubicación", description: "Prueba con más detalle (colonia, calle, ciudad).", variant: "destructive" });
+      return;
+    }
+    setResultadosBusqueda(resultados);
+  };
+
+  const elegirResultadoBusqueda = (r: ResultadoBusquedaUbicacion) => {
+    setFormTienda((f) => ({ ...f, lat: r.lat, lng: r.lng, address: r.etiqueta }));
+    setResultadosBusqueda([]);
+    setBuscarTexto("");
   };
 
   // Handler compartido por el arrastre del pin, el clic en el mapa y "usar mi
@@ -401,7 +452,11 @@ const SucursalesSection = ({ restaurantId }: Props) => {
   const abrirEditarHorario = (b: Branch) => {
     const semana = parsearHorario(b.hours);
     setHorarioSemana(semana);
-    setMismoHorarioTodos(ORDEN_DIAS.every((d) => firmaDia(semana[d]) === firmaDia(semana.lun)));
+    // Siempre abre mostrando los 7 días por separado — el toggle "mismo
+    // horario todos los días" sigue disponible para quien quiera fijarlos
+    // todos de un jalón, pero ya no se auto-colapsa solo porque hoy
+    // coincidan, para que siempre se vea (y se pueda editar) día por día.
+    setMismoHorarioTodos(false);
     setModalHorario(b);
   };
 
@@ -627,6 +682,42 @@ const SucursalesSection = ({ restaurantId }: Props) => {
                   {ubicando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
                   Usar mi ubicación actual
                 </Button>
+              </div>
+
+              <div className="relative">
+                <div className="flex gap-1.5">
+                  <Input
+                    placeholder="Buscar dirección o colonia…"
+                    className="h-8 text-[12.5px]"
+                    value={buscarTexto}
+                    onChange={(e) => setBuscarTexto(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarYMostrarResultados(); } }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg px-2.5 shrink-0"
+                    onClick={buscarYMostrarResultados}
+                    disabled={buscando || !buscarTexto.trim()}
+                  >
+                    {buscando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
+                {resultadosBusqueda.length > 0 && (
+                  <div className="absolute z-10 top-full mt-1 left-0 right-0 rounded-lg border border-border bg-card shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                    {resultadosBusqueda.map((r, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className="w-full text-left px-2.5 py-1.5 text-[11.5px] hover:bg-muted transition-colors border-b border-border last:border-0 truncate"
+                        onClick={() => elegirResultadoBusqueda(r)}
+                      >
+                        {r.etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="rounded-xl overflow-hidden border border-border h-[220px] shrink-0">
