@@ -1047,6 +1047,12 @@ function VistaPreviaAgentePantallaCompleta({
 
       const conversacion = await Conversation.startSession({
         signedUrl: data.signed_url,
+        // Esta llamada sale del panel interno de Javier, no de un cliente
+        // real — el agente sabe (por el prompt) que con esta variable NO
+        // debe registrar el pedido de verdad, sólo simular el flujo
+        // completo. La llamada real desde el widget público en producción
+        // nunca manda esta variable, así que ahí SÍ registra de verdad.
+        dynamicVariables: { modo_prueba: 'true' },
         onConnect: () => setLlamadaActiva(true),
         onDisconnect: () => { setLlamadaActiva(false); conversacionRef.current = null; },
         onMessage: ({ message, role }) => {
