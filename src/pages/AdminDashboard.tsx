@@ -282,6 +282,9 @@ function DashboardAgente({
   statsAgentes,
   mensajesPromedioWhatsapp,
   etiquetaRango,
+  sucursalesAgente = [],
+  sucursalSeleccionada = 'global',
+  onCambiarSucursal,
 }: {
   canal: 'voz' | 'whatsapp';
   onCerrar: () => void;
@@ -294,7 +297,11 @@ function DashboardAgente({
   } | null;
   mensajesPromedioWhatsapp?: number | null;
   etiquetaRango: string;
+  sucursalesAgente?: { id: string; name: string; elevenlabs_agent_id: string | null }[];
+  sucursalSeleccionada?: string;
+  onCambiarSucursal?: (id: string) => void;
 }) {
+  const [mostrarSelectorEnDashboard, setMostrarSelectorEnDashboard] = useState(false);
   const PESTANAS_VOZ = [
     { id: 'general' as const, etiqueta: 'General', icon: LayoutGrid },
     { id: 'audio' as const, etiqueta: 'Audio', icon: Volume2 },
@@ -325,19 +332,44 @@ function DashboardAgente({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 pb-3 border-b border-border">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCerrar}
-              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            >
-              ‹ Atrás
-            </button>
-            <span className="text-border">|</span>
-            <p className="text-[13px] font-medium text-foreground truncate">Dashboard — {nombreAgente}</p>
-          </div>
+        <div className="min-w-0 relative">
+          <button
+            onClick={() => setMostrarSelectorEnDashboard((v) => !v)}
+            disabled={canal !== 'voz' || sucursalesAgente.length === 0}
+            className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground truncate disabled:cursor-default"
+          >
+            {nombreAgente}
+            {canal === 'voz' && sucursalesAgente.length > 0 && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+          </button>
           <p className="text-[10.5px] text-muted-foreground mt-0.5">{etiquetaRango}</p>
+          {mostrarSelectorEnDashboard && (
+            <div className="absolute left-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
+              <button
+                onClick={() => { onCambiarSucursal?.('global'); setMostrarSelectorEnDashboard(false); }}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === 'global' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+              >
+                <Globe className="w-3.5 h-3.5 shrink-0" /> Todas las sucursales
+              </button>
+              <div className="my-1 border-t border-border" />
+              {sucursalesAgente.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => { onCambiarSucursal?.(s.id); setMostrarSelectorEnDashboard(false); }}
+                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                >
+                  <span className="flex items-center gap-2 min-w-0"><Store className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{s.name}</span></span>
+                  {!s.elevenlabs_agent_id && <span className="font-mono text-[9px] uppercase text-muted-foreground/60 shrink-0">Sin agente</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+        <button
+          onClick={onCerrar}
+          className="h-8 px-3.5 rounded-full bg-primary text-primary-foreground text-[12px] font-medium hover:opacity-90 transition-opacity shrink-0"
+        >
+          Regresar a Agente de {canal === 'voz' ? 'voz' : 'WhatsApp'}
+        </button>
       </div>
 
       <div className="flex items-center gap-4 overflow-x-auto">
@@ -521,6 +553,50 @@ function DashboardAgente({
 // honesto hasta que la conversación real empieza, y el botón de abajo
 // dispara la llamada REAL simulando el click dentro del shadow DOM del
 // widget verdadero (mismo mecanismo ya usado para forzar el color del botón).
+// Orbe animado — clon del "pinwheel" de 4 pétalos azul/turquesa del widget
+// real de ElevenLabs (mismo lenguaje visual que ya usa CampoPixeles: azul
+// de marca, sin depender de ninguna librería 3D). 4 pétalos en forma de
+// hoja, girando lento como conjunto, con un pulso sutil de escala.
+function OrbeAgente() {
+  const petalos = [
+    { angulo: 0, color1: '#0ea5e9', color2: '#1d4ed8' },
+    { angulo: 90, color1: '#38bdf8', color2: '#0ea5e9' },
+    { angulo: 180, color1: '#1d4ed8', color2: '#0f2f8f' },
+    { angulo: 270, color1: '#0ea5e9', color2: '#38bdf8' },
+  ];
+  return (
+    <motion.div
+      animate={{ scale: [1, 1.03, 1] }}
+      transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+      className="relative w-56 h-56"
+    >
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+        className="absolute inset-0"
+      >
+        {petalos.map((p, i) => (
+          <div
+            key={i}
+            className="absolute left-1/2 top-1/2 w-[46%] h-[46%]"
+            style={{
+              background: `linear-gradient(135deg, ${p.color1}, ${p.color2})`,
+              borderRadius: '0% 50% 50% 50%',
+              transform: `translate(-100%, -100%) rotate(${p.angulo}deg) translate(50%, 50%)`,
+              transformOrigin: '100% 100%',
+              filter: 'blur(0.5px)',
+            }}
+          />
+        ))}
+      </motion.div>
+      <div
+        className="absolute inset-[38%] rounded-full"
+        style={{ background: 'radial-gradient(circle at 35% 30%, #ffffff40, transparent 60%)' }}
+      />
+    </motion.div>
+  );
+}
+
 function VistaPreviaAgentePantallaCompleta({
   onCerrar,
   nombreAgente,
@@ -541,9 +617,9 @@ function VistaPreviaAgentePantallaCompleta({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-40 bg-background flex flex-col"
+      className="absolute inset-0 z-30 bg-background flex flex-col"
     >
-      <header className="h-14 shrink-0 border-b border-border flex items-center justify-between px-5">
+      <header className="h-12 shrink-0 border-b border-border flex items-center justify-between px-4">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onCerrar}
@@ -572,26 +648,7 @@ function VistaPreviaAgentePantallaCompleta({
             WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 35%, transparent 85%)',
           }}
         >
-          <div className="relative w-56 h-56 flex items-center justify-center">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
-              className="absolute inset-0 rounded-full"
-              style={{
-                background:
-                  'conic-gradient(from 0deg, #1d4ed8, #0ea5e9, transparent 40%, #1d4ed8 90%, #1d4ed8)',
-                filter: 'blur(2px)',
-              }}
-            />
-            <motion.div
-              animate={{ scale: [1, 1.05, 1], opacity: [0.85, 1, 0.85] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute inset-6 rounded-full"
-              style={{
-                background: 'radial-gradient(circle at 35% 30%, #38bdf8, #1d4ed8 60%, #0f2f8f 100%)',
-              }}
-            />
-          </div>
+          <OrbeAgente />
         </div>
 
         <div className="flex-[2] border-l border-border flex flex-col min-h-0">
@@ -1799,7 +1856,7 @@ const AdminDashboard = () => {
 
         {/* Un solo panel grande (como la consola real de Likida): encabezado
             blanco arriba, cuerpo gris abajo con las tarjetas encima. */}
-        <div className="hidden md:flex flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex-col">
+        <div className="hidden md:flex flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex-col relative">
           {activeSection !== 'pregunta' && (
             <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card">
               <h1 className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -2927,6 +2984,7 @@ const AdminDashboard = () => {
                   avatar-orb-color-1="#1d4ed8"
                   avatar-orb-color-2="#0ea5e9"
                   disable-banner="true"
+                  style={vistaPreviaActiva ? { display: 'none' } : undefined}
                 />
               );
             })()}
@@ -3088,9 +3146,12 @@ const AdminDashboard = () => {
           <DashboardAgente
             canal="voz"
             onCerrar={() => setActiveSection('agente-voz')}
-            nombreAgente={sucursalConAgente?.name ?? 'tu sucursal'}
+            nombreAgente={sucursalSeleccionada === 'global' ? 'Todas las sucursales' : (sucursalConAgente?.name ?? 'tu sucursal')}
             statsAgentes={statsAgentes}
             etiquetaRango={etiquetaRangoAgente}
+            sucursalesAgente={sucursalesAgente}
+            sucursalSeleccionada={sucursalSeleccionada}
+            onCambiarSucursal={setSucursalSeleccionada}
           />
         )}
 
@@ -3106,16 +3167,16 @@ const AdminDashboard = () => {
         )}
 
           </main>
+
+          {vistaPreviaActiva && (
+            <VistaPreviaAgentePantallaCompleta
+              onCerrar={() => setVistaPreviaActiva(false)}
+              nombreAgente="Agente de voz"
+              nombreSucursal={sucursalConAgente?.name ?? 'Sucursal'}
+            />
+          )}
         </div>
       </div>
-
-      {vistaPreviaActiva && (
-        <VistaPreviaAgentePantallaCompleta
-          onCerrar={() => setVistaPreviaActiva(false)}
-          nombreAgente="Agente de voz"
-          nombreSucursal={sucursalConAgente?.name ?? 'Sucursal'}
-        />
-      )}
     </div>;
 };
 export default AdminDashboard;
