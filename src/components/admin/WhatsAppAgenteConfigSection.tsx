@@ -58,8 +58,9 @@ const TONE_STYLE_OPTIONS: { value: string; label: string; hint: string }[] = [
 // herramienta, así que elegirlo aquí como principal es una opción real, no
 // un modelo inventado sin probar.
 const LLM_MODEL_OPTIONS: { value: string; label: string; hint: string }[] = [
-  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite", hint: "Rápido y económico — el default actual del canal." },
+  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite", hint: "Rápido y económico, pero se volvió poco confiable llamando a crear_pedido bajo carga real (auditoría 3-sep)." },
   { value: "openai/gpt-5.4-mini", label: "GPT-5.4 mini", hint: "Más capaz; es el mismo modelo que ya usa el respaldo automático." },
+  { value: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", hint: "Más barato que GPT-5.4 mini y confiable en pruebas reales — modelo activo actual." },
 ];
 
 const DEFAULT_BORRADOR: Borrador = {
