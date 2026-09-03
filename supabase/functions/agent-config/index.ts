@@ -103,6 +103,29 @@ Deno.serve(async (req: Request) => {
       return json({ voices: voces });
     }
 
+    if (action === "clone_voice") {
+      // Clonación real de voz (Instant Voice Cloning) — audio_base64 es la
+      // grabación real hecha en el navegador (MediaRecorder), no una
+      // muestra de ejemplo. ElevenLabs quiere multipart/form-data con el
+      // archivo real, así que se reconstruye el Blob desde el base64 aquí.
+      const { name, audio_base64, mime_type } = body;
+      if (!name || !audio_base64) return json({ error: "name y audio_base64 requeridos" }, 400);
+
+      const binario = Uint8Array.from(atob(audio_base64), (c) => c.charCodeAt(0));
+      const form = new FormData();
+      form.append("name", name);
+      form.append("files", new Blob([binario], { type: mime_type || "audio/webm" }), "muestra.webm");
+
+      const res = await fetch("https://api.elevenlabs.io/v1/voices/add", {
+        method: "POST",
+        headers: { "xi-api-key": apiKey },
+        body: form,
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      return json({ voice_id: data.voice_id });
+    }
+
     if (action === "update") {
       const { agent_id, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);

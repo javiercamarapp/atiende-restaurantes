@@ -435,6 +435,59 @@ function DashboardAgente({
   const [guardadoOk, setGuardadoOk] = useState(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [voceandoId, setVoceandoId] = useState<string | null>(null);
+
+  // Clonación real de voz (Instant Voice Cloning) — graba de verdad con el
+  // micrófono del navegador, sube el audio real a ElevenLabs vía
+  // agent-config, y agrega la voz clonada real al catálogo/selección.
+  const [grabandoVoz, setGrabandoVoz] = useState(false);
+  const [clonandoVoz, setClonandoVoz] = useState(false);
+  const [errorClonacion, setErrorClonacion] = useState<string | null>(null);
+  const grabadorRef = useRef<MediaRecorder | null>(null);
+  const trozosRef = useRef<Blob[]>([]);
+
+  const alternarGrabacion = async () => {
+    if (grabandoVoz) {
+      grabadorRef.current?.stop();
+      setGrabandoVoz(false);
+      return;
+    }
+    setErrorClonacion(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const grabador = new MediaRecorder(stream);
+      trozosRef.current = [];
+      grabador.ondataavailable = (e) => { if (e.data.size > 0) trozosRef.current.push(e.data); };
+      grabador.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setClonandoVoz(true);
+        try {
+          const blob = new Blob(trozosRef.current, { type: 'audio/webm' });
+          const buffer = await blob.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          const { data, error } = await supabase.functions.invoke('agent-config', {
+            body: { action: 'clone_voice', name: `Voz de Javier — Los Taquitos de PM`, audio_base64: base64, mime_type: 'audio/webm' },
+          });
+          if (error || data?.error) throw error ?? new Error(data.error);
+          const nuevaVoz: VozDisponible = {
+            voice_id: data.voice_id, public_owner_id: '', name: 'Voz de Javier (clonada)', gender: '—', accent: 'clonada', description: '', preview_url: '',
+          };
+          setVoces((prev) => [nuevaVoz, ...prev]);
+          if (borrador) setBorrador({ ...borrador, voice_id: data.voice_id, voice_public_owner_id: undefined });
+        } catch (err) {
+          console.error('No se pudo clonar la voz:', err);
+          setErrorClonacion('No se pudo clonar la voz — intenta de nuevo.');
+        } finally {
+          setClonandoVoz(false);
+        }
+      };
+      grabador.start();
+      grabadorRef.current = grabador;
+      setGrabandoVoz(true);
+    } catch (err) {
+      console.error('No se pudo acceder al micrófono:', err);
+      setErrorClonacion('No se pudo acceder al micrófono — revisa los permisos del navegador.');
+    }
+  };
   const vocesFiltradas = voces.filter((v) => {
     if (filtroGenero !== 'todos' && v.gender !== filtroGenero) return false;
     if (busquedaVoz && !v.name.toLowerCase().includes(busquedaVoz.toLowerCase()) && !v.accent.toLowerCase().includes(busquedaVoz.toLowerCase())) return false;
@@ -734,7 +787,7 @@ function DashboardAgente({
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2.5">
                   <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} texto />
-                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="Claude Haiku 4.5" indice={1} texto />
+                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="GPT-5.4 Mini" indice={1} texto />
                 </div>
                 <div className="rounded-xl border border-border bg-card p-3.5">
                   <div className="flex items-center justify-between mb-1">
@@ -814,14 +867,23 @@ function DashboardAgente({
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-[13px] font-medium text-foreground">Voz — {vocesFiltradas.length}/{voces.length || '…'} voces en español latino/mexicano</p>
-                    <span
-                      title="Clonar tu propia voz requiere grabar muestras de audio — todavía no está conectado aquí."
-                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-dashed border-border text-muted-foreground text-[11px] font-medium cursor-not-allowed"
+                    <button
+                      onClick={alternarGrabacion}
+                      disabled={clonandoVoz}
+                      className={`flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                        grabandoVoz ? 'bg-destructive text-destructive-foreground border-destructive' : 'border-primary/40 text-primary hover:bg-primary/5'
+                      }`}
                     >
-                      <Mic className="w-3 h-3" /> Clonar mi voz
-                      <span className="font-mono text-[9px] uppercase text-muted-foreground/70">Pronto</span>
-                    </span>
+                      {clonandoVoz ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mic className="w-3 h-3" />}
+                      {clonandoVoz ? 'Clonando…' : grabandoVoz ? 'Detener y clonar' : 'Clonar mi voz'}
+                    </button>
                   </div>
+                  {errorClonacion && <p className="text-[11px] text-destructive mb-2">{errorClonacion}</p>}
+                  {grabandoVoz && (
+                    <p className="text-[11px] text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" /> Grabando — habla normal 20-30 segundos y aprieta "Detener y clonar".
+                    </p>
+                  )}
                   <div className="flex items-center gap-1.5 mb-2">
                     <div className="flex-1 flex items-center gap-1.5 h-8 rounded-lg border border-border bg-card px-2.5">
                       <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
