@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ThemeSelector } from "@/components/ThemeSelector";
-import { AtiendeWordmark } from "@/components/AtiendeLogo";
+import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
   LifeBuoy, Bell, UserRound, CreditCard, Settings, Send, Search, Paperclip,
-  History, X, ArrowUp,
+  History, X, ArrowUp, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 interface Restaurant {

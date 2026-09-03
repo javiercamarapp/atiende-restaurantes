@@ -252,14 +252,30 @@ const AdminDashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
   const fetchData = async (scopedRestaurantId: string | null) => {
-    let productsQuery = supabase.from("products").select("*").order("display_order");
-    let categoriesQuery = supabase.from("categories").select("*").order("display_order");
-    let ordersQuery = supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(50);
-    if (scopedRestaurantId) {
-      productsQuery = productsQuery.eq("restaurant_id", scopedRestaurantId);
-      categoriesQuery = categoriesQuery.eq("restaurant_id", scopedRestaurantId);
-      ordersQuery = ordersQuery.eq("restaurant_id", scopedRestaurantId);
-    }
+    // Nota: no reasignar estas queries con `let x = x.eq(...)` — el builder de
+    // Supabase tiene tipos genéricos encadenados tan profundos que TypeScript
+    // truena con "Type instantiation is excessively deep" al reinferir el
+    // tipo a través de una reasignación. Construirlas en una sola expresión
+    // (ternario) evita el problema por completo.
+    // products/categories: el resultado de encadenar .eq() aquí es tan
+    // profundo que TS truena incluso sin reasignación — se corta la
+    // inferencia con `as any` justo en ese punto (el runtime de Supabase no
+    // se ve afectado, es puramente un límite de profundidad del compilador).
+    // `supabase as any` corta la inferencia justo al inicio de la cadena —
+    // con el cliente tipado, encadenar .select().order().eq() en un
+    // ternario hace que TS truene con "Type instantiation is excessively
+    // deep" (límite del compilador, no un error real; el runtime de
+    // Supabase no se ve afectado).
+    const sb: any = supabase;
+    const productsQuery = scopedRestaurantId
+      ? sb.from("products").select("*").order("display_order").eq("restaurant_id", scopedRestaurantId)
+      : sb.from("products").select("*").order("display_order");
+    const categoriesQuery = scopedRestaurantId
+      ? sb.from("categories").select("*").order("display_order").eq("restaurant_id", scopedRestaurantId)
+      : sb.from("categories").select("*").order("display_order");
+    const ordersQuery = scopedRestaurantId
+      ? sb.from("orders").select("*").order("created_at", { ascending: false }).limit(50).eq("restaurant_id", scopedRestaurantId)
+      : sb.from("orders").select("*").order("created_at", { ascending: false }).limit(50);
     const {
       data: productsData
     } = await productsQuery;
