@@ -15,7 +15,7 @@
 //   TWILIO_AUTH_TOKEN                 - from the Twilio console
 //   TWILIO_WHATSAPP_FROM              - e.g. "whatsapp:+14155238886" for the sandbox number
 //   OPENROUTER_MODEL (opcional)          - default: google/gemini-2.5-flash-lite
-//   OPENROUTER_MODEL_ESCALADO (opcional) - default: anthropic/claude-sonnet-4.6
+//   OPENROUTER_MODEL_ESCALADO (opcional) - default: anthropic/claude-sonnet-5
 //
 // Twilio webhook URL to configure (Sandbox settings -> "When a message comes in"):
 //   https://<project-ref>.supabase.co/functions/v1/whatsapp-webhook
@@ -43,10 +43,11 @@ import { createOrderCore, lookupCustomer, OrderValidationError } from "../_share
 // varias veces seguidas). No vale la pena apostarle eso a la demo.
 //
 // Escalón 2 (solo tras un fallo de herramienta en esta conversación):
-// Claude Sonnet — el mismo escalón caro que usan Likida y atiende.ai para
-// lo que de verdad no se puede permitir fallar dos veces.
+// Claude Sonnet 5 — el mismo escalón caro que usan Likida y atiende.ai
+// para lo que de verdad no se puede permitir fallar dos veces, en su
+// versión más nueva disponible en OpenRouter hoy ($2/$10 por millón).
 const MODEL_DEFAULT = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash-lite";
-const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "anthropic/claude-sonnet-4.6";
+const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "anthropic/claude-sonnet-5";
 const PILOT_BRANCH_SLUG = "fco-montejo";
 
 const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida.
