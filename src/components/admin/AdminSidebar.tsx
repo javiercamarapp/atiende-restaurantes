@@ -28,6 +28,7 @@ import {
   GraduationCap,
   ChevronDown,
   Mic,
+  PhoneCall,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeSelector } from '@/components/ThemeSelector';
@@ -60,6 +61,7 @@ const menuSections = [
     items: [
       { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
       { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
+      { id: 'contactos', label: 'Contactos', icon: PhoneCall },
       { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History, disabled: true },
       { id: 'pagos', label: 'Pagos', icon: CreditCard, disabled: true },
       { id: 'estados-solicitudes', label: 'Estados de solicitudes', icon: Clock, disabled: true },

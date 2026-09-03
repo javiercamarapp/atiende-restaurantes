@@ -4,7 +4,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2 } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, PhoneCall, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -80,6 +80,16 @@ interface Repartidor {
   email: string;
   nombre: string | null;
   telefono: string | null;
+  created_at: string;
+}
+interface CallbackRequest {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  reason: string | null;
+  message: string | null;
+  source: string;
+  resolved: boolean;
   created_at: string;
 }
 // Estilo compartido del tooltip de recharts — compacto y con tipografía
@@ -1356,6 +1366,7 @@ const AdminDashboard = () => {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [repartidores, setRepartidores] = useState<Repartidor[]>([]);
+  const [callbackRequests, setCallbackRequests] = useState<CallbackRequest[]>([]);
   const [stats, setStats] = useState({
     revenue: 0,
     customers: 0,
@@ -1846,6 +1857,13 @@ const AdminDashboard = () => {
     } else {
       setRepartidores([]);
     }
+
+    const callbackRequestsQuery = scopedRestaurantId
+      ? sb.from("callback_requests").select("*").order("created_at", { ascending: false }).limit(100).eq("restaurant_id", scopedRestaurantId)
+      : sb.from("callback_requests").select("*").order("created_at", { ascending: false }).limit(100);
+    const { data: callbackRequestsData } = await callbackRequestsQuery;
+    setCallbackRequests(callbackRequestsData || []);
+
     setStats({
       revenue: 0,
       customers: 0,
@@ -2190,9 +2208,17 @@ const AdminDashboard = () => {
         description: "Producto actualizado correctamente"
       });
     } else {
+      if (!restaurantId) {
+        toast({
+          title: "Error",
+          description: "No se pudo determinar el restaurante para este producto",
+          variant: "destructive"
+        });
+        return;
+      }
       const {
         error
-      } = await supabase.from("products").insert(restaurantId ? { ...productData, restaurant_id: restaurantId } : productData);
+      } = await supabase.from("products").insert({ ...productData, restaurant_id: restaurantId });
       if (error) {
         toast({
           title: "Error",
@@ -2245,12 +2271,20 @@ const AdminDashboard = () => {
   };
   const handleCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!restaurantId) {
+      toast({
+        title: "Error",
+        description: "No se pudo determinar el restaurante para esta categoría",
+        variant: "destructive"
+      });
+      return;
+    }
     const {
       error
     } = await supabase.from("categories").insert({
       name: categoryForm.name,
       slug: categoryForm.slug.toLowerCase().replace(/\s+/g, "-"),
-      ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+      restaurant_id: restaurantId,
     });
     if (error) {
       toast({
@@ -2298,6 +2332,14 @@ const AdminDashboard = () => {
       is_popular: false,
       is_available: true
     });
+  };
+  const handleResolverContacto = async (id: string, resolved: boolean) => {
+    const { error } = await supabase.from("callback_requests").update({ resolved }).eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    setCallbackRequests((prev) => prev.map((c) => (c.id === id ? { ...c, resolved } : c)));
   };
   const handlePromoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2540,6 +2582,7 @@ const AdminDashboard = () => {
                 {activeSection === 'users' && (<><Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Usuarios</>)}
                 {activeSection === 'repartidores' && (<><Truck className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
                 {activeSection === 'notificaciones' && (<><Bell className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Notificaciones</>)}
+                {activeSection === 'contactos' && (<><PhoneCall className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Contactos por regresar llamada</>)}
                 {activeSection === 'help' && (<><HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Centro de Ayuda</>)}
                 {activeSection === 'agente-voz' && (<><Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de voz</>)}
                 {activeSection === 'agente-whatsapp' && (<><MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de WhatsApp</>)}
@@ -3582,6 +3625,57 @@ const AdminDashboard = () => {
         {activeSection === 'notificaciones' && (
           <div className="max-w-xl">
             <NotificacionesSection userId={user?.id} />
+          </div>
+        )}
+
+        {activeSection === 'contactos' && (
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {callbackRequests.length} en total · {callbackRequests.filter((c) => !c.resolved).length} pendientes
+              </p>
+            </div>
+            <p className="text-[12px] text-muted-foreground -mt-1">
+              Mensajes o llamadas que NO eran para hacer un pedido (quejas, facturación, empleo, etc.) — el agente de voz o de WhatsApp anotó el contacto para que alguien del restaurante le regrese la comunicación.
+            </p>
+
+            {callbackRequests.length === 0 ? (
+              <div className="py-12 text-center">
+                <PhoneCall className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay contactos pendientes de regresar llamada.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border overflow-hidden">
+                {callbackRequests.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`p-3 flex items-start justify-between gap-3 border-b border-dashed border-border last:border-0 transition-colors ${c.resolved ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        {c.source === 'voice' ? <Mic className="w-5 h-5 text-primary" strokeWidth={1.75} /> : <MessageCircle className="w-5 h-5 text-primary" strokeWidth={1.75} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{c.customer_name} <span className="text-muted-foreground font-normal">· {c.customer_phone}</span></p>
+                        <p className="text-[12px] text-muted-foreground">
+                          {c.reason && <span className="px-1.5 py-0.5 rounded bg-muted text-foreground mr-1.5">{c.reason}</span>}
+                          {format(new Date(c.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                        </p>
+                        {c.message && <p className="text-[12.5px] text-foreground mt-1 leading-snug">{c.message}</p>}
+                      </div>
+                    </div>
+                    <Button
+                      variant={c.resolved ? "outline" : "default"}
+                      size="sm"
+                      className="h-7 px-2.5 rounded-full text-[11px] shrink-0"
+                      onClick={() => handleResolverContacto(c.id, !c.resolved)}
+                    >
+                      {c.resolved ? "Reabrir" : "Marcar atendido"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
