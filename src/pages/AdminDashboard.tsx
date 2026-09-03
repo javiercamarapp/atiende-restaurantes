@@ -244,14 +244,27 @@ function TileDashboardVoz({
 // una sola cifra.
 function GraficaFantasma({ titulo }: { titulo: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
+    <div className="rounded-xl border border-border bg-card p-3 flex flex-col">
       <p className="text-[12px] text-muted-foreground mb-1">{titulo}</p>
       <p className="font-display text-lg font-semibold text-muted-foreground/50 mb-2">—</p>
-      <svg viewBox="0 0 200 60" className="w-full h-14">
-        <line x1="0" y1="0" x2="0" y2="60" stroke="hsl(var(--border))" strokeWidth="1" />
-        <line x1="0" y1="59" x2="200" y2="59" stroke="hsl(var(--border))" strokeWidth="1" />
-        <line x1="0" y1="30" x2="200" y2="30" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="2 4" />
-        <line x1="0" y1="45" x2="200" y2="45" stroke="hsl(var(--muted-foreground))" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.4" />
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-20">
+        <line x1="0" y1="0" x2="0" y2="40" stroke="hsl(var(--border))" strokeWidth="0.5" />
+        <line x1="0" y1="39.5" x2="100" y2="39.5" stroke="hsl(var(--border))" strokeWidth="0.5" />
+        <line x1="0" y1="14" x2="100" y2="14" stroke="hsl(var(--border))" strokeWidth="0.4" strokeDasharray="1 2" />
+        <line x1="0" y1="27" x2="100" y2="27" stroke="hsl(var(--border))" strokeWidth="0.4" strokeDasharray="1 2" />
+        <motion.line
+          x1="0"
+          y1="22"
+          x2="100"
+          y2="22"
+          stroke="hsl(var(--primary))"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeDasharray="3 3"
+          animate={{ strokeDashoffset: [0, -12] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+          opacity="0.5"
+        />
       </svg>
     </div>
   );
