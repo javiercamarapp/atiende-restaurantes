@@ -3071,57 +3071,6 @@ const AdminDashboard = () => {
 
             {/* Panel de historial — idéntico al de Likida: "Nuevo chat",
                 buscador, etiqueta "RECIENTES", lista o estado vacío. */}
-            {mostrarHistorial && (
-              <div className="absolute right-3 inset-y-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
-                <div className="p-3 flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => { setMensajesChat([]); setMostrarHistorial(false); setMostrarSugerencias(false); }}
-                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 hover:bg-muted transition-colors text-sm font-medium text-foreground"
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                    Nuevo chat
-                  </button>
-                  <button
-                    onClick={() => setMostrarHistorial(false)}
-                    className="w-8 h-8 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
-                  >
-                    <PanelRightClose className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="px-3 pb-3 shrink-0">
-                  <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-2">
-                    <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <input
-                      value={busquedaHistorial}
-                      onChange={(e) => setBusquedaHistorial(e.target.value)}
-                      placeholder="Buscar chats"
-                      className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                    />
-                  </div>
-                </div>
-                <p className="px-4 pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground shrink-0">
-                  Recientes
-                </p>
-                <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-0.5">
-                  {historialFiltrado.length === 0 ? (
-                    <p className="text-sm text-muted-foreground px-2 py-2">
-                      {historialPreguntas.length === 0 ? 'Sin chats recientes.' : 'Sin resultados.'}
-                    </p>
-                  ) : (
-                    historialFiltrado.map((h, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { setMostrarHistorial(false); responderPreguntaLocal(h); }}
-                        className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate text-foreground"
-                      >
-                        {h}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-16 md:pt-24'}`}>
               {mensajesChat.length === 0 && (
                 <>
@@ -3590,6 +3539,62 @@ const AdminDashboard = () => {
         )}
 
           </main>
+
+          {/* Panel de historial de "Pregunta a tus datos" — vive fuera de
+              <main> y se posiciona contra ESTE wrapper (header+main juntos,
+              overflow-hidden + rounded-2xl ya probado con Vista previa)
+              en vez de contra el div interno de la sección, cuya altura
+              real depende del contenido del chat y se quedaba corto. */}
+          {activeSection === 'pregunta' && mostrarHistorial && (
+            <div className="absolute right-3 inset-y-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
+              <div className="p-3 flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => { setMensajesChat([]); setMostrarHistorial(false); setMostrarSugerencias(false); }}
+                  className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  Nuevo chat
+                </button>
+                <button
+                  onClick={() => setMostrarHistorial(false)}
+                  className="w-8 h-8 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                >
+                  <PanelRightClose className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="px-3 pb-3 shrink-0">
+                <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-2">
+                  <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <input
+                    value={busquedaHistorial}
+                    onChange={(e) => setBusquedaHistorial(e.target.value)}
+                    placeholder="Buscar chats"
+                    className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+              </div>
+              <p className="px-4 pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground shrink-0">
+                Recientes
+              </p>
+              <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-0.5">
+                {historialFiltrado.length === 0 ? (
+                  <p className="text-sm text-muted-foreground px-2 py-2">
+                    {historialPreguntas.length === 0 ? 'Sin chats recientes.' : 'Sin resultados.'}
+                  </p>
+                ) : (
+                  historialFiltrado.map((h, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setMostrarHistorial(false); responderPreguntaLocal(h); }}
+                      className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate text-foreground"
+                    >
+                      {h}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
 
           {vistaPreviaActiva && (
             <VistaPreviaAgentePantallaCompleta
