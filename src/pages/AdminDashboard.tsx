@@ -883,7 +883,9 @@ function VistaPreviaAgentePantallaCompleta({
           <div className="p-4 border-t border-border">
             <button
               onClick={alternarLlamadaReal}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-full bg-primary text-primary-foreground text-[13px] font-medium hover:opacity-90 transition-opacity"
+              className={`w-full flex items-center justify-center gap-2 h-10 rounded-full text-[13px] font-medium transition-colors ${
+                llamadaActiva ? 'bg-destructive text-destructive-foreground hover:opacity-90' : 'bg-primary text-primary-foreground hover:opacity-90'
+              }`}
             >
               {llamadaActiva ? <XCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
               {llamadaActiva ? 'Terminar llamada' : 'Iniciar llamada de prueba'}
