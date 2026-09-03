@@ -39,6 +39,7 @@ const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
+  const [nombreSaludo, setNombreSaludo] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -66,7 +67,9 @@ const SuperAdminDashboard = () => {
         supabase.from("customers").select("restaurant_id, name, phone, order_count, last_order_at").order("last_order_at", { ascending: false }),
         supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle(),
       ]);
-      setUserName(profile?.nombre?.split(" ")[0] || (session.user.email ?? "").split("@")[0]);
+      const nombreCompleto = profile?.nombre || (session.user.email ?? "").split("@")[0];
+      setUserName(nombreCompleto.split(" ")[0]);
+      setNombreSaludo(nombreCompleto.split(" ").slice(0, 2).join(" "));
       setRestaurants(r ?? []);
       setOrders(o ?? []);
       setCustomers(c ?? []);
@@ -78,6 +81,13 @@ const SuperAdminDashboard = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/admin/login");
+  };
+
+  const saludoHorario = () => {
+    const hora = new Date().getHours();
+    if (hora < 12) return 'Buenos días';
+    if (hora < 19) return 'Buenas tardes';
+    return 'Buenas noches';
   };
 
   const ordersToday = orders.filter((o) => isToday(o.created_at));
@@ -243,8 +253,8 @@ const SuperAdminDashboard = () => {
             <p className="text-sm text-muted-foreground">Cargando…</p>
           ) : section === "resumen" ? (
             <>
-              <h1 className="font-display text-2xl font-semibold text-foreground mb-1">
-                Buenas {new Date().getHours() < 13 ? "tardes" : "tardes"}, {userEmail.split("@")[0]}
+              <h1 className="text-xl font-semibold text-foreground mb-1">
+                {saludoHorario()}, {nombreSaludo || 'de vuelta'} 👋
               </h1>
               <p className="text-sm text-muted-foreground mb-6">Toda la plataforma en una pantalla — cifras reales, de todos los restaurantes</p>
 
