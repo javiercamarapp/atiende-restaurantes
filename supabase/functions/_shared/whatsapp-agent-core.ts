@@ -87,6 +87,7 @@ REGLAS DE NEGOCIO:
 - Si el mensaje NO es para hacer un pedido (queja, facturación, empleo, u otro motivo que no sea ordenar comida): sé honesto, di que este número es para pedidos, pide su nombre si no lo tienes, y llama a registrar_contacto con nombre, motivo y un resumen breve de lo que dijo — así alguien del restaurante le contesta de verdad, no lo prometas sin registrarlo. Usa exactamente el nombre que el cliente te dio en ESTE chat para registrar_contacto — nunca inventes o supongas un nombre que no te haya dado.
 - Si el cliente pide que le entregue un repartidor específico (por nombre o "el de siempre"), sé honesto de inmediato: no hay forma de elegir o garantizar qué repartidor hace la entrega — dilo con naturalidad en vez de decir "ya lo anoté" o "se lo hago saber", porque esa preferencia no queda guardada en ningún lado y sería una promesa falsa.
 - Si crear_pedido devuelve un error para un producto que ya confirmaste con buscar_producto (ej. "producto no disponible"), no lo repitas como excusa fabricada ("el sistema lo marca no disponible") sin haberlo vuelto a confirmar: llama a buscar_producto de nuevo para ese producto antes de reintentar crear_pedido. Si sigue fallando después de eso, sé honesto con el cliente ("se me está atorando este producto en el sistema, ¿lo dejamos fuera o lo intentamos de nuevo en un momento?") en vez de inventar un motivo o quitarlo del pedido sin decírselo con claridad.
+- REGLA DURA: si en esta MISMA conversación ya llamaste a crear_pedido y te respondió con éxito (un pedido real), NUNCA vuelvas a llamarla otra vez — ni si el cliente pregunta "¿ya quedó mi pedido?", ni si manda un mensaje confuso o repite algo, ni por ningún motivo. Solo repítele el resumen del pedido que ya se creó y confírmale que sigue en camino. Llamar crear_pedido dos veces crea un pedido real duplicado en cocina.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda presentándote como Los Taquitos de PM (sin mencionar sucursal todavía — aún no la sabes) y pregunta si quiere hacer un pedido. En cuanto confirme que sí, pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir). En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante — ya lo tienes.
@@ -408,5 +409,21 @@ export async function runAgentTurn(
     }
   }
 
+  // Bug real confirmado el 3-sep-2026: si el loop se queda sin turnos DESPUÉS
+  // de que crear_pedido ya tuvo éxito (orderId ya viene con un valor real),
+  // este fallback genérico le decía al cliente "se me complicó" pese a que su
+  // pedido SÍ se había registrado — el cliente insistía, y el siguiente turno
+  // disparaba una segunda llamada real a crear_pedido (mitigado aparte con un
+  // guard de duplicados en createOrderCore, pero el mensaje engañoso en sí ya
+  // era un bug real que había que corregir). Si ya hay un orderId real, se lo
+  // decimos con éxito en vez de sonar a error.
+  if (orderId) {
+    return {
+      reply: "¡Listo! Tu pedido ya quedó registrado y se mandó a cocina. Tiempo estimado: 40-50 minutos (1h-1h20 si llueve).",
+      updatedMessages: messages,
+      orderId,
+      branchId,
+    };
+  }
   return { reply: "Se me complicó procesar tu pedido, un momento por favor.", updatedMessages: messages, orderId, branchId };
 }

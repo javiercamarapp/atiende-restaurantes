@@ -33,6 +33,14 @@
 //                                                 (conversation_config.language_presets)
 //                                                 y activa/desactiva el built-in tool
 //                                                 language_detection
+//   { action: "list_conversations", agent_id?, page_size?, call_successful? } ->
+//                                                        llamadas reales recientes (id, fecha,
+//                                                        duración, resultado) — para revisar qué
+//                                                        pasó de verdad en una llamada sin acceso
+//                                                        al panel de ElevenLabs
+//   { action: "get_conversation", conversation_id }   -> transcript completo turno-por-turno de
+//                                                        una llamada real, incluyendo qué tools
+//                                                        se llamaron y qué respondieron
 //
 // Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
 // interna, no algo que el dueño del restaurante deba ver.
@@ -571,6 +579,40 @@ Deno.serve(async (req: Request) => {
       const { agent_id } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
       const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json(await res.json());
+    }
+
+    // Pedido real de Javier el 3-sep-2026: revisar llamadas de voz reales
+    // (transcript real, no simulado) sin poder hacer la llamada él mismo —
+    // ver qué pasó de verdad cuando reportó un bug. Endpoints reales
+    // documentados: GET /v1/convai/conversations (lista, filtrable por
+    // agent_id) y GET /v1/convai/conversations/{conversation_id} (detalle
+    // completo, incluye transcript turno-por-turno con qué tools se
+    // llamaron y qué respondieron).
+    if (action === "list_conversations") {
+      const { agent_id, page_size, call_successful } = body as {
+        agent_id?: string;
+        page_size?: number;
+        call_successful?: string;
+      };
+      const params = new URLSearchParams();
+      if (agent_id) params.set("agent_id", agent_id);
+      params.set("page_size", String(page_size ?? 20));
+      if (call_successful) params.set("call_successful", call_successful);
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/conversations?${params}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json(await res.json());
+    }
+
+    if (action === "get_conversation") {
+      const { conversation_id } = body as { conversation_id?: string };
+      if (!conversation_id) return json({ error: "conversation_id requerido" }, 400);
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${conversation_id}`, {
         headers: { "xi-api-key": apiKey },
       });
       if (!res.ok) return json({ error: await res.text() }, res.status);

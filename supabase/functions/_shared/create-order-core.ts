@@ -192,6 +192,41 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
   // caller/chatter is recognized next time regardless of channel.
   const customer = await upsertCustomer(supabase, branch.restaurant_id, payload.customer_phone, payload.customer_name, payload.customer_address);
 
+  // Bug crítico real confirmado en la auditoría del 3-sep-2026 ("haz múltiples
+  // pruebas... rómpelo"): cuando un mensaje del cliente confundía al LLM
+  // (input agresivo, fuera de tema, o simplemente "¿ya quedó mi pedido?"), el
+  // loop de tool-use de WhatsApp se quedaba sin turnos disponibles DESPUÉS de
+  // que crear_pedido ya había tenido éxito, y el fallback genérico
+  // ("se me complicó procesar tu pedido") hacía que el cliente insistiera —
+  // el siguiente mensaje disparaba una SEGUNDA llamada real a crear_pedido
+  // con los mismos productos, creando un pedido duplicado real en `orders`
+  // (verificado: 2 filas reales, mismo teléfono/sucursal/items/total,
+  // segundos de diferencia). Se corrige el mensaje de fallback engañoso en
+  // whatsapp-agent-core.ts, PERO la protección real y a prueba de canal
+  // (voz, WhatsApp, web, cualquiera futuro) vive aquí: si ya existe un
+  // pedido "pending" MUY reciente (mismo teléfono, misma sucursal, mismos
+  // items exactos), se devuelve ESE pedido en vez de insertar uno nuevo —
+  // nunca dos filas reales por una sola intención real de pedido.
+  const haceCincoMinutos = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: posiblesDuplicados } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("customer_phone", payload.customer_phone)
+    .eq("branch_id", branch.id)
+    .eq("status", "pending")
+    .gte("created_at", haceCincoMinutos)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const itemsOrdenados = [...orderItems].sort((a, b) => a.id.localeCompare(b.id));
+  const duplicado = (posiblesDuplicados ?? []).find((o: any) => {
+    const itemsExistentes = [...(o.items ?? [])].sort((a: any, b: any) => a.id.localeCompare(b.id));
+    return JSON.stringify(itemsExistentes) === JSON.stringify(itemsOrdenados);
+  });
+  if (duplicado) {
+    return duplicado;
+  }
+
   const { data: order, error: insertError } = await supabase
     .from("orders")
     .insert({
