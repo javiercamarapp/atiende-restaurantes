@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, ExternalLink, Clock } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -2197,17 +2197,9 @@ const AdminDashboard = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-[13px] text-muted-foreground">
-                Desempeño real del agente de ElevenLabs — se llena solo con la actividad real, sin datos de ejemplo.
+                Desempeño real de tu agente de voz — se llena solo con la actividad real, sin datos de ejemplo.
               </p>
               <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href="https://elevenlabs.io/app/conversational-ai"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <ExternalLink className="w-3 h-3" /> Abrir en ElevenLabs
-                </a>
                 <button
                   onClick={cargarDatosAgentes}
                   disabled={cargandoAgentes}
