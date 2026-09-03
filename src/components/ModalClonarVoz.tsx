@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { AtiendeMark } from "@/components/AtiendeLogo";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  UploadCloud, Mic, Square, Play, Pause, Trash2, ArrowLeft, X,
+  UploadCloud, Mic, Square, Play, Pause, Trash2, ArrowLeft,
   Users, ThumbsUp, Loader2, CheckCircle2, AlertCircle,
 } from "lucide-react";
 
@@ -58,6 +58,10 @@ export function ModalClonarVoz({ open, onOpenChange, onVozClonada }: Props) {
   const [barras, setBarras] = useState<number[]>(new Array(28).fill(4));
   const [arrastrando, setArrastrando] = useState(false);
 
+  const segundosRef = useRef(0); // valor en vivo — `segundos` (state) queda
+  // "congelado" en 0 dentro del closure de grabador.onstop (se define una
+  // sola vez al iniciar la grabación), así que la duración real hay que
+  // leerla de esta ref, actualizada en cada tick del timer, no del state.
   const streamRef = useRef<MediaStream | null>(null);
   const grabadorRef = useRef<MediaRecorder | null>(null);
   const trozosRef = useRef<Blob[]>([]);
@@ -159,23 +163,23 @@ export function ModalClonarVoz({ open, onOpenChange, onVozClonada }: Props) {
       const blob = new Blob(trozosRef.current, { type: "audio/webm" });
       setGrabaciones((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), nombre: `Grabación ${prev.length + 1}.webm`, blob, url: URL.createObjectURL(blob), duracionSeg: segundos },
+        { id: crypto.randomUUID(), nombre: `Grabación ${prev.length + 1}.webm`, blob, url: URL.createObjectURL(blob), duracionSeg: segundosRef.current },
       ]);
       setVistaSubir("elegir");
     };
     grabadorRef.current = grabador;
     grabador.start();
     setGrabando(true);
+    segundosRef.current = 0;
     setSegundos(0);
     dibujarBarras();
 
     timerRef.current = setInterval(() => {
       setSegundos((s) => {
-        if (s + 1 >= DURACION_MAX_GRABACION_SEG) {
-          detenerGrabacion();
-          return DURACION_MAX_GRABACION_SEG;
-        }
-        return s + 1;
+        const siguiente = s + 1 >= DURACION_MAX_GRABACION_SEG ? DURACION_MAX_GRABACION_SEG : s + 1;
+        segundosRef.current = siguiente;
+        if (siguiente >= DURACION_MAX_GRABACION_SEG) detenerGrabacion();
+        return siguiente;
       });
     }, 1000);
   };
@@ -293,12 +297,6 @@ export function ModalClonarVoz({ open, onOpenChange, onVozClonada }: Props) {
     <Dialog open={open} onOpenChange={(v) => { if (!v) onOpenChange(false); }}>
       <DialogContent className="max-w-5xl p-0 gap-0 overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
         <div className="h-1 bg-gradient-to-r from-primary to-secondary" />
-        <button
-          onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors z-10"
-        >
-          <X className="w-4 h-4" />
-        </button>
 
         <div className="grid grid-cols-[220px_1fr] min-h-[520px]">
           {/* Columna izquierda: branding + pasos */}

@@ -9,7 +9,7 @@
 //
 // Acciones (POST, body { action, ... }):
 //   { action: "get", agent_id }              -> config actual, solo campos seguros para el cliente
-//   { action: "voices" }                      -> catálogo curado de voces en español latino/mexicano, con preview_url real
+//   { action: "voices" }                      -> catálogo compartido de ElevenLabs, filtrado a español
 //   { action: "update", agent_id, ... }       -> aplica cambios reales al agente
 //
 // Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
@@ -17,15 +17,22 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// La cuenta real de ElevenLabs es de Javier — ya tenía voces clonadas
+// personales suyas antes de este proyecto (Javier Cámara, Omar, Papá, etc.),
+// sin relación con ningún restaurante. Para que "Mis voces" del panel de
+// un restaurante nunca mezcle esas voces personales (ni, a futuro, las de
+// otro restaurante que use la misma cuenta), cada voz clonada DESDE este
+// panel se etiqueta con el restaurante que la creó — mis_voces solo
+// devuelve las que traen esa etiqueta exacta, nunca todas las clonadas de
+// la cuenta.
+const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 async function getApiKey(supabase: ReturnType<typeof createClient>): Promise<string> {
-  // vault.decrypted_secrets no está expuesto a PostgREST directamente —
-  // se lee vía la función public.get_secret (security definer, solo
-  // ejecutable por service_role), no el esquema vault crudo.
   const { data, error } = await supabase.rpc("get_secret", { secret_name: "ELEVENLABS_API_KEY" });
   if (error || !data) throw new Error("No se encontró la API key de ElevenLabs en Vault");
   return data as string;
@@ -44,8 +51,6 @@ Deno.serve(async (req: Request) => {
     const { action } = body;
 
     if (action === "llm_list") {
-      // Catálogo real y vigente de modelos/precios — nunca se adivina un id
-      // de modelo, siempre se verifica aquí antes de fijarlo en un agente.
       const res = await fetch("https://api.elevenlabs.io/v1/convai/llm/list", {
         headers: { "xi-api-key": apiKey },
       });
@@ -54,9 +59,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "add_tool") {
-      // Añade un webhook tool nuevo al agente (idempotente por nombre) —
-      // acción admin acotada en vez de un passthrough genérico de PATCH,
-      // para no ampliar el radio de lo que esta función puede reescribir.
       const { agent_id, tool } = body as {
         agent_id?: string;
         // deno-lint-ignore no-explicit-any
@@ -82,12 +84,27 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    if (action === "set_tools") {
+      // Reemplaza el arreglo de tools completo (para editar un tool
+      // existente, no solo añadir uno nuevo) — acción admin acotada al
+      // arreglo de tools, igual que add_tool.
+      const { agent_id, tools } = body as {
+        agent_id?: string;
+        // deno-lint-ignore no-explicit-any
+        tools?: any[];
+      };
+      if (!agent_id || !Array.isArray(tools)) return json({ error: "agent_id y tools (arreglo) son requeridos" }, 400);
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        method: "PATCH",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_config: { agent: { prompt: { tools } } } }),
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json({ ok: true });
+    }
+
     if (action === "get_raw") {
-      // Solo para depuración/auditoría desde este entorno — nunca se llama
-      // desde el frontend del cliente. Devuelve el JSON completo y real del
-      // agente tal como lo entrega la API, para verificar nombres de campos
-      // reales antes de construir cualquier control nuevo en el editor
-      // (nunca adivinar un parámetro).
       const { agent_id } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
       const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
@@ -119,7 +136,6 @@ Deno.serve(async (req: Request) => {
         speed: tts.speed ?? 1.0,
         stability: tts.stability ?? 0.5,
         similarity_boost: tts.similarity_boost ?? 0.8,
-        // Sonido de fondo real durante la llamada — source_id null = desactivado.
         background_sound_id: backgroundSound.source_id ?? null,
         background_sound_volume: backgroundSound.volume ?? 0.15,
         background_sound_crossfade: backgroundSound.crossfade_loop ?? true,
@@ -168,12 +184,29 @@ Deno.serve(async (req: Request) => {
       return json({ voices: voces });
     }
 
+    if (action === "mis_voces") {
+      const res = await fetch("https://api.elevenlabs.io/v1/voices", {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      // Solo voces clonadas DESDE este panel para ESTE restaurante — nunca
+      // las voces personales de Javier ni las de otro restaurante que
+      // comparta la misma cuenta de ElevenLabs.
+      // deno-lint-ignore no-explicit-any
+      const voces = (data.voices ?? []).filter((v: any) => v.category === "cloned" && v.labels?.restaurant_id === RESTAURANT_ID).map((v: any) => ({
+        voice_id: v.voice_id,
+        public_owner_id: "",
+        name: v.name,
+        gender: v.labels?.gender ?? "—",
+        accent: v.labels?.accent ?? "clonada",
+        description: v.labels?.description ?? "",
+        preview_url: v.preview_url ?? "",
+      }));
+      return json({ voices: voces });
+    }
+
     if (action === "clone_voice") {
-      // Clonación real de voz (Instant Voice Cloning) — cada muestra en
-      // `samples` es audio real (grabado en el navegador con MediaRecorder o
-      // subido por el usuario), nunca una muestra de ejemplo. ElevenLabs
-      // acepta varios archivos a la vez en /v1/voices/add (mejor clonación
-      // con más muestras reales) — se reconstruye cada Blob desde su base64.
       // deno-lint-ignore no-explicit-any
       const { name, samples, remove_background_noise } = body as { name?: string; samples?: any[]; remove_background_noise?: boolean };
       if (!name || !samples || !Array.isArray(samples) || samples.length === 0) {
@@ -182,6 +215,7 @@ Deno.serve(async (req: Request) => {
 
       const form = new FormData();
       form.append("name", name);
+      form.append("labels", JSON.stringify({ restaurant_id: RESTAURANT_ID }));
       if (remove_background_noise !== undefined) form.append("remove_background_noise", String(remove_background_noise));
       samples.forEach((s, i) => {
         const binario = Uint8Array.from(atob(s.audio_base64), (c) => c.charCodeAt(0));
@@ -206,11 +240,6 @@ Deno.serve(async (req: Request) => {
       } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
-      // Una voz de la biblioteca compartida de ElevenLabs no se puede
-      // asignar a un agente hasta que primero se "añade" a la cuenta
-      // propia — si no, el PATCH del agente responde voice_not_found. Es
-      // idempotente (si ya estaba añadida, responde igual con éxito), así
-      // que se intenta siempre que venga un voice_id nuevo con su dueño.
       if (voice_id && voice_public_owner_id) {
         const addRes = await fetch(`https://api.elevenlabs.io/v1/voices/add/${voice_public_owner_id}/${voice_id}`, {
           method: "POST",
@@ -243,9 +272,6 @@ Deno.serve(async (req: Request) => {
       if (stability !== undefined) ttsPatch.stability = stability;
       if (similarity_boost !== undefined) ttsPatch.similarity_boost = similarity_boost;
 
-      // Sonido de fondo real (campo público de la API, distinto del
-      // "filtro de voz"/audio_effects que ElevenLabs documenta como
-      // exclusivo del dashboard — ver comentario arriba de esta función).
       // deno-lint-ignore no-explicit-any
       const conversationPatch: Record<string, any> = {};
       if (background_sound_id !== undefined || background_sound_volume !== undefined || background_sound_crossfade !== undefined) {
@@ -265,7 +291,7 @@ Deno.serve(async (req: Request) => {
 
       // deno-lint-ignore no-explicit-any
       const patchBody: Record<string, any> = { conversation_config };
-      if (name !== undefined) patchBody.name = name; // top-level, hermano de conversation_config — no va anidado
+      if (name !== undefined) patchBody.name = name;
 
       const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
         method: "PATCH",

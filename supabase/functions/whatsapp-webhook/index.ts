@@ -59,7 +59,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda (sin mencionar sucursal todavía — aún no la sabes). Pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir).
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, decide con naturalidad cuál de las sucursales de arriba está más cerca — si la colonia no es clara, pregunta la colonia o una referencia cercana antes de decidir. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien.
-4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto. Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
+4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal que ya confirmaste en el paso 3 — el precio real varía por sucursal). Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
 5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole, tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y pregunta si quiere alguna salsa en específico o alguna guarnición extra (tienen costo aparte).
 6. Da el total final del pedido, y pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos a alguien con terminal física al momento de la entrega.
 7. Da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).
@@ -74,11 +74,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "buscar_producto",
-      description: "Busca productos del menú real por nombre o palabra clave. Devuelve id, nombre y precio.",
+      description: "Busca productos del menú real de la sucursal por nombre o palabra clave. Devuelve id, nombre y precio real de esa sucursal (el precio varía por sucursal).",
       parameters: {
         type: "object",
-        properties: { query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" } },
-        required: ["query"],
+        properties: {
+          query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" },
+          branch_slug: { type: "string", description: "El branch_slug de la sucursal ya confirmada en el paso 3. Si todavía no se confirma la sucursal, no llames esta herramienta." },
+        },
+        required: ["query", "branch_slug"],
       },
     },
   },
@@ -243,14 +246,28 @@ async function runAgentTurn(
       if (result === undefined) {
         try {
           if (call.function.name === "buscar_producto") {
-            const { data: products } = await supabase
-              .from("products")
-              .select("id, name, price")
-              .eq("restaurant_id", restaurantId)
-              .eq("is_available", true)
-              .ilike("name", `%${input.query}%`)
-              .limit(6);
-            result = products ?? [];
+            // Precio real de la sucursal confirmada — branch_products, no el
+            // precio plano de `products` (los precios sí varían de verdad
+            // entre sucursales, verificado contra el menú fotografiado real).
+            const { data: branch } = await supabase
+              .from("branches")
+              .select("id")
+              .eq("slug", input.branch_slug as string)
+              .maybeSingle();
+            if (!branch) {
+              result = { error: "branch_slug desconocido — confirma la sucursal antes de buscar productos" };
+            } else {
+              const { data: rows } = await supabase
+                .from("branch_products")
+                .select("price, is_available, products!inner(id, name, restaurant_id)")
+                .eq("branch_id", branch.id)
+                .eq("is_available", true)
+                .eq("products.restaurant_id", restaurantId)
+                .ilike("products.name", `%${input.query}%`)
+                .limit(6);
+              // deno-lint-ignore no-explicit-any
+              result = (rows ?? []).map((r: any) => ({ id: r.products.id, name: r.products.name, price: r.price }));
+            }
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
               branch_slug: input.branch_slug as string,

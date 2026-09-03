@@ -3,6 +3,11 @@
 // agente llame a crear_pedido — mismo patrón que ya usa internamente el
 // webhook de WhatsApp (buscar_producto), expuesto aquí como su propio
 // endpoint porque el agente de voz no comparte ese proceso.
+//
+// Precio y disponibilidad vienen de `branch_products` (precio/disponibilidad
+// real POR sucursal — verificado contra fotos reales del menú de cada una,
+// distinto entre sucursales de verdad) en vez del precio plano de
+// `products`, que hoy solo sirve de catálogo maestro de nombres/categorías.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -32,20 +37,24 @@ Deno.serve(async (req: Request) => {
 
     const { data: branch } = await supabase
       .from("branches")
-      .select("restaurant_id")
+      .select("id, restaurant_id")
       .eq("slug", branch_slug ?? "fco-montejo")
       .single();
 
-    const { data: products, error } = await supabase
-      .from("products")
-      .select("id, name, price")
-      .eq("restaurant_id", branch?.restaurant_id)
+    const { data: rows, error } = await supabase
+      .from("branch_products")
+      .select("price, is_available, products!inner(id, name, restaurant_id)")
+      .eq("branch_id", branch?.id)
       .eq("is_available", true)
-      .ilike("name", `%${query}%`)
+      .eq("products.restaurant_id", branch?.restaurant_id)
+      .ilike("products.name", `%${query}%`)
       .limit(8);
     if (error) throw error;
 
-    return new Response(JSON.stringify({ productos: products ?? [] }), {
+    // deno-lint-ignore no-explicit-any
+    const productos = (rows ?? []).map((r: any) => ({ id: r.products.id, name: r.products.name, price: r.price }));
+
+    return new Response(JSON.stringify({ productos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

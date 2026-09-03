@@ -444,6 +444,18 @@ function DashboardAgente({
   // ElevenLabs. Aquí solo se guarda si está abierto y qué hacer cuando
   // termina: agregar la voz nueva al catálogo y seleccionarla.
   const [modalClonarVozAbierto, setModalClonarVozAbierto] = useState(false);
+  const [mostrarListaSonidos, setMostrarListaSonidos] = useState(false);
+  const OPCIONES_SONIDO_FONDO: { id: string; emoji: string; etiqueta: string }[] = [
+    { id: 'restaurant', emoji: '🍽️', etiqueta: 'Restaurante' },
+    { id: 'office1', emoji: '🤫', etiqueta: 'Oficina (Tranquila)' },
+    { id: 'office2', emoji: '💼', etiqueta: 'Oficina (Con actividad)' },
+    { id: 'city', emoji: '🏙️', etiqueta: 'Ciudad' },
+    { id: 'typing', emoji: '⌨️', etiqueta: 'Escribiendo' },
+    { id: 'elevator1', emoji: '🎵', etiqueta: 'Música de ascensor 1' },
+    { id: 'elevator2', emoji: '🎵', etiqueta: 'Música de ascensor 2' },
+    { id: 'elevator3', emoji: '🎵', etiqueta: 'Música de ascensor 3' },
+    { id: 'elevator4', emoji: '🎵', etiqueta: 'Música de ascensor 4' },
+  ];
   const onVozClonada = (voiceId: string, nombre: string) => {
     const nuevaVoz: VozDisponible = { voice_id: voiceId, public_owner_id: '', name: nombre, gender: '—', accent: 'clonada', description: '', preview_url: '' };
     setMisVoces((prev) => [nuevaVoz, ...prev]);
@@ -808,43 +820,61 @@ function DashboardAgente({
                 </div>
                 <div className="grid grid-cols-3 gap-2.5">
                   <div className="rounded-xl border border-border bg-card p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-medium text-foreground">Estabilidad</span>
+                    <span className="text-[13px] font-medium text-foreground">Estabilidad</span>
+                    <div className="relative pt-6 mt-1">
+                      <div
+                        className="absolute -top-0.5 -translate-x-1/2 bg-foreground text-background text-[11.5px] font-semibold font-mono tabular-nums rounded-md px-2 py-0.5 pointer-events-none"
+                        style={{ left: `${borrador.stability * 100}%` }}
+                      >
+                        {borrador.stability.toFixed(2)}
+                      </div>
+                      <input
+                        type="range" min={0} max={1} step={0.05}
+                        value={borrador.stability}
+                        onChange={(e) => setBorrador({ ...borrador, stability: Number(e.target.value) })}
+                        className="w-full accent-primary"
+                      />
                     </div>
-                    <input
-                      type="range" min={0} max={1} step={0.05}
-                      value={borrador.stability}
-                      onChange={(e) => setBorrador({ ...borrador, stability: Number(e.target.value) })}
-                      className="w-full accent-primary"
-                    />
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-0.5">
                       <span>Más expresivo</span><span>Más consistente</span>
                     </div>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-medium text-foreground">Velocidad</span>
+                    <span className="text-[13px] font-medium text-foreground">Velocidad</span>
+                    <div className="relative pt-6 mt-1">
+                      <div
+                        className="absolute -top-0.5 -translate-x-1/2 bg-foreground text-background text-[11.5px] font-semibold font-mono tabular-nums rounded-md px-2 py-0.5 pointer-events-none"
+                        style={{ left: `${((borrador.speed - 0.7) / 0.5) * 100}%` }}
+                      >
+                        {borrador.speed.toFixed(2)}x
+                      </div>
+                      <input
+                        type="range" min={0.7} max={1.2} step={0.01}
+                        value={borrador.speed}
+                        onChange={(e) => setBorrador({ ...borrador, speed: Number(e.target.value) })}
+                        className="w-full accent-primary"
+                      />
                     </div>
-                    <input
-                      type="range" min={0.7} max={1.2} step={0.01}
-                      value={borrador.speed}
-                      onChange={(e) => setBorrador({ ...borrador, speed: Number(e.target.value) })}
-                      className="w-full accent-primary"
-                    />
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-0.5">
                       <span>Más lento</span><span>Más rápido</span>
                     </div>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-medium text-foreground">Similitud</span>
+                    <span className="text-[13px] font-medium text-foreground">Similitud</span>
+                    <div className="relative pt-6 mt-1">
+                      <div
+                        className="absolute -top-0.5 -translate-x-1/2 bg-foreground text-background text-[11.5px] font-semibold font-mono tabular-nums rounded-md px-2 py-0.5 pointer-events-none"
+                        style={{ left: `${borrador.similarity_boost * 100}%` }}
+                      >
+                        {borrador.similarity_boost.toFixed(2)}
+                      </div>
+                      <input
+                        type="range" min={0} max={1} step={0.05}
+                        value={borrador.similarity_boost}
+                        onChange={(e) => setBorrador({ ...borrador, similarity_boost: Number(e.target.value) })}
+                        className="w-full accent-primary"
+                      />
                     </div>
-                    <input
-                      type="range" min={0} max={1} step={0.05}
-                      value={borrador.similarity_boost}
-                      onChange={(e) => setBorrador({ ...borrador, similarity_boost: Number(e.target.value) })}
-                      className="w-full accent-primary"
-                    />
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-0.5">
                       <span>Baja</span><span>Alta</span>
                     </div>
@@ -934,21 +964,34 @@ function DashboardAgente({
                   </div>
                   {borrador.background_sound_id && (
                     <div className="mt-3 space-y-3">
-                      <select
-                        value={borrador.background_sound_id}
-                        onChange={(e) => setBorrador({ ...borrador, background_sound_id: e.target.value })}
-                        className="w-full h-9 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground"
-                      >
-                        <option value="restaurant">Restaurante</option>
-                        <option value="office1">Oficina (Tranquila)</option>
-                        <option value="office2">Oficina (Con actividad)</option>
-                        <option value="city">Ciudad</option>
-                        <option value="typing">Escribiendo</option>
-                        <option value="elevator1">Música de ascensor 1</option>
-                        <option value="elevator2">Música de ascensor 2</option>
-                        <option value="elevator3">Música de ascensor 3</option>
-                        <option value="elevator4">Música de ascensor 4</option>
-                      </select>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setMostrarListaSonidos((v) => !v)}
+                          className="w-full h-9 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground flex items-center justify-between hover:bg-muted/40 transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>{OPCIONES_SONIDO_FONDO.find((o) => o.id === borrador.background_sound_id)?.emoji}</span>
+                            <span>{OPCIONES_SONIDO_FONDO.find((o) => o.id === borrador.background_sound_id)?.etiqueta ?? 'Elegir…'}</span>
+                          </span>
+                          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${mostrarListaSonidos ? 'rotate-180' : ''}`} />
+                        </button>
+                        {mostrarListaSonidos && (
+                          <div className="mt-1.5 rounded-lg border border-border bg-card p-1">
+                            {OPCIONES_SONIDO_FONDO.map((o) => (
+                              <button
+                                key={o.id}
+                                type="button"
+                                onClick={() => { setBorrador({ ...borrador, background_sound_id: o.id }); setMostrarListaSonidos(false); }}
+                                className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-[13px] text-left transition-colors ${borrador.background_sound_id === o.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                              >
+                                <span className="flex items-center gap-2 min-w-0"><span>{o.emoji}</span><span className="truncate">{o.etiqueta}</span></span>
+                                {borrador.background_sound_id === o.id && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[12px] text-muted-foreground">Volumen</span>
@@ -967,9 +1010,6 @@ function DashboardAgente({
                       </label>
                     </div>
                   )}
-                  <p className="text-[10.5px] text-muted-foreground/70 mt-3 pt-3 border-t border-dashed border-border">
-                    El "filtro de teléfono" (que suena a llamada de baja calidad) no está disponible aquí — ElevenLabs lo documenta como exclusivo de su propio dashboard, sin soporte en la API pública, así que no se puede activar desde este panel.
-                  </p>
                 </div>
               </div>
             )}
@@ -984,16 +1024,16 @@ function DashboardAgente({
                     rows={2}
                     className="w-full rounded-xl border border-primary/40 p-3 text-[13px] text-foreground bg-transparent resize-none"
                   />
-                  <div className="flex items-center justify-end gap-2 mt-1.5" title="Permitir a los usuarios interrumpir al agente mientras se entrega el primer mensaje.">
+                  <div className="flex items-center justify-end gap-2 mt-1.5 flex-nowrap" title="Permitir a los usuarios interrumpir al agente mientras se entrega el primer mensaje.">
                     <button
                       role="switch"
                       aria-checked={borrador.first_message_interruptible}
                       onClick={() => setBorrador({ ...borrador, first_message_interruptible: !borrador.first_message_interruptible })}
-                      className={`w-8 h-[18px] rounded-full shrink-0 transition-colors relative ${borrador.first_message_interruptible ? 'bg-primary' : 'bg-muted'}`}
+                      className={`w-8 h-[18px] rounded-full shrink-0 transition-colors relative ${borrador.first_message_interruptible ? 'bg-primary ring-2 ring-white shadow-[0_0_0_1px_hsl(var(--primary))]' : 'bg-muted'}`}
                     >
                       <span className={`absolute top-0.5 w-[14px] h-[14px] rounded-full bg-white transition-transform ${borrador.first_message_interruptible ? 'translate-x-[17px]' : 'translate-x-0.5'}`} />
                     </button>
-                    <span className="text-[11.5px] text-muted-foreground">Interrumpible</span>
+                    <span className="text-[11.5px] text-muted-foreground whitespace-nowrap shrink-0">Interrumpible</span>
                   </div>
                 </div>
                 <div>
@@ -1005,7 +1045,7 @@ function DashboardAgente({
                           <Maximize2 className="w-3.5 h-3.5" />
                         </button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-5 gap-3">
+                      <DialogContent className="flex flex-col p-5 gap-3" style={{ width: '75vw', height: '75vh', maxWidth: '75vw', maxHeight: '75vh' }}>
                         <DialogHeader className="space-y-0">
                           <DialogTitle className="text-[14px] font-medium tracking-normal">Mensaje del sistema</DialogTitle>
                         </DialogHeader>

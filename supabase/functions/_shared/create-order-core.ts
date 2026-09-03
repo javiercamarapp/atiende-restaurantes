@@ -44,11 +44,16 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
     throw new OrderValidationError(`Sucursal '${payload.branch_slug ?? payload.branch_name}' no encontrada o inactiva`);
   }
 
+  // Precio y disponibilidad REALES de esta sucursal — verificados contra
+  // fotos reales del menú de cada una, distintos de verdad entre sucursales
+  // (branch_products), no el precio plano de `products` (catálogo maestro
+  // de nombres/categorías compartido, ya no la fuente de precio/verdad).
   const productIds = payload.items.map((i) => i.product_id);
-  const { data: products, error: productsError } = await supabase
-    .from("products")
-    .select("id, name, price, is_available")
-    .in("id", productIds);
+  const { data: branchProducts, error: productsError } = await supabase
+    .from("branch_products")
+    .select("price, is_available, products!inner(id, name)")
+    .eq("branch_id", branch.id)
+    .in("product_id", productIds);
 
   if (productsError) throw productsError;
 
@@ -56,19 +61,19 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
   let total = 0;
 
   for (const item of payload.items) {
-    const product = products?.find((p: any) => p.id === item.product_id);
-    if (!product || !product.is_available) {
+    const bp = branchProducts?.find((r: any) => r.products.id === item.product_id);
+    if (!bp || !bp.is_available) {
       throw new OrderValidationError(`Producto no disponible: ${item.product_id}`);
     }
     if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-      throw new OrderValidationError(`Cantidad inválida para ${product.name}`);
+      throw new OrderValidationError(`Cantidad inválida para ${bp.products.name}`);
     }
-    const lineTotal = Number(product.price) * item.quantity;
+    const lineTotal = Number(bp.price) * item.quantity;
     total += lineTotal;
     orderItems.push({
-      id: product.id,
-      name: product.name,
-      price: Number(product.price),
+      id: bp.products.id,
+      name: bp.products.name,
+      price: Number(bp.price),
       quantity: item.quantity,
     });
   }
