@@ -92,11 +92,22 @@ export function CampoPixeles() {
     };
     window.addEventListener('resize', alCambiarTamano);
     document.addEventListener('visibilitychange', alCambiarVisibilidad);
+
+    // El `resize` de window no alcanza: este canvas vive dentro de un panel
+    // flex cuyo tamaño cambia solo (datos que cargan, sidebar que se
+    // colapsa, historial que se abre) sin que la ventana cambie de tamaño.
+    // Sin esto, el buffer del canvas se queda con la medida vieja (a veces
+    // más angosta, tomada antes de que el layout asentara) y el patrón no
+    // llega hasta los bordes reales del contenedor.
+    const observador = new ResizeObserver(alCambiarTamano);
+    observador.observe(canvas);
+
     return () => {
       vivo = false;
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', alCambiarTamano);
       document.removeEventListener('visibilitychange', alCambiarVisibilidad);
+      observador.disconnect();
     };
   }, []);
 

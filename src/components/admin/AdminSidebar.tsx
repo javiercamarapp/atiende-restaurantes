@@ -26,6 +26,7 @@ import {
   Lock,
   IdCard,
   GraduationCap,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeSelector } from '@/components/ThemeSelector';
@@ -57,6 +58,7 @@ const menuSections = [
   },
   {
     title: 'ANÁLISIS',
+    siempreAbierto: true,
     items: [
       { id: 'dashboard', label: 'Estadísticas', icon: BarChart3 },
       { id: 'pregunta', label: 'Pregunta a tus datos', icon: MessageCircle },
@@ -94,8 +96,28 @@ const menuSections = [
   },
 ];
 
+const CLAVE_GRUPO_ABIERTO = 'atiende-sidebar-grupo-abierto';
+
+const grupoDeSeccion = (seccion: string) =>
+  menuSections.find((s) => s.items.some((it) => it.id === seccion))?.title ?? null;
+
 const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
+  // Acordeón: solo un grupo (aparte de ANÁLISIS, que siempre está abierto)
+  // puede estar abierto a la vez. Se recuerda entre sesiones, y por default
+  // abre el grupo que contiene la sección activa.
+  const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
+    const guardado = typeof window !== 'undefined' ? localStorage.getItem(CLAVE_GRUPO_ABIERTO) : null;
+    return guardado ?? grupoDeSeccion(activeSection);
+  });
+
+  const alternarGrupo = (titulo: string) => {
+    setGrupoAbierto((actual) => {
+      const nuevo = actual === titulo ? null : titulo;
+      localStorage.setItem(CLAVE_GRUPO_ABIERTO, nuevo ?? '');
+      return nuevo;
+    });
+  };
 
   return (
     <aside
@@ -115,15 +137,30 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
         </button>
       </div>
 
-      {/* Navigation — misma densidad que el sidebar de superadmin */}
+      {/* Navigation — misma densidad que el sidebar de superadmin. Acordeón:
+          ANÁLISIS siempre visible arriba, las demás categorías se abren de
+          una a la vez (con flecha), y se recuerda cuál quedó abierta. */}
       <nav className="flex-1 px-3 py-2 space-y-3 overflow-y-auto">
-        {menuSections.map((section) => (
+        {menuSections.map((section) => {
+          const abierta = section.siempreAbierto || grupoAbierto === section.title;
+          return (
           <div key={section.title}>
             {!collapsed && (
-              <p className="px-2.5 mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                {section.title}
-              </p>
+              section.siempreAbierto ? (
+                <p className="px-2.5 mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                  {section.title}
+                </p>
+              ) : (
+                <button
+                  onClick={() => alternarGrupo(section.title)}
+                  className="w-full flex items-center justify-between px-2.5 mb-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {section.title}
+                  <ChevronDown className={cn("w-3 h-3 transition-transform", abierta && "rotate-180")} />
+                </button>
+              )
             )}
+            {(abierta || collapsed) && (
             <div className="space-y-0.5">
               {section.items.map((item) => (
                 <div key={item.id}>
@@ -169,8 +206,10 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
                 </div>
               ))}
             </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Bloque de cuenta — el recuadro gris real de Likida (sobresale del
