@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -212,6 +212,69 @@ function VacioDashboardVoz({ icon: Icon, titulo, detalle }: { icon: React.Compon
 // el resto son estados vacíos honestos — no hay fuente de datos real para
 // ellas todavía (requeriría la API de ElevenLabs + una función de borde).
 // Nunca muestra costos/créditos: eso es infraestructura interna, no del cliente.
+// Dona animada de tasa de éxito — mismo dato que la tarjeta de arriba
+// (completados/total), sólo con otra representación visual.
+function DonaTasaExito({ valor }: { valor: number | null }) {
+  const radio = 30;
+  const circunferencia = 2 * Math.PI * radio;
+  const pct = valor ?? 0;
+  return (
+    <svg width="72" height="72" viewBox="0 0 72 72" className="shrink-0">
+      <circle cx="36" cy="36" r={radio} fill="none" stroke="hsl(var(--muted))" strokeWidth="7" />
+      <motion.circle
+        cx="36"
+        cy="36"
+        r={radio}
+        fill="none"
+        stroke="hsl(var(--primary))"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeDasharray={circunferencia}
+        transform="rotate(-90 36 36)"
+        initial={{ strokeDashoffset: circunferencia }}
+        animate={{ strokeDashoffset: circunferencia - (circunferencia * pct) / 100 }}
+        transition={{ duration: 1, ease: 'easeOut' }}
+      />
+      <text x="36" y="40" textAnchor="middle" fontSize="15" fontWeight="600" fill="hsl(var(--foreground))">
+        {valor === null ? '—' : `${Math.round(valor)}%`}
+      </text>
+    </svg>
+  );
+}
+
+// Barra animada completados vs. cancelados — mismas cifras reales de
+// statsAgentes, presentadas como comparación visual en vez de dos tarjetas.
+function BarraComparativa({ completados, cancelados }: { completados: number; cancelados: number }) {
+  const total = completados + cancelados;
+  const pctCompletados = total > 0 ? (completados / total) * 100 : 0;
+  return (
+    <div className="space-y-2">
+      <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
+        <motion.div
+          className="h-full bg-primary"
+          initial={{ width: 0 }}
+          animate={{ width: `${pctCompletados}%` }}
+          transition={{ duration: 1, ease: 'easeOut' }}
+        />
+        <motion.div
+          className="h-full bg-destructive/70"
+          initial={{ width: 0 }}
+          animate={{ width: `${total > 0 ? 100 - pctCompletados : 0}%` }}
+          transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="w-2 h-2 rounded-full bg-primary" /> Completados: {completados}
+        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="w-2 h-2 rounded-full bg-destructive/70" /> Cancelados: {cancelados}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function DashboardAgente({
   canal,
   onCerrar,
@@ -237,6 +300,9 @@ function DashboardAgente({
     { id: 'audio' as const, etiqueta: 'Audio', icon: Volume2 },
     { id: 'herramientas' as const, etiqueta: 'Herramientas', icon: Wrench },
     { id: 'conocimiento' as const, etiqueta: 'Base de conocimientos', icon: BookOpen },
+    { id: 'comportamiento' as const, etiqueta: 'Comportamiento', icon: Settings2 },
+    { id: 'voces' as const, etiqueta: 'Voces e idiomas', icon: Mic },
+    { id: 'mensaje' as const, etiqueta: 'Mensaje del sistema', icon: FileText },
   ];
   const PESTANAS_WHATSAPP = [
     { id: 'general' as const, etiqueta: 'General', icon: LayoutGrid },
@@ -244,20 +310,21 @@ function DashboardAgente({
     { id: 'conocimiento' as const, etiqueta: 'Base de conocimientos', icon: BookOpen },
   ];
   const PESTANAS = canal === 'voz' ? PESTANAS_VOZ : PESTANAS_WHATSAPP;
-  const [pestana, setPestana] = useState<'general' | 'audio' | 'herramientas' | 'conocimiento'>('general');
+  const [pestana, setPestana] = useState<'general' | 'audio' | 'herramientas' | 'conocimiento' | 'comportamiento' | 'voces' | 'mensaje'>('general');
 
   const datos = canal === 'voz' ? statsAgentes?.voz : statsAgentes?.whatsapp;
   const tasaExito = datos && datos.total > 0 ? (datos.completados / datos.total) * 100 : null;
   const unidad = canal === 'voz' ? 'llamada' : 'conversación';
 
+  const HERRAMIENTAS_REALES = [
+    { nombre: 'buscar_cliente', descripcion: 'Busca si un número de teléfono ya es cliente conocido: nombre, direcciones guardadas y su último pedido.' },
+    { nombre: 'buscar_producto', descripcion: 'Busca un platillo por nombre en el menú real de la sucursal y devuelve su id, nombre y precio exactos.' },
+    { nombre: 'crear_pedido', descripcion: 'Registra el pedido final en el sistema del restaurante — un pedido no existe hasta que esta herramienta responde con éxito.' },
+  ];
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-      className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden"
-    >
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 pb-3 border-b border-border">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <button
@@ -271,30 +338,24 @@ function DashboardAgente({
           </div>
           <p className="text-[10.5px] text-muted-foreground mt-0.5">{etiquetaRango}</p>
         </div>
-        <button
-          onClick={onCerrar}
-          className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
       </div>
 
-      <div className="flex items-center gap-1 px-4 pt-3 overflow-x-auto">
+      <div className="flex items-center gap-4 overflow-x-auto">
         {PESTANAS.map((p) => (
           <button
             key={p.id}
             onClick={() => setPestana(p.id)}
-            className={`flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium transition-colors shrink-0 ${
-              pestana === p.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            className={`flex items-center gap-1.5 pb-2 text-[13px] font-medium transition-colors shrink-0 border-b-2 ${
+              pestana === p.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            <p.icon className="w-3 h-3" /> {p.etiqueta}
+            <p.icon className="w-3.5 h-3.5" /> {p.etiqueta}
           </button>
         ))}
       </div>
 
-      <div className="p-4">
-        {pestana === 'general' && (
+      {pestana === 'general' && (
+        <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
             <TileDashboardVoz icon={Phone} label="Conversaciones" valor={datos ? String(datos.total) : '—'} indice={0} />
             <TileDashboardVoz
@@ -330,33 +391,124 @@ function DashboardAgente({
               />
             )}
           </div>
-        )}
 
-        {pestana === 'audio' && (
-          <VacioDashboardVoz
-            icon={Volume2}
-            titulo="No se han recopilado datos de audio"
-            detalle="Calidad de voz, interrupciones y latencia de respuesta aparecerán aquí cuando conectemos la analítica de llamadas de ElevenLabs."
-          />
-        )}
+          {/* Visuales animados con las mismas cifras reales de arriba —
+              nada nuevo se inventa, sólo se representa distinto. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+              <DonaTasaExito valor={tasaExito} />
+              <div>
+                <p className="text-[13px] font-medium text-foreground">Tasa de éxito</p>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  {tasaExito === null ? 'Aún sin conversaciones para calcularla.' : `${datos?.completados ?? 0} de ${datos?.total ?? 0} terminaron en pedido.`}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-[13px] font-medium text-foreground mb-3">Completados vs. cancelados</p>
+              <BarraComparativa completados={datos?.completados ?? 0} cancelados={datos?.cancelados ?? 0} />
+            </div>
+          </div>
+        </div>
+      )}
 
-        {pestana === 'herramientas' && (
+      {pestana === 'audio' && (
+        <VacioDashboardVoz
+          icon={Volume2}
+          titulo="No se han recopilado datos de audio"
+          detalle="Calidad de voz, interrupciones y latencia de respuesta aparecerán aquí cuando conectemos la analítica de llamadas de ElevenLabs."
+        />
+      )}
+
+      {pestana === 'herramientas' && (
+        canal === 'voz' ? (
+          <div className="space-y-2">
+            {HERRAMIENTAS_REALES.map((h, i) => (
+              <motion.div
+                key={h.nombre}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: i * 0.05 }}
+                className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <Wrench className="w-3.5 h-3.5" strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-mono text-[12.5px] text-foreground truncate">{h.nombre}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{h.descripcion}</p>
+                  </div>
+                </div>
+                <span className="font-mono text-[10px] uppercase text-muted-foreground/70 shrink-0">0 ejecuciones</span>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
           <VacioDashboardVoz
             icon={Wrench}
             titulo="No se han recopilado datos de herramientas"
-            detalle={`Qué tanto usa el agente buscar_cliente, buscar_producto y crear_pedido en cada ${unidad} aparecerá aquí próximamente.`}
+            detalle={`Qué tanto usa el agente buscar_producto y crear_pedido en cada ${unidad} aparecerá aquí próximamente.`}
           />
-        )}
+        )
+      )}
 
-        {pestana === 'conocimiento' && (
+      {pestana === 'conocimiento' && (
+        canal === 'voz' ? (
+          <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <FileText className="w-4 h-4" strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] text-foreground truncate">Menu Fco. de Montejo — Los Taquitos de PM</p>
+              <p className="text-[11px] text-muted-foreground">18.2 kB · Documento de texto</p>
+            </div>
+          </div>
+        ) : (
           <VacioDashboardVoz
             icon={BookOpen}
             titulo="No se han recopilado datos de la base de conocimientos"
             detalle="Qué tan seguido consulta el agente tu menú al responder todavía no se está midiendo."
           />
-        )}
-      </div>
-    </motion.div>
+        )
+      )}
+
+      {pestana === 'comportamiento' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} />
+          <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="Claude Sonnet 5" indice={1} />
+          <TileDashboardVoz icon={Settings2} label="Temperatura" valor="0.4" nota="Qué tan creativo vs. apegado al guion" indice={2} />
+          <TileDashboardVoz icon={Settings2} label="Personalidad" valor="Personalizada" nota="Predeterminada de ElevenLabs desactivada" indice={3} />
+        </div>
+      )}
+
+      {pestana === 'voces' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          <TileDashboardVoz icon={Mic} label="Voz" valor="Ramon" nota="Taquitos PM" indice={0} />
+          <TileDashboardVoz icon={Globe} label="Idioma" valor="Español" indice={1} />
+          <TileDashboardVoz icon={Mic} label="Velocidad" valor="1.0x" indice={2} />
+          <TileDashboardVoz icon={Mic} label="Estabilidad" valor="0.5" nota="Qué tan constante suena la voz" indice={3} />
+        </div>
+      )}
+
+      {pestana === 'mensaje' && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Primer mensaje</p>
+            <p className="text-[13px] text-foreground">Los Taquitos de PM, sucursal Francisco de Montejo, ¿qué le preparamos hoy?</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Mensaje del sistema</p>
+            <p className="text-[12.5px] text-foreground whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto">
+              Eres el asistente telefónico de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida. Contestas llamadas para tomar pedidos a domicilio. Hablas español de México, tono cálido y directo, como alguien que realmente trabaja en la taquería — sin sonar robótico ni leer listas completas de golpe, actúa natural.{"\n\n"}TU OBJETIVO: tomar un pedido completo y correcto, y registrarlo con la herramienta crear_pedido antes de colgar. Un pedido no existe hasta que la herramienta responde con éxito.{"\n\n"}Sigue el flujo real de la llamada: saludo e identificación del cliente, toma del pedido confirmando cada producto y precio contra el menú real, recordatorio de todo lo incluido, total, tiempo de espera, y confirmación final antes de colgar. Nunca inventa platillos, precios ni promociones fuera del menú real.
+            </p>
+          </div>
+          <p className="text-[10.5px] text-muted-foreground">
+            Esto es lo que tiene configurado tu agente ahora mismo — para poder editarlo desde aquí falta conectar la API de ElevenLabs.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
