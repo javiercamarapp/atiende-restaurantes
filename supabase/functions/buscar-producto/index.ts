@@ -41,14 +41,32 @@ Deno.serve(async (req: Request) => {
       .eq("slug", branch_slug ?? "fco-montejo")
       .single();
 
-    const { data: rows, error } = await supabase
+    // Antes esto era un solo ILIKE de la query completa como substring
+    // literal — un cliente real dice "pastor individual" o "taco de bistec"
+    // (el orden/las palabras de en medio no coinciden con el nombre real
+    // "Taco Al Pastor (individual)" o "Tacos de Bistec de Res (orden de
+    // 3)") y el match fallaba en silencio, devolviendo 0 resultados para un
+    // producto que sí existe. Se tokeniza la query y se exige cada palabra
+    // significativa como substring (AND, no necesariamente contigua) —
+    // encontrado y corregido el 3-sep-2026 verificando en vivo con curl
+    // directo antes de asumir que el catálogo estaba completo.
+    const STOPWORDS = new Set(["de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al"]);
+    const tokens = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+    const tokensAUsar = tokens.length > 0 ? tokens : [query];
+
+    let builder = supabase
       .from("branch_products")
       .select("price, is_available, products!inner(id, name, restaurant_id)")
       .eq("branch_id", branch?.id)
       .eq("is_available", true)
-      .eq("products.restaurant_id", branch?.restaurant_id)
-      .ilike("products.name", `%${query}%`)
-      .limit(8);
+      .eq("products.restaurant_id", branch?.restaurant_id);
+    for (const token of tokensAUsar) {
+      builder = builder.ilike("products.name", `%${token}%`);
+    }
+    const { data: rows, error } = await builder.limit(8);
     if (error) throw error;
 
     // deno-lint-ignore no-explicit-any

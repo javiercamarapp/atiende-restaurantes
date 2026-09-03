@@ -78,6 +78,7 @@ REGLAS DE NEGOCIO:
 - Las promos de 2x1 y nachos+aguas son SOLO para comer en el restaurante — nunca las ofrezcas para domicilio.
 - Los "kilos a domicilio" incluyen salsa roja, salsa verde, limones y tortillas sin costo extra.
 - No inventes productos ni precios: usa siempre la herramienta buscar_producto para confirmar nombre/precio real antes de agregar algo al pedido. Puedes recomendar productos populares o combinaciones típicas si el cliente no sabe qué pedir.
+- No vendas cantidades sueltas de un producto marcado "(orden de N)" — es un paquete fijo, no piezas individuales (ver paso 4).
 - Si piden algo que no existe en el menú, dilo con naturalidad y sugiere algo parecido.
 - Si el pedido incluye alcohol, confirma que quien recibe es mayor de edad.
 - No inventes horarios de apertura/cierre — ese dato no está confirmado todavía.
@@ -85,16 +86,16 @@ REGLAS DE NEGOCIO:
 - Si el mensaje NO es para hacer un pedido (queja, facturación, empleo, u otro motivo que no sea ordenar comida): sé honesto, di que este número es para pedidos, pide su nombre si no lo tienes, y llama a registrar_contacto con nombre, motivo y un resumen breve de lo que dijo — así alguien del restaurante le contesta de verdad, no lo prometas sin registrarlo.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
-1. Saluda (sin mencionar sucursal todavía — aún no la sabes). Pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir).
+1. Saluda presentándote como Los Taquitos de PM (sin mencionar sucursal todavía — aún no la sabes) y pregunta si quiere hacer un pedido. En cuanto confirme que sí, pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir).
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
-3. En cuanto tengas la dirección/colonia, decide con naturalidad cuál de las sucursales de arriba está más cerca — si la colonia no es clara, pregunta la colonia o una referencia cercana antes de decidir. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien.
+3. En cuanto tengas la dirección/colonia, decide con naturalidad cuál de las sucursales de arriba está más cerca — si la colonia no es clara, pregunta la colonia o una referencia cercana antes de decidir. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien. Si el cliente prefiere que se lo mandes desde otra sucursal (por ejemplo, porque le queda mejor otra zona que conoce), no insistas en que sea forzosamente la más cercana — acepta con gusto cualquiera de las sucursales reales de la lista de arriba que el cliente prefiera, y sigue con esa.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal que ya confirmaste en el paso 3 — el precio real varía por sucursal). Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
-5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole, tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y pregunta si quiere alguna salsa en específico o alguna guarnición extra (tienen costo aparte).
+   - IMPORTANTE: lee bien el nombre exacto que devuelve buscar_producto — si dice "(orden de N)" (ej. "Tacos de Bistec de Res (orden de 3)"), es un paquete fijo indivisible de N piezas, no piezas sueltas, y el precio ya es el del paquete completo. Si el cliente pide una cantidad de ese sabor que no es múltiplo de N, explícaselo con naturalidad y ofrécele ajustar a un múltiplo de N o cambiar a un sabor "(individual)" (ese sí se vende por pieza suelta).
+5. Antes de cerrar: pregunta si quiere agregar algo extra — frijoles charros, guacamole, tortillas, ensalada o alguna salsa en específico. Ninguno de estos viene incluido gratis con los tacos, son productos aparte con su propio costo (confirma nombre y precio real con buscar_producto si el cliente quiere alguno). La única excepción son los "kilos a domicilio": esos SÍ incluyen salsa roja, salsa verde, limones y tortillas sin costo extra — no lo confundas con los pedidos de tacos normales.
 6. Da el total final del pedido, y pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos a alguien con terminal física al momento de la entrega.
-7. Da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).
-8. Cuando el cliente confirme todo, llama a crear_pedido con los product_id reales (no nombres) y el branch_slug de la sucursal que confirmaste en el paso 3. No llames a crear_pedido si todavía falta nombre, dirección, sucursal o confirmación del cliente.
-9. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige.
-10. Cuando el pedido quede creado, confirma que ya se mandó a cocina.`;
+7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los product_id reales (no nombres) y el branch_slug de la sucursal que confirmaste en el paso 3 — este es el paso más importante, un pedido no existe hasta que la herramienta responde con éxito. No llames a crear_pedido si todavía falta nombre, dirección, sucursal o confirmación del cliente.
+8. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige — no sigas adelante sin que haya quedado creado con éxito.
+9. Solo hasta que el pedido ya quedó creado con éxito: confirma que ya se mandó a cocina y da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).`;
 
 // Mismo valor que corría hardcodeado antes de que existiera la tabla — se
 // usa si `whatsapp_agent_config` todavía no tiene fila para el restaurante,
@@ -313,14 +314,30 @@ export async function runAgentTurn(
             if (!branch) {
               result = { error: "branch_slug desconocido — confirma la sucursal antes de buscar productos" };
             } else {
-              const { data: rows } = await supabase
+              // Mismo fix que buscar-producto/index.ts (agente de voz): un
+              // solo ILIKE de la query completa fallaba en silencio para
+              // queries de varias palabras que no coinciden contiguas con el
+              // nombre real ("pastor individual" vs "Taco Al Pastor
+              // (individual)"). Se tokeniza y se exige cada palabra
+              // significativa como substring.
+              const STOPWORDS = new Set(["de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al"]);
+              const queryStr = String(input.query ?? "");
+              const tokens = queryStr
+                .toLowerCase()
+                .split(/\s+/)
+                .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+              const tokensAUsar = tokens.length > 0 ? tokens : [queryStr];
+
+              let builder = supabase
                 .from("branch_products")
                 .select("price, is_available, products!inner(id, name, restaurant_id)")
                 .eq("branch_id", branch.id)
                 .eq("is_available", true)
-                .eq("products.restaurant_id", restaurantId)
-                .ilike("products.name", `%${input.query}%`)
-                .limit(6);
+                .eq("products.restaurant_id", restaurantId);
+              for (const token of tokensAUsar) {
+                builder = builder.ilike("products.name", `%${token}%`);
+              }
+              const { data: rows } = await builder.limit(6);
               result = (rows ?? []).map((r: any) => ({ id: r.products.id, name: r.products.name, price: r.price }));
             }
           } else if (call.function.name === "crear_pedido") {

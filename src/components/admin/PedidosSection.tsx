@@ -144,6 +144,37 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
+  // Antes, un pedido nuevo (voz/WhatsApp/web) solo aparecía en "Recibidas"
+  // hasta el siguiente poll de 60s — sin ninguna notificación real de que
+  // había llegado. Suscripción en vivo a INSERT de `orders`: refresca la
+  // lista de inmediato y avisa con un toast, sin esperar el poll.
+  useEffect(() => {
+    const canal = supabase
+      .channel(`pedidos-nuevos-${restaurantId ?? "todos"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "orders",
+          ...(restaurantId ? { filter: `restaurant_id=eq.${restaurantId}` } : {}),
+        },
+        (payload) => {
+          const nuevo = payload.new as OrderRow;
+          if (String(nuevo.customer_phone ?? "").startsWith("widget-")) return;
+          setAhora(Date.now());
+          cargar();
+          toast({
+            title: "Pedido nuevo",
+            description: `${nuevo.customer_name} — $${Number(nuevo.total).toFixed(0)} (${nuevo.source === "voice" ? "llamada" : nuevo.source === "whatsapp" ? "WhatsApp" : nuevo.source})`,
+          });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId]);
+
   // Ventana compartida por "Recibidas" y "Enviadas": ninguna de las dos es
   // un histórico, son colas de "esto necesita atención AHORA" — un pedido
   // "pending" (sin repartidor) o "en_camino" (sin marcar entregado) que

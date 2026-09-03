@@ -187,6 +187,7 @@ function FiltroDropdown<T extends string>({
    Sección principal
    ──────────────────────────────────────────────────────────────────────── */
 export default function ClientesSection({ restaurantId }: { restaurantId: string }) {
+  const { toast } = useToast();
   const [clientes, setClientes] = useState<CustomerRow[]>([]);
   const [direcciones, setDirecciones] = useState<AddressRow[]>([]);
   const [ordenes, setOrdenes] = useState<OrderMoneyRow[]>([]);
@@ -241,6 +242,29 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
     })();
     return () => { cancelado = true; };
   }, [restaurantId, recargarNonce]);
+
+  // Cliente nuevo (primer pedido de un número no visto antes, vía voz o
+  // WhatsApp) no generaba ninguna notificación real — solo aparecía si el
+  // staff volvía a entrar a esta sección. Suscripción en vivo a INSERT de
+  // `customers`: avisa con un toast y refresca la lista sin esperar.
+  useEffect(() => {
+    if (!restaurantId) return;
+    const canal = supabase
+      .channel(`clientes-nuevos-${restaurantId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "customers", filter: `restaurant_id=eq.${restaurantId}` },
+        (payload) => {
+          const nuevo = payload.new as { phone?: string; name?: string | null };
+          if (String(nuevo.phone ?? "").startsWith("widget-")) return;
+          setRecargarNonce((n) => n + 1);
+          toast({ title: "Cliente nuevo", description: nuevo.name ? `${nuevo.name} — ${nuevo.phone}` : String(nuevo.phone ?? "") });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId]);
 
   const { clientesConTier, metrica, distribucionTier } = useMemo(() => {
     const gastoPorCliente = new Map<string, number>();
