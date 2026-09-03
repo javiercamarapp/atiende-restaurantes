@@ -107,36 +107,36 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
       <div className="p-2 space-y-0.5 shrink-0">
         {!collapsed && (
           <>
-            <button className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-full text-sm font-medium border border-border bg-card hover:bg-muted transition-colors">
-              <HelpCircle className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[13px] border border-border bg-card hover:bg-muted transition-colors">
+              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
               <span className="truncate">Centro de ayuda</span>
             </button>
             <button
               onClick={() => onSectionChange('notificaciones')}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm text-muted-foreground hover:bg-muted transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] text-muted-foreground hover:bg-muted transition-colors"
             >
-              <Bell className="w-5 h-5 shrink-0" strokeWidth={1.75} />
+              <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
               <span className="truncate">Notificaciones</span>
             </button>
-            <div className="pt-2 pb-1 flex justify-center">
+            <div className="pt-1.5 pb-0.5 flex justify-center">
               <ThemeSelector />
             </div>
           </>
         )}
 
         {/* Usuario — plano, separado solo por un borde superior fino */}
-        <div className={cn("border-t border-border pt-2", collapsed ? "px-0" : "px-1")}>
+        <div className={cn("border-t border-border pt-1.5", collapsed ? "px-0" : "px-1")}>
           {!collapsed ? (
-            <div className="flex items-center gap-2.5 px-2 py-1">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium shrink-0">
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || 'A'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-foreground truncate">{user?.email}</p>
+                <p className="text-[13px] text-foreground truncate">{user?.email}</p>
                 <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Administrador</p>
               </div>
               <button onClick={onLogout} className="text-destructive hover:opacity-70 shrink-0">
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
           ) : (
