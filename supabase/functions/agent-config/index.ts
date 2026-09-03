@@ -11,6 +11,11 @@
 //   { action: "get", agent_id }              -> config actual, solo campos seguros para el cliente
 //   { action: "voices" }                      -> catálogo compartido de ElevenLabs, filtrado a español
 //   { action: "update", agent_id, ... }       -> aplica cambios reales al agente
+//   { action: "upload_knowledge_base", text, name? } -> sube un documento de texto
+//                                                        a la base de conocimientos y
+//                                                        devuelve su id real
+//   { action: "set_knowledge_base", agent_id, knowledge_base } -> reemplaza el
+//                                                        arreglo knowledge_base del agente
 //
 // Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
 // interna, no algo que el dueño del restaurante deba ver.
@@ -99,6 +104,48 @@ Deno.serve(async (req: Request) => {
         method: "PATCH",
         headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_config: { agent: { prompt: { tools } } } }),
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json({ ok: true });
+    }
+
+    if (action === "upload_knowledge_base") {
+      // Sube un documento de texto a la base de conocimientos compartida de
+      // ElevenLabs. Endpoint real confirmado contra la documentación oficial
+      // (developers.elevenlabs.io/docs/api-reference/knowledge-base/create-from-text):
+      //   POST https://api.elevenlabs.io/v1/convai/knowledge-base/text
+      //   body: { text, name? } -> devuelve { id, name, folder_path }
+      const { text, name } = body as { text?: string; name?: string };
+      if (!text) return json({ error: "text es requerido" }, 400);
+
+      const res = await fetch("https://api.elevenlabs.io/v1/convai/knowledge-base/text", {
+        method: "POST",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ text, ...(name ? { name } : {}) }),
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      return json({ id: data.id, name: data.name });
+    }
+
+    if (action === "set_knowledge_base") {
+      // Reemplaza el arreglo completo de knowledge_base del agente (mismo
+      // patrón que set_tools: leer, modificar el arreglo, volver a mandar el
+      // arreglo completo) — para adjuntar un documento nuevo y/o quitar uno
+      // viejo sin tocar el resto de la configuración del agente.
+      const { agent_id, knowledge_base } = body as {
+        agent_id?: string;
+        // deno-lint-ignore no-explicit-any
+        knowledge_base?: any[];
+      };
+      if (!agent_id || !Array.isArray(knowledge_base)) {
+        return json({ error: "agent_id y knowledge_base (arreglo) son requeridos" }, 400);
+      }
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        method: "PATCH",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_config: { agent: { prompt: { knowledge_base } } } }),
       });
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
