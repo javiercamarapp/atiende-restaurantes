@@ -4,7 +4,16 @@
 // deterministic lookup the WhatsApp webhook does in-process.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { lookupCustomer } from "../_shared/create-order-core.ts";
+import { lookupCustomer, vipNote } from "../_shared/create-order-core.ts";
+
+// Mismo restaurant_id real que usan whatsapp-webhook/index.ts y
+// create-order-core.ts (las 7 sucursales del piloto comparten el mismo
+// restaurant_id) — se usaba antes una consulta a `branches` por branch_slug
+// solo para llegar a este mismo valor, pero buscar_cliente se llama al
+// inicio de la llamada (antes de que el agente confirme la sucursal, paso 3
+// del flujo real), así que branch_slug casi nunca llega — esa consulta
+// podía devolver null y tronar con "branch.restaurant_id" sobre null.
+const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +31,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { phone, branch_slug } = (await req.json()) as { phone: string; branch_slug?: string };
+    const { phone } = (await req.json()) as { phone: string };
     if (!phone) {
       return new Response(JSON.stringify({ error: "phone es requerido" }), {
         status: 400,
@@ -30,15 +39,25 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: branch } = await supabase
-      .from("branches")
-      .select("restaurant_id")
-      .eq("slug", branch_slug ?? "fco-montejo")
-      .single();
+    const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone);
 
-    const customer = await lookupCustomer(supabase, branch.restaurant_id, phone);
+    // agent_notes: instrucciones en texto plano listas para que el LLM del
+    // agente de voz las use tal cual al leer el resultado de esta tool —
+    // el mensaje de sistema real del agente vive editable en vivo en
+    // ElevenLabs (panel admin, fuera de este repo), así que estas notas van
+    // directo en el resultado de la tool para no dejar tier/frequent_items
+    // calculados sin usar en el trato real, sea cual sea el prompt vigente.
+    const notas: string[] = [];
+    if (!customer.is_new) {
+      const nota = vipNote(customer.tier ?? null);
+      if (nota) notas.push(nota);
+      if (customer.frequent_items?.length) {
+        const items = customer.frequent_items.map((i: { name: string; quantity: number }) => i.name).join(", ");
+        notas.push(`Lo que más pide across todo su historial real (no solo su último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`);
+      }
+    }
 
-    return new Response(JSON.stringify(customer), {
+    return new Response(JSON.stringify({ ...customer, agent_notes: notas }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

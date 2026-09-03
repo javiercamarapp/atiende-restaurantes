@@ -117,6 +117,18 @@ const RepartidorDashboard = () => {
       return;
     }
 
+    // Marca de tiempo real de entrega (aparte del status), para "Entrega
+    // tardía" en el panel de Notificaciones del admin. Va suelta y sin
+    // bloquear: si la columna `delivered_at` todavía no existe (migración
+    // pendiente de aplicar — ver supabase/migrations/20260903041514_...),
+    // esto falla en silencio y el pedido de todos modos queda entregado.
+    if (newStatus === "entregado") {
+      (supabase as any).from("orders").update({ delivered_at: new Date().toISOString() }).eq("id", orderId)
+        .then(({ error: errDelivered }: { error: unknown }) => {
+          if (errDelivered) console.warn("No se pudo guardar delivered_at (¿falta aplicar la migración?)", errDelivered);
+        });
+    }
+
     toast.success(`Pedido ${newStatus === 'en_camino' ? 'en camino' : newStatus === 'entregado' ? 'entregado' : 'actualizado'}`);
     await fetchOrders();
   };

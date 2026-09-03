@@ -4,7 +4,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2 } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Bike, Phone, PhoneCall, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2, Contact } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -30,6 +30,17 @@ import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
 import { ModalClonarVoz } from "@/components/ModalClonarVoz";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CampoPixeles } from "@/components/CampoPixeles";
+import SucursalesSection from "@/components/admin/SucursalesSection";
+import PedidosSection from "@/components/admin/PedidosSection";
+import HistorialOrdenesSection from "@/components/admin/HistorialOrdenesSection";
+import ClientesSection from "@/components/admin/ClientesSection";
+import WhatsAppAgenteConfigSection from "@/components/admin/WhatsAppAgenteConfigSection";
+import { SelectorIdiomasAgente } from "@/components/admin/SelectorIdiomasAgente";
+import { WidgetWhatsApp } from "@/components/WidgetWhatsApp";
+import { ModalProducto } from "@/components/ModalProducto";
+import { ModalCategoria } from "@/components/ModalCategoria";
+import { ModalRepartidor } from "@/components/ModalRepartidor";
+import { ModalCuenta } from "@/components/ModalCuenta";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
   id: string;
@@ -80,6 +91,16 @@ interface Repartidor {
   email: string;
   nombre: string | null;
   telefono: string | null;
+  created_at: string;
+}
+interface CallbackRequest {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  reason: string | null;
+  message: string | null;
+  source: string;
+  resolved: boolean;
   created_at: string;
 }
 // Estilo compartido del tooltip de recharts — compacto y con tipografía
@@ -848,6 +869,9 @@ function DashboardAgente({
                     <option value="fr">Français</option>
                   </select>
                 </div>
+
+                <SelectorIdiomasAgente agentId={agentId} />
+
                 <div className="grid grid-cols-3 gap-2.5">
                   <div className="rounded-xl border border-border bg-card p-3.5">
                     <span className="text-[13px] font-medium text-foreground">Estabilidad</span>
@@ -1356,6 +1380,7 @@ const AdminDashboard = () => {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [repartidores, setRepartidores] = useState<Repartidor[]>([]);
+  const [callbackRequests, setCallbackRequests] = useState<CallbackRequest[]>([]);
   const [stats, setStats] = useState({
     revenue: 0,
     customers: 0,
@@ -1365,20 +1390,9 @@ const AdminDashboard = () => {
   });
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({
-    name: "",
-    description: "",
-    price: "",
-    image_url: "",
-    category_id: "",
-    is_popular: false,
-    is_available: true
-  });
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({
-    name: "",
-    slug: ""
-  });
+  const [cuentaModalOpen, setCuentaModalOpen] = useState(false);
+  const [modalRepartidorAbierto, setModalRepartidorAbierto] = useState(false);
   const [categoriaExpandida, setCategoriaExpandida] = useState<string | null>(null);
   const [promoDialogOpen, setPromoDialogOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promo | null>(null);
@@ -1392,7 +1406,6 @@ const AdminDashboard = () => {
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [selectedStat, setSelectedStat] = useState<'revenue' | 'customers' | 'orders' | 'products' | 'users' | null>(null);
   const [timePeriod, setTimePeriod] = useState<'day' | 'week' | 'month' | 'year'>('week');
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<'today' | '7' | '30' | '90' | '180' | '365' | 'historico'>('today');
@@ -1427,6 +1440,11 @@ const AdminDashboard = () => {
   const [sucursalesAgente, setSucursalesAgente] = useState<{ id: string; name: string; elevenlabs_agent_id: string | null }[]>([]);
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string>('global');
   const [mostrarSelectorSucursal, setMostrarSelectorSucursal] = useState(false);
+  // Mismo selector, pero para el encabezado de Agente de WhatsApp — filtro
+  // independiente del de voz, reutilizando la misma lista de sucursales
+  // (branches del restaurante, no específica de un canal).
+  const [sucursalSeleccionadaWhatsapp, setSucursalSeleccionadaWhatsapp] = useState<string>('global');
+  const [mostrarSelectorSucursalWhatsapp, setMostrarSelectorSucursalWhatsapp] = useState(false);
   // "Vista previa" sólo se ve azul/activo mientras la pantalla completa
   // propia está abierta — el resto del tiempo es un botón neutro más.
   const [vistaPreviaActiva, setVistaPreviaActiva] = useState(false);
@@ -1519,31 +1537,38 @@ const AdminDashboard = () => {
     };
   }, [activeSection, agentIdActivo]);
 
-  const cargarDatosAgentes = async (branchId?: string) => {
+  const cargarDatosAgentes = async (branchId?: string, branchIdWhatsapp?: string) => {
     if (!restaurantId) return;
     setCargandoAgentes(true);
     const sb: any = supabase;
     const filtroSucursal = branchId && branchId !== 'global' ? { branch_id: branchId } : null;
     const conFiltro = (q: any) => (filtroSucursal ? q.eq('branch_id', filtroSucursal.branch_id) : q);
+    // Filtro independiente para el encabezado de Agente de WhatsApp — su
+    // propio selector de sucursal, sin depender del de voz.
+    const filtroSucursalWhatsapp = branchIdWhatsapp && branchIdWhatsapp !== 'global' ? { branch_id: branchIdWhatsapp } : null;
+    const conFiltroWhatsapp = (q: any) => (filtroSucursalWhatsapp ? q.eq('branch_id', filtroSucursalWhatsapp.branch_id) : q);
 
     const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
       { count: waTotal }, { count: waCompletados }, { count: waCancelados },
       { data: vozRecientes }, { data: waRecientes }, { data: sucursales },
-      { data: todasLasOrdenes }] = await Promise.all([
+      { data: todasLasOrdenes }, { data: ordenesWhatsappIngreso }] = await Promise.all([
       conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId)),
       conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice")),
       conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"])),
       conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado")),
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"])),
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado")),
+      conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
+      conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"])),
+      conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado")),
       conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8)),
-      conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8)),
+      conFiltroWhatsapp(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8)),
       sb.from("branches").select("id, name, elevenlabs_agent_id").eq("restaurant_id", restaurantId).order("display_order"),
       // Ingreso real por canal — se necesita el total de cada pedido, no solo
       // el conteo, así que aquí sí se trae `total` y `source` de todas las
       // filas (a diferencia de los counts de arriba, que no bajan datos).
       conFiltro(sb.from("orders").select("total, source").eq("restaurant_id", restaurantId)),
+      // Ingreso de WhatsApp acotado a su propio filtro de sucursal (puede
+      // ser distinto al de voz), separado del combinado de arriba.
+      conFiltroWhatsapp(sb.from("orders").select("total").eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
     ]);
 
     setSucursalesAgente(sucursales ?? []);
@@ -1551,7 +1576,7 @@ const AdminDashboard = () => {
     const filasIngreso: { total: number; source: string | null }[] = todasLasOrdenes ?? [];
     const ingresoTotal = filasIngreso.reduce((s, o) => s + Number(o.total), 0);
     const ingresoVoz = filasIngreso.filter((o) => o.source === 'voice').reduce((s, o) => s + Number(o.total), 0);
-    const ingresoWhatsapp = filasIngreso.filter((o) => o.source === 'whatsapp').reduce((s, o) => s + Number(o.total), 0);
+    const ingresoWhatsapp = (ordenesWhatsappIngreso ?? []).reduce((s: number, o: { total: number }) => s + Number(o.total), 0);
 
     setStatsAgentes({
       totalOrdenes: totalOrdenes ?? 0,
@@ -1562,8 +1587,8 @@ const AdminDashboard = () => {
     setOrdenesVoz(vozRecientes ?? []);
     setOrdenesWhatsapp(waRecientes ?? []);
 
-    const idsSucursales = filtroSucursal
-      ? [filtroSucursal.branch_id]
+    const idsSucursales = filtroSucursalWhatsapp
+      ? [filtroSucursalWhatsapp.branch_id]
       : (sucursales ?? []).map((s: { id: string }) => s.id);
     if (idsSucursales.length > 0) {
       const { data: conversaciones } = await sb
@@ -1601,11 +1626,11 @@ const AdminDashboard = () => {
   useEffect(() => {
     const seccionesConAgentes = ['agente-voz', 'agente-whatsapp', 'agente-voz-dashboard', 'agente-whatsapp-dashboard', 'dashboard'];
     if (!seccionesConAgentes.includes(activeSection) || !restaurantId) return;
-    cargarDatosAgentes(sucursalSeleccionada);
-    const intervalo = setInterval(() => cargarDatosAgentes(sucursalSeleccionada), 45000);
+    cargarDatosAgentes(sucursalSeleccionada, sucursalSeleccionadaWhatsapp);
+    const intervalo = setInterval(() => cargarDatosAgentes(sucursalSeleccionada, sucursalSeleccionadaWhatsapp), 45000);
     return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, restaurantId, sucursalSeleccionada]);
+  }, [activeSection, restaurantId, sucursalSeleccionada, sucursalSeleccionadaWhatsapp]);
   const [pregunta, setPregunta] = useState("");
   const [nombreAdmin, setNombreAdmin] = useState('');
   const [refrescando, setRefrescando] = useState(false);
@@ -1633,15 +1658,6 @@ const AdminDashboard = () => {
       if (state.openDialog) {
         if (state.openSection === 'products') {
           setEditingProduct(null);
-          setProductForm({
-            name: "",
-            description: "",
-            price: "",
-            image_url: "",
-            category_id: "",
-            is_popular: false,
-            is_available: true
-          });
           setProductDialogOpen(true);
         } else if (state.openSection === 'promos') {
           setEditingPromo(null);
@@ -1653,56 +1669,6 @@ const AdminDashboard = () => {
       window.history.replaceState({}, document.title);
     }
   }, [location.state, loading]);
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: "Error",
-        description: "Solo se permiten imágenes",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "Error",
-        description: "La imagen no puede superar 5MB",
-        variant: "destructive"
-      });
-      return;
-    }
-    setUploadingImage(true);
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const {
-      data,
-      error
-    } = await supabase.storage.from('product-images').upload(fileName, file);
-    if (error) {
-      toast({
-        title: "Error al subir imagen",
-        description: error.message,
-        variant: "destructive"
-      });
-      setUploadingImage(false);
-      return;
-    }
-    const {
-      data: {
-        publicUrl
-      }
-    } = supabase.storage.from('product-images').getPublicUrl(fileName);
-    setProductForm({
-      ...productForm,
-      image_url: publicUrl
-    });
-    toast({
-      title: "¡Imagen subida!",
-      description: "La imagen se subió correctamente"
-    });
-    setUploadingImage(false);
-  };
   useEffect(() => {
     const checkAuth = async () => {
       const {
@@ -1846,6 +1812,13 @@ const AdminDashboard = () => {
     } else {
       setRepartidores([]);
     }
+
+    const callbackRequestsQuery = scopedRestaurantId
+      ? sb.from("callback_requests").select("*").order("created_at", { ascending: false }).limit(100).eq("restaurant_id", scopedRestaurantId)
+      : sb.from("callback_requests").select("*").order("created_at", { ascending: false }).limit(100);
+    const { data: callbackRequestsData } = await callbackRequestsQuery;
+    setCallbackRequests(callbackRequestsData || []);
+
     setStats({
       revenue: 0,
       customers: 0,
@@ -2162,66 +2135,8 @@ const AdminDashboard = () => {
     await supabase.auth.signOut();
     navigate("/admin/login");
   };
-  const handleProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const productData = {
-      name: productForm.name,
-      description: productForm.description || null,
-      price: parseFloat(productForm.price),
-      image_url: productForm.image_url || null,
-      category_id: productForm.category_id || null,
-      is_popular: productForm.is_popular,
-      is_available: productForm.is_available
-    };
-    if (editingProduct) {
-      const {
-        error
-      } = await supabase.from("products").update(productData).eq("id", editingProduct.id);
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive"
-        });
-        return;
-      }
-      toast({
-        title: "¡Actualizado!",
-        description: "Producto actualizado correctamente"
-      });
-    } else {
-      const {
-        error
-      } = await supabase.from("products").insert(restaurantId ? { ...productData, restaurant_id: restaurantId } : productData);
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive"
-        });
-        return;
-      }
-      toast({
-        title: "¡Agregado!",
-        description: "Producto agregado correctamente"
-      });
-    }
-    setProductDialogOpen(false);
-    setEditingProduct(null);
-    resetProductForm();
-    await fetchData(restaurantId);
-  };
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
-    setProductForm({
-      name: product.name,
-      description: product.description || "",
-      price: product.price.toString(),
-      image_url: product.image_url || "",
-      category_id: product.category_id || "",
-      is_popular: product.is_popular || false,
-      is_available: product.is_available ?? true
-    });
     setProductDialogOpen(true);
   };
   const handleDeleteProduct = async (id: string) => {
@@ -2243,34 +2158,6 @@ const AdminDashboard = () => {
     });
     await fetchData(restaurantId);
   };
-  const handleCategorySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const {
-      error
-    } = await supabase.from("categories").insert({
-      name: categoryForm.name,
-      slug: categoryForm.slug.toLowerCase().replace(/\s+/g, "-"),
-      ...(restaurantId ? { restaurant_id: restaurantId } : {}),
-    });
-    if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-      return;
-    }
-    toast({
-      title: "¡Agregada!",
-      description: "Categoría agregada correctamente"
-    });
-    setCategoryDialogOpen(false);
-    setCategoryForm({
-      name: "",
-      slug: ""
-    });
-    await fetchData(restaurantId);
-  };
   // Reordena categorías con las flechas y persiste el nuevo orden completo
   // (normaliza display_order a la posición del arreglo en cada movimiento,
   // así no depende de que los valores previos ya estuvieran bien seteados).
@@ -2288,16 +2175,13 @@ const AdminDashboard = () => {
       await fetchData(restaurantId);
     }
   };
-  const resetProductForm = () => {
-    setProductForm({
-      name: "",
-      description: "",
-      price: "",
-      image_url: "",
-      category_id: "",
-      is_popular: false,
-      is_available: true
-    });
+  const handleResolverContacto = async (id: string, resolved: boolean) => {
+    const { error } = await supabase.from("callback_requests").update({ resolved }).eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    setCallbackRequests((prev) => prev.map((c) => (c.id === id ? { ...c, resolved } : c)));
   };
   const handlePromoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2537,9 +2421,13 @@ const AdminDashboard = () => {
                 {activeSection === 'categories' && (<><Tag className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Categorías</>)}
                 {activeSection === 'promos' && (<><Percent className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Promociones</>)}
                 {activeSection === 'orders' && (<><ShoppingCart className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Pedidos</>)}
-                {activeSection === 'users' && (<><Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Usuarios</>)}
-                {activeSection === 'repartidores' && (<><Truck className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
+                {activeSection === 'users' && (<><Contact className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Clientes</>)}
+                {activeSection === 'repartidores' && (<><Bike className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
                 {activeSection === 'notificaciones' && (<><Bell className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Notificaciones</>)}
+                {activeSection === 'contactos' && (<><PhoneCall className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Contactos por regresar llamada</>)}
+                {activeSection === 'sucursales' && (<><Store className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Sucursales</>)}
+                {activeSection === 'historial-ordenes' && (<><History className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Historial de Órdenes</>)}
+                {activeSection === 'cuentas-accesos' && (<><Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Cuentas & Accesos</>)}
                 {activeSection === 'help' && (<><HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Centro de Ayuda</>)}
                 {activeSection === 'agente-voz' && (<><Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de voz</>)}
                 {activeSection === 'agente-whatsapp' && (<><MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de WhatsApp</>)}
@@ -2606,6 +2494,38 @@ const AdminDashboard = () => {
               )}
               {activeSection === 'agente-whatsapp' && (
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* Mismo selector de sucursal / "Todas las sucursales" que
+                      Agente de voz, con su propio estado independiente. */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setMostrarSelectorSucursalWhatsapp((v) => !v)}
+                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                    >
+                      {sucursalSeleccionadaWhatsapp === 'global' ? <Globe className="w-3 h-3 text-muted-foreground" /> : <Store className="w-3 h-3 text-muted-foreground" />}
+                      {sucursalSeleccionadaWhatsapp === 'global' ? 'Todas las sucursales' : (sucursalesAgente.find((s) => s.id === sucursalSeleccionadaWhatsapp)?.name ?? 'Sucursal')}
+                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                    {mostrarSelectorSucursalWhatsapp && (
+                      <div className="absolute left-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
+                        <button
+                          onClick={() => { setSucursalSeleccionadaWhatsapp('global'); setMostrarSelectorSucursalWhatsapp(false); }}
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionadaWhatsapp === 'global' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                        >
+                          <Globe className="w-3.5 h-3.5 shrink-0" /> Todas las sucursales
+                        </button>
+                        <div className="my-1 border-t border-border" />
+                        {sucursalesAgente.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => { setSucursalSeleccionadaWhatsapp(s.id); setMostrarSelectorSucursalWhatsapp(false); }}
+                            className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionadaWhatsapp === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                          >
+                            <span className="flex items-center gap-2 min-w-0"><Store className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{s.name}</span></span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => setActiveSection('agente-whatsapp-dashboard')}
                     className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
@@ -2626,8 +2546,16 @@ const AdminDashboard = () => {
                     <MessageCircle className="w-3.5 h-3.5" />
                     Chatea con tus datos
                   </Button>
-                  <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0">
+                  <button
+                    onClick={() => setActiveSection('notificaciones')}
+                    className="relative w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                  >
                     <Bell className="w-4 h-4" strokeWidth={1.75} />
+                    {callbackRequests.filter((c) => !c.resolved).length > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-medium leading-4 text-center animate-pulse">
+                        {callbackRequests.filter((c) => !c.resolved).length}
+                      </span>
+                    )}
                   </button>
                   <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
                     {format(new Date(), "d MMM yyyy", { locale: es })}
@@ -2898,57 +2826,17 @@ const AdminDashboard = () => {
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{products.length} en total</p>
-              <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => { setEditingProduct(null); resetProductForm(); }} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
-                    <Plus className="w-3.5 h-3.5" /> Agregar
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>{editingProduct ? 'Editar producto' : 'Agregar producto'}</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleProductSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="product-name">Nombre</Label>
-                      <Input id="product-name" required value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="product-desc">Descripción</Label>
-                      <Textarea id="product-desc" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="product-price">Precio</Label>
-                      <Input id="product-price" type="number" step="0.01" required value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Categoría</Label>
-                      <Select value={productForm.category_id} onValueChange={(v) => setProductForm({ ...productForm, category_id: v })}>
-                        <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
-                        <SelectContent>
-                          {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="product-image">Imagen</Label>
-                      <Input id="product-image" type="file" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />
-                      {productForm.image_url && <img src={productForm.image_url} alt="" className="w-16 h-16 rounded-lg object-cover mt-1" />}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="product-popular">Popular</Label>
-                      <Switch id="product-popular" checked={productForm.is_popular} onCheckedChange={(v) => setProductForm({ ...productForm, is_popular: v })} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="product-available">Disponible</Label>
-                      <Switch id="product-available" checked={productForm.is_available} onCheckedChange={(v) => setProductForm({ ...productForm, is_available: v })} />
-                    </div>
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={uploadingImage}>
-                      {editingProduct ? 'Guardar cambios' : 'Agregar producto'}
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              <Button onClick={() => { setEditingProduct(null); setProductDialogOpen(true); }} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                <Plus className="w-3.5 h-3.5" /> Agregar
+              </Button>
+              <ModalProducto
+                open={productDialogOpen}
+                onOpenChange={setProductDialogOpen}
+                editingProduct={editingProduct}
+                categories={categories}
+                restaurantId={restaurantId}
+                onGuardado={() => fetchData(restaurantId)}
+              />
             </div>
             
             {products.length === 0 ? (
@@ -2999,30 +2887,15 @@ const AdminDashboard = () => {
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{categories.length} en total</p>
-              <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => setCategoryForm({ name: "", slug: "" })} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
-                    <Plus className="w-3.5 h-3.5" /> Agregar
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Agregar categoría</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleCategorySubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="category-name">Nombre</Label>
-                      <Input
-                        id="category-name"
-                        required
-                        value={categoryForm.name}
-                        onChange={(e) => setCategoryForm({ name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
-                      />
-                    </div>
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90">Agregar categoría</Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              <Button onClick={() => setCategoryDialogOpen(true)} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                <Plus className="w-3.5 h-3.5" /> Agregar
+              </Button>
+              <ModalCategoria
+                open={categoryDialogOpen}
+                onOpenChange={setCategoryDialogOpen}
+                restaurantId={restaurantId}
+                onGuardado={() => fetchData(restaurantId)}
+              />
             </div>
             
             {categories.length === 0 ? (
@@ -3107,60 +2980,31 @@ const AdminDashboard = () => {
 
         {/* Orders Section */}
         {activeSection === 'orders' && (
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{orders.length} en total</p>
-
-            {orders.length === 0 ? (
-              <div className="py-12 text-center">
-                <ShoppingCart className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
-                <p className="text-[13px] text-muted-foreground">No hay pedidos registrados</p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border overflow-hidden">
-                {orders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <ShoppingCart className="w-5 h-5 text-primary" strokeWidth={1.75} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-medium text-foreground truncate">{order.customer_name}</p>
-                        <p className="text-[12px] text-muted-foreground">
-                          {format(new Date(order.created_at), "d MMM yyyy, HH:mm", { locale: es })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <p className="font-display text-[13px] font-semibold tabular-nums text-foreground">${order.total.toLocaleString()}</p>
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${
-                        order.status === 'completado' || order.status === 'entregado'
-                          ? 'bg-green-100 text-green-700'
-                          : order.status === 'en_camino'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {order.status === 'completado' || order.status === 'entregado' ? 'Entregado' : order.status === 'en_camino' ? 'En camino' : 'Pendiente'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <PedidosSection restaurantId={restaurantId} />
         )}
 
         {/* Users Section */}
         {activeSection === 'users' && (
+          restaurantId
+            ? <ClientesSection restaurantId={restaurantId} />
+            : <div className="rounded-2xl border border-border bg-card p-8 text-center text-[13px] text-muted-foreground">Cargando restaurante…</div>
+        )}
+
+        {/* Cuentas & Accesos — cuentas de staff/admin (antes vivía en "Usuarios",
+            movido aquí cuando esa página pasó a ser el CRM real de "Clientes") */}
+        {activeSection === 'cuentas-accesos' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{profiles.length} en total</p>
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{profiles.length} en total</p>
+              <Button onClick={() => setCuentaModalOpen(true)} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                <Plus className="w-3.5 h-3.5" /> Agregar cuenta
+              </Button>
+            </div>
 
             {profiles.length === 0 ? (
               <div className="py-12 text-center">
                 <Users className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
-                <p className="text-[13px] text-muted-foreground">No hay usuarios registrados</p>
+                <p className="text-[13px] text-muted-foreground">No hay cuentas registradas</p>
               </div>
             ) : (
               <div className="rounded-xl border border-border overflow-hidden">
@@ -3193,6 +3037,13 @@ const AdminDashboard = () => {
                 ))}
               </div>
             )}
+
+            <ModalCuenta
+              open={cuentaModalOpen}
+              onOpenChange={setCuentaModalOpen}
+              restaurantId={restaurantId}
+              onCuentaCreada={() => fetchData(restaurantId)}
+            />
           </div>
         )}
 
@@ -3318,11 +3169,16 @@ const AdminDashboard = () => {
         {/* Repartidores Section */}
         {activeSection === 'repartidores' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Repartidores ({repartidores.length})</p>
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Repartidores ({repartidores.length})</p>
+              <Button onClick={() => setModalRepartidorAbierto(true)} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                <Plus className="w-3.5 h-3.5" /> Agregar repartidor
+              </Button>
+            </div>
 
             {repartidores.length === 0 ? (
               <div className="py-12 text-center">
-                <Truck className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <Bike className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
                 <p className="text-[13px] text-muted-foreground">No hay repartidores registrados</p>
                 <p className="text-[12px] text-muted-foreground mt-1">
                   Los usuarios pueden registrarse como repartidores desde la página de registro
@@ -3338,7 +3194,7 @@ const AdminDashboard = () => {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <Truck className="w-5 h-5 text-primary" strokeWidth={1.75} />
+                        <Bike className="w-5 h-5 text-primary" strokeWidth={1.75} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[13px] font-medium text-foreground truncate">
@@ -3576,6 +3432,11 @@ const AdminDashboard = () => {
                 </p>
               )}
             </div>
+            <ModalRepartidor
+              open={modalRepartidorAbierto}
+              onOpenChange={setModalRepartidorAbierto}
+              onGuardado={() => fetchData(restaurantId)}
+            />
           </div>
         )}
 
@@ -3583,6 +3444,65 @@ const AdminDashboard = () => {
           <div className="max-w-xl">
             <NotificacionesSection userId={user?.id} />
           </div>
+        )}
+
+        {activeSection === 'contactos' && (
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {callbackRequests.length} en total · {callbackRequests.filter((c) => !c.resolved).length} pendientes
+              </p>
+            </div>
+            <p className="text-[12px] text-muted-foreground -mt-1">
+              Mensajes o llamadas que NO eran para hacer un pedido (quejas, facturación, empleo, etc.) — el agente de voz o de WhatsApp anotó el contacto para que alguien del restaurante le regrese la comunicación.
+            </p>
+
+            {callbackRequests.length === 0 ? (
+              <div className="py-12 text-center">
+                <PhoneCall className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay contactos pendientes de regresar llamada.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border overflow-hidden">
+                {callbackRequests.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`p-3 flex items-start justify-between gap-3 border-b border-dashed border-border last:border-0 transition-colors ${c.resolved ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        {c.source === 'voice' ? <Mic className="w-5 h-5 text-primary" strokeWidth={1.75} /> : <MessageCircle className="w-5 h-5 text-primary" strokeWidth={1.75} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{c.customer_name} <span className="text-muted-foreground font-normal">· {c.customer_phone}</span></p>
+                        <p className="text-[12px] text-muted-foreground">
+                          {c.reason && <span className="px-1.5 py-0.5 rounded bg-muted text-foreground mr-1.5">{c.reason}</span>}
+                          {format(new Date(c.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                        </p>
+                        {c.message && <p className="text-[12.5px] text-foreground mt-1 leading-snug">{c.message}</p>}
+                      </div>
+                    </div>
+                    <Button
+                      variant={c.resolved ? "outline" : "default"}
+                      size="sm"
+                      className="h-7 px-2.5 rounded-full text-[11px] shrink-0"
+                      onClick={() => handleResolverContacto(c.id, !c.resolved)}
+                    >
+                      {c.resolved ? "Reabrir" : "Marcar atendido"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'sucursales' && (
+          <SucursalesSection restaurantId={restaurantId} />
+        )}
+
+        {activeSection === 'historial-ordenes' && (
+          <HistorialOrdenesSection restaurantId={restaurantId} />
         )}
 
         {activeSection === 'agente-voz' && (
@@ -3751,6 +3671,8 @@ const AdminDashboard = () => {
               </p>
             </div>
 
+            <WhatsAppAgenteConfigSection restaurantId={restaurantId} />
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <TileKpiAgente
                 indice={0}
@@ -3816,6 +3738,7 @@ const AdminDashboard = () => {
                 </div>
               )}
             </div>
+            <WidgetWhatsApp restaurantName={restaurantName ?? 'Los Taquitos de PM'} />
           </div>
         )}
 
