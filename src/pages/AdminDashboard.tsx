@@ -2774,6 +2774,7 @@ const AdminDashboard = () => {
                   agent-id={agentIdActivo}
                   avatar-orb-color-1="#1d4ed8"
                   avatar-orb-color-2="#0ea5e9"
+                  disable-banner="true"
                 />
               );
             })()}
