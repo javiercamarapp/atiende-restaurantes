@@ -757,11 +757,12 @@ const SucursalesSection = ({ restaurantId }: Props) => {
       <ModalFormularioElegante
         open={!!modalHorario}
         onOpenChange={(v) => !v && setModalHorario(null)}
+        icono={Clock}
         titulo="Editar horario"
         subtitulo={modalHorario?.name}
         onGuardar={guardarHorario}
         guardando={guardandoHorario}
-        anchoClase="max-w-xl"
+        anchoClase="max-w-2xl"
       >
         <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3">
           <div>
@@ -853,43 +854,35 @@ function FilaHorarioDia({
   onCambiar: (cambios: Partial<HorarioDia>) => void;
 }) {
   return (
-    <div className={`rounded-xl border border-border px-4 py-3 transition-colors ${horario.cerrado ? "bg-muted/20" : "bg-card"}`}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[12.5px] font-medium text-foreground">{etiqueta}</p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <span className="text-[11px] text-muted-foreground">{horario.cerrado ? "Cerrado" : "Abierto"}</span>
-          <Switch checked={!horario.cerrado} onCheckedChange={(v) => onCambiar({ cerrado: !v })} />
-        </label>
-      </div>
-      <AnimatePresence initial={false}>
-        {!horario.cerrado && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="overflow-hidden"
-          >
-            <div className="flex items-center gap-2 mt-2.5">
-              <Input
-                type="time"
-                value={horario.abre}
-                onChange={(e) => onCambiar({ abre: e.target.value })}
-                className="h-9 text-[12.5px] tabular-nums"
-                aria-label={`${etiqueta} — hora de apertura`}
-              />
-              <span className="text-muted-foreground text-[12px] shrink-0">–</span>
-              <Input
-                type="time"
-                value={horario.cierra}
-                onChange={(e) => onCambiar({ cierra: e.target.value })}
-                className="h-9 text-[12.5px] tabular-nums"
-                aria-label={`${etiqueta} — hora de cierre`}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className={`flex items-center gap-3 rounded-xl border border-border px-4 py-2.5 transition-colors ${horario.cerrado ? "bg-muted/20" : "bg-card"}`}>
+      <p className="text-[12.5px] font-medium text-foreground w-[88px] shrink-0">{etiqueta}</p>
+
+      <label className="flex items-center gap-2 cursor-pointer shrink-0 w-[92px]">
+        <Switch checked={!horario.cerrado} onCheckedChange={(v) => onCambiar({ cerrado: !v })} />
+        <span className="text-[11px] text-muted-foreground">{horario.cerrado ? "Cerrado" : "Abierto"}</span>
+      </label>
+
+      {!horario.cerrado ? (
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <Input
+            type="time"
+            value={horario.abre}
+            onChange={(e) => onCambiar({ abre: e.target.value })}
+            className="h-9 text-[12.5px] tabular-nums flex-1 min-w-0"
+            aria-label={`${etiqueta} — hora de apertura`}
+          />
+          <span className="text-muted-foreground text-[12px] shrink-0">–</span>
+          <Input
+            type="time"
+            value={horario.cierra}
+            onChange={(e) => onCambiar({ cierra: e.target.value })}
+            className="h-9 text-[12.5px] tabular-nums flex-1 min-w-0"
+            aria-label={`${etiqueta} — hora de cierre`}
+          />
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
     </div>
   );
 }

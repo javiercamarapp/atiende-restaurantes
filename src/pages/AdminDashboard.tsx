@@ -744,11 +744,11 @@ function DashboardAgente({
         <div className="min-w-0 relative">
           <button
             onClick={() => setMostrarSelectorEnDashboard((v) => !v)}
-            disabled={canal !== 'voz' || sucursalesAgente.length === 0}
+            disabled={sucursalesAgente.length === 0}
             className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground truncate disabled:cursor-default"
           >
             {nombreAgente}
-            {canal === 'voz' && sucursalesAgente.length > 0 && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+            {sucursalesAgente.length > 0 && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
           </button>
           {mostrarSelectorEnDashboard && (
             <div className="absolute left-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
@@ -766,7 +766,7 @@ function DashboardAgente({
                   className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
                 >
                   <span className="flex items-center gap-2 min-w-0"><Store className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{s.name}</span></span>
-                  {!s.elevenlabs_agent_id && <span className="font-mono text-[9px] uppercase text-muted-foreground/60 shrink-0">Sin agente</span>}
+                  {canal === 'voz' && !s.elevenlabs_agent_id && <span className="font-mono text-[9px] uppercase text-muted-foreground/60 shrink-0">Sin agente</span>}
                 </button>
               ))}
             </div>
@@ -1625,6 +1625,35 @@ const AdminDashboard = () => {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
 
+  // filteredStats/salesTrendData ("Tus ventas" y "Tendencias" de
+  // Estadísticas) — antes eran useMemo derivados de `orders` completo, pero
+  // `orders` viene de un fetch con `.limit(50000)` que en la práctica NUNCA
+  // trae más de 1000 filas: el proyecto de Supabase topa cada respuesta de
+  // la API de datos en 1000 filas sin importar el `.limit()` que pida el
+  // cliente (confirmado en vivo — ver migración
+  // orders_bucketed_stats_rpc.sql). Con ~1000 pedidos/día de volumen real
+  // de demo, cualquier ventana de más de un día llegaba truncada a los
+  // pedidos más recientes, y casi todos los tramos de la gráfica (y el
+  // periodo completo de "Tus ventas" para 7/30/90/180/365/histórico)
+  // sumaban sobre filas que nunca llegaron — de ahí el $0/0 en casi todos
+  // los puntos aunque sí había pedidos reales. Ahora se agregan en
+  // Postgres vía RPC (orders_bucketed_stats): se manda un puñado de tramos
+  // de fecha y se recibe un renglón sumado por tramo, muy por debajo del
+  // límite de 1000 sin importar cuántos pedidos reales haya. Se recalculan
+  // dentro de fetchData (mismo disparador que ya refresca `orders`), no
+  // con un useMemo sincrónico.
+  const [filteredStats, setFilteredStats] = useState({
+    revenue: 0,
+    orders: 0,
+    customers: 0,
+    averageOrder: 0,
+    revenueChange: 0,
+    ordersChange: 0,
+    customersChange: 0,
+    avgOrderChange: 0,
+  });
+  const [salesTrendData, setSalesTrendData] = useState<{ name: string; ventas: number; ordenes: number }[]>([]);
+
   // Datos reales de los agentes (voz/WhatsApp) — se cargan aparte de
   // fetchData() porque necesitan conteos exactos (no el límite de 50 filas
   // que usa el `orders` del dashboard) y, para WhatsApp, la tabla
@@ -2006,6 +2035,191 @@ const AdminDashboard = () => {
   };
   const nombreSaludo = nombreAdmin.split(' ').slice(0, 2).join(' ');
 
+  // Tramos [inicio, fin) de cada barra de "Tendencias" para el dateFilter
+  // activo — mismos periodos que antes (24 horas / 7-30 días / 13-26
+  // semanas / 12 meses), pero como límites reales de fecha en vez de un
+  // predicado que se evaluaba pedido por pedido en el navegador. `fin`
+  // exclusivo en todos los casos (equivalente a la igualdad de
+  // hora/día/mes de antes salvo por una diferencia de microsegundos en el
+  // borde, que nunca importa con timestamps reales).
+  const construirTramosTendencia = (
+    filtro: typeof dateFilter,
+    ahora: Date,
+    primerPedidoEn: Date | null
+  ): { inicio: Date; fin: Date; etiqueta: string }[] => {
+    const tramos: { inicio: Date; fin: Date; etiqueta: string }[] = [];
+    switch (filtro) {
+      case 'today': {
+        for (let i = 23; i >= 0; i--) {
+          const inicio = new Date(ahora.getTime() - i * 60 * 60 * 1000);
+          inicio.setMinutes(0, 0, 0);
+          const fin = new Date(inicio.getTime() + 60 * 60 * 1000);
+          tramos.push({ inicio, fin, etiqueta: format(inicio, 'HH:00', { locale: es }) });
+        }
+        break;
+      }
+      case '7':
+      case '30': {
+        const dias = filtro === '7' ? 6 : 29;
+        // '7' muestra nombre de día ("lun"), '30' fecha ("dd MMM") — mismo
+        // formato que ya usaba la gráfica antes de esta corrección.
+        const etiquetaFormato = filtro === '7' ? 'EEE' : 'dd MMM';
+        for (let i = dias; i >= 0; i--) {
+          const inicio = startOfDay(subDays(ahora, i));
+          const fin = subDays(inicio, -1);
+          tramos.push({ inicio, fin, etiqueta: format(inicio, etiquetaFormato, { locale: es }) });
+        }
+        break;
+      }
+      case '90':
+      case '180': {
+        if (filtro === '90') {
+          for (let i = 89; i >= 0; i -= 7) {
+            const inicio = startOfDay(subDays(ahora, i));
+            const fin = subDays(inicio, -7);
+            tramos.push({ inicio, fin, etiqueta: format(inicio, 'dd MMM', { locale: es }) });
+          }
+        } else {
+          for (let i = 25; i >= 0; i--) {
+            const inicio = startOfDay(subDays(ahora, i * 7));
+            const fin = subDays(inicio, -7);
+            tramos.push({ inicio, fin, etiqueta: format(inicio, 'dd MMM', { locale: es }) });
+          }
+        }
+        break;
+      }
+      case '365': {
+        for (let i = 11; i >= 0; i--) {
+          const inicio = startOfMonth(subMonths(ahora, i));
+          const fin = subMonths(inicio, -1);
+          tramos.push({ inicio, fin, etiqueta: format(inicio, 'MMM yy', { locale: es }) });
+        }
+        break;
+      }
+      case 'historico':
+      default: {
+        // Un punto por mes desde el pedido más antiguo real (tope de 36
+        // meses). `primerPedidoEn` viene de una consulta aparte que solo
+        // pide MIN(created_at) — a diferencia de antes, que lo sacaba del
+        // propio array `orders` ya truncado a 1000 filas (el "más antiguo"
+        // de las 1000 más RECIENTES, casi siempre muy lejos del real).
+        const inicioReal = primerPedidoEn ?? ahora;
+        const mesesDesdeInicio = Math.min(
+          36,
+          Math.max(0, (ahora.getFullYear() - inicioReal.getFullYear()) * 12 + (ahora.getMonth() - inicioReal.getMonth()))
+        );
+        for (let i = mesesDesdeInicio; i >= 0; i--) {
+          const inicio = startOfMonth(subMonths(ahora, i));
+          const fin = subMonths(inicio, -1);
+          tramos.push({ inicio, fin, etiqueta: format(inicio, 'MMM yy', { locale: es }) });
+        }
+        break;
+      }
+    }
+    return tramos;
+  };
+
+  // Periodo actual y periodo anterior (para las notas "+X% vs ayer/7 días
+  // anteriores/…" de las tarjetas de "Tus ventas") — mismos rangos que
+  // antes. `fin` muy en el futuro para el periodo actual: cubre cualquier
+  // pedido real, incluidos los que el sembrado de demo dejó con
+  // created_at unos minutos/horas adelantado por el desfase de zona
+  // horaria (se guardó hora local de Mérida como si ya fuera UTC).
+  const MUY_FUTURO = new Date(8640000000000000);
+  const EPOCA = new Date(0);
+  const construirPeriodosComparacion = (filtro: typeof dateFilter, ahora: Date) => {
+    switch (filtro) {
+      case 'today': {
+        const hoy = startOfDay(ahora);
+        return { actual: { inicio: hoy, fin: MUY_FUTURO }, previo: { inicio: subDays(hoy, 1), fin: hoy } };
+      }
+      case '7':
+        return { actual: { inicio: subDays(ahora, 7), fin: MUY_FUTURO }, previo: { inicio: subDays(ahora, 14), fin: subDays(ahora, 7) } };
+      case '30':
+        return { actual: { inicio: subDays(ahora, 30), fin: MUY_FUTURO }, previo: { inicio: subDays(ahora, 60), fin: subDays(ahora, 30) } };
+      case '90':
+        return { actual: { inicio: subDays(ahora, 90), fin: MUY_FUTURO }, previo: { inicio: subDays(ahora, 180), fin: subDays(ahora, 90) } };
+      case '180':
+        return { actual: { inicio: subDays(ahora, 180), fin: MUY_FUTURO }, previo: { inicio: subDays(ahora, 360), fin: subDays(ahora, 180) } };
+      case '365':
+        return { actual: { inicio: subDays(ahora, 365), fin: MUY_FUTURO }, previo: { inicio: subDays(ahora, 730), fin: subDays(ahora, 365) } };
+      case 'historico':
+      default:
+        // Histórico es un total, no una ventana con antes/después.
+        return { actual: { inicio: EPOCA, fin: MUY_FUTURO }, previo: null as { inicio: Date; fin: Date } | null };
+    }
+  };
+
+  // Pide a Postgres (orders_bucketed_stats) la suma/conteo por tramo de
+  // fecha para "Tus ventas" y "Tendencias" — reemplaza sumar en el
+  // navegador sobre `orders`, que llega truncado a 1000 filas por el
+  // límite real de la API (ver comentario junto al useState de
+  // filteredStats/salesTrendData). Se llama desde fetchData, con el mismo
+  // disparador (carga inicial, refresco de 60s, cambio de dateFilter,
+  // refresco manual) que ya traía `orders`.
+  const actualizarEstadisticasYTendencia = async (scopedRestaurantId: string | null, filtro: typeof dateFilter) => {
+    const sb: any = supabase;
+    const ahora = new Date();
+
+    let primerPedidoEn: Date | null = null;
+    if (filtro === 'historico') {
+      const q = scopedRestaurantId
+        ? sb.from("orders").select("created_at").eq("restaurant_id", scopedRestaurantId).order("created_at", { ascending: true }).limit(1)
+        : sb.from("orders").select("created_at").order("created_at", { ascending: true }).limit(1);
+      const { data } = await q;
+      primerPedidoEn = data?.[0]?.created_at ? new Date(data[0].created_at) : null;
+    }
+
+    const tramos = construirTramosTendencia(filtro, ahora, primerPedidoEn);
+    const periodos = construirPeriodosComparacion(filtro, ahora);
+
+    const bucketInicios = [...tramos.map((t) => t.inicio), periodos.actual.inicio, ...(periodos.previo ? [periodos.previo.inicio] : [])];
+    const bucketFines = [...tramos.map((t) => t.fin), periodos.actual.fin, ...(periodos.previo ? [periodos.previo.fin] : [])];
+
+    const { data: filasRaw, error } = await sb.rpc('orders_bucketed_stats', {
+      p_restaurant_id: scopedRestaurantId,
+      p_bucket_starts: bucketInicios.map((d) => d.toISOString()),
+      p_bucket_ends: bucketFines.map((d) => d.toISOString()),
+    });
+    if (error) {
+      console.error("No se pudo calcular Tus ventas/Tendencias (orders_bucketed_stats):", error);
+      return;
+    }
+
+    const porIdx = new Map<number, { revenue: number; order_count: number; customer_count: number }>();
+    (filasRaw ?? []).forEach((f: any) => porIdx.set(f.idx, { revenue: Number(f.revenue), order_count: Number(f.order_count), customer_count: Number(f.customer_count) }));
+
+    setSalesTrendData(tramos.map((t, i) => {
+      const fila = porIdx.get(i + 1);
+      return { name: t.etiqueta, ventas: fila?.revenue ?? 0, ordenes: fila?.order_count ?? 0 };
+    }));
+
+    const filaActual = porIdx.get(tramos.length + 1);
+    const filaPrevia = periodos.previo ? porIdx.get(tramos.length + 2) : null;
+    const totalRevenue = filaActual?.revenue ?? 0;
+    const totalOrders = filaActual?.order_count ?? 0;
+    const uniqueCustomers = filaActual?.customer_count ?? 0;
+    const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    const prevRevenue = filaPrevia?.revenue ?? 0;
+    const prevOrdersCount = filaPrevia?.order_count ?? 0;
+    const prevUniqueCustomers = filaPrevia?.customer_count ?? 0;
+    const prevAvgOrder = prevOrdersCount > 0 ? prevRevenue / prevOrdersCount : 0;
+    const calcChange = (current: number, prev: number) => {
+      if (prev === 0) return current > 0 ? 100 : 0;
+      return ((current - prev) / prev) * 100;
+    };
+    setFilteredStats({
+      revenue: totalRevenue,
+      orders: totalOrders,
+      customers: uniqueCustomers,
+      averageOrder: avgOrder,
+      revenueChange: calcChange(totalRevenue, prevRevenue),
+      ordersChange: calcChange(totalOrders, prevOrdersCount),
+      customersChange: calcChange(uniqueCustomers, prevUniqueCustomers),
+      avgOrderChange: calcChange(avgOrder, prevAvgOrder),
+    });
+  };
+
   const fetchData = async (scopedRestaurantId: string | null) => {
     // Nota: no reasignar estas queries con `let x = x.eq(...)` — el builder de
     // Supabase tiene tipos genéricos encadenados tan profundos que TypeScript
@@ -2073,6 +2287,18 @@ const AdminDashboard = () => {
       data: ordersData
     } = await ordersQuery;
     setOrders(ordersData || []);
+    // "Tus ventas"/"Tendencias" ya NO se calculan sobre `ordersData` (ver
+    // comentario junto al useState de filteredStats/salesTrendData): se
+    // agregan en Postgres vía RPC, sin el tope de 1000 filas de la API de
+    // datos. Se espera (no fire-and-forget) para que no destelle $0 al
+    // cargar — pero envuelto en try/catch para que, si el RPC falla, el
+    // resto de fetchData (productos, categorías, perfiles…) siga cargando
+    // igual; el error ya se loguea dentro de la propia función.
+    try {
+      await actualizarEstadisticasYTendencia(scopedRestaurantId, dateFilter);
+    } catch (err) {
+      console.error("No se pudo calcular Tus ventas/Tendencias:", err);
+    }
     const {
       data: profilesData
     } = await supabase.from("profiles").select("*").order("created_at", {
@@ -2115,93 +2341,8 @@ const AdminDashboard = () => {
       users: (profilesData || []).length
     });
   };
-  // Filter orders based on date filter
-  const filteredStats = useMemo(() => {
-    const now = new Date();
-    let startDate: Date;
-    let prevStartDate: Date;
-    let prevEndDate: Date;
-
-    switch (dateFilter) {
-      case 'today':
-        startDate = startOfDay(now);
-        prevEndDate = startOfDay(now);
-        prevStartDate = subDays(prevEndDate, 1);
-        break;
-      case '7':
-        startDate = subDays(now, 7);
-        prevEndDate = subDays(now, 7);
-        prevStartDate = subDays(now, 14);
-        break;
-      case '30':
-        startDate = subDays(now, 30);
-        prevEndDate = subDays(now, 30);
-        prevStartDate = subDays(now, 60);
-        break;
-      case '90':
-        startDate = subDays(now, 90);
-        prevEndDate = subDays(now, 90);
-        prevStartDate = subDays(now, 180);
-        break;
-      case '180':
-        startDate = subDays(now, 180);
-        prevEndDate = subDays(now, 180);
-        prevStartDate = subDays(now, 360);
-        break;
-      case '365':
-        startDate = subDays(now, 365);
-        prevEndDate = subDays(now, 365);
-        prevStartDate = subDays(now, 730);
-        break;
-      case 'historico':
-        // Sin límite inferior real y sin periodo anterior con el que
-        // comparar — "histórico" es un total, no una ventana con antes/después.
-        startDate = new Date(0);
-        prevEndDate = new Date(0);
-        prevStartDate = new Date(0);
-        break;
-      default:
-        startDate = startOfDay(now);
-        prevEndDate = startOfDay(now);
-        prevStartDate = subDays(prevEndDate, 1);
-    }
-
-    // Current period
-    const filteredOrders = orders.filter(order =>
-      isAfter(new Date(order.created_at), startDate)
-    );
-
-    // Previous period
-    const prevOrders = dateFilter === 'historico' ? [] : orders.filter(order => {
-      const orderDate = new Date(order.created_at);
-      return isAfter(orderDate, prevStartDate) && !isAfter(orderDate, prevEndDate);
-    });
-
-    const totalRevenue = filteredOrders.reduce((sum, order) => sum + Number(order.total), 0);
-    const uniqueCustomers = new Set(filteredOrders.map(o => o.customer_name)).size;
-    const avgOrder = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
-
-    const prevRevenue = prevOrders.reduce((sum, order) => sum + Number(order.total), 0);
-    const prevUniqueCustomers = new Set(prevOrders.map(o => o.customer_name)).size;
-    const prevAvgOrder = prevOrders.length > 0 ? prevRevenue / prevOrders.length : 0;
-
-    // Calculate percentage changes
-    const calcChange = (current: number, prev: number) => {
-      if (prev === 0) return current > 0 ? 100 : 0;
-      return ((current - prev) / prev) * 100;
-    };
-
-    return {
-      revenue: totalRevenue,
-      orders: filteredOrders.length,
-      customers: uniqueCustomers,
-      averageOrder: avgOrder,
-      revenueChange: calcChange(totalRevenue, prevRevenue),
-      ordersChange: calcChange(filteredOrders.length, prevOrders.length),
-      customersChange: calcChange(uniqueCustomers, prevUniqueCustomers),
-      avgOrderChange: calcChange(avgOrder, prevAvgOrder)
-    };
-  }, [orders, dateFilter]);
+  // filteredStats se calcula ahora en actualizarEstadisticasYTendencia
+  // (llamada desde fetchData) — ver comentario junto a su useState.
 
   // Get period label for comparison
   const getPeriodLabel = () => {
@@ -2217,91 +2358,9 @@ const AdminDashboard = () => {
     }
   };
 
-  // Sales trend chart data — un solo control de fecha (dateFilter) maneja
-  // "Tus ventas" (filteredStats, arriba) y "Tendencias" (esta gráfica).
-  const salesTrendData = useMemo(() => {
-    const now = new Date();
-    let intervals: Date[] = [];
-    let groupFormat: string;
-    let esHora = false;
-    let esMes = false;
-    let esSemanal90 = false;
-
-    switch (dateFilter) {
-      case 'today':
-        for (let i = 23; i >= 0; i--) intervals.push(new Date(now.getTime() - i * 60 * 60 * 1000));
-        groupFormat = 'HH:00';
-        esHora = true;
-        break;
-      case '7':
-        for (let i = 6; i >= 0; i--) intervals.push(subDays(now, i));
-        groupFormat = 'EEE';
-        break;
-      case '30':
-        for (let i = 29; i >= 0; i--) intervals.push(subDays(now, i));
-        groupFormat = 'dd MMM';
-        break;
-      case '90':
-        for (let i = 89; i >= 0; i -= 7) intervals.push(subDays(now, i));
-        groupFormat = 'dd MMM';
-        esSemanal90 = true;
-        break;
-      case '180':
-        for (let i = 25; i >= 0; i--) intervals.push(subDays(now, i * 7));
-        groupFormat = 'dd MMM';
-        esSemanal90 = true;
-        break;
-      case '365':
-        for (let i = 11; i >= 0; i--) intervals.push(subMonths(now, i));
-        groupFormat = 'MMM yy';
-        esMes = true;
-        break;
-      case 'historico':
-      default: {
-        // Histórico: un punto por mes desde el pedido más antiguo (tope de
-        // 36 meses para no dibujar de más si hay años de datos).
-        const fechas = orders.map((o) => new Date(o.created_at).getTime());
-        const inicio = fechas.length > 0 ? new Date(Math.min(...fechas)) : now;
-        const mesesDesdeInicio = Math.min(
-          36,
-          Math.max(0, (now.getFullYear() - inicio.getFullYear()) * 12 + (now.getMonth() - inicio.getMonth()))
-        );
-        for (let i = mesesDesdeInicio; i >= 0; i--) intervals.push(subMonths(now, i));
-        groupFormat = 'MMM yy';
-        esMes = true;
-      }
-    }
-
-    return intervals.map(date => {
-      const label = format(date, groupFormat, { locale: es });
-      let revenue = 0;
-      let orderCount = 0;
-
-      orders.forEach(order => {
-        const orderDate = new Date(order.created_at);
-        let matches = false;
-
-        if (esHora) {
-          matches = format(orderDate, 'yyyy-MM-dd HH') === format(date, 'yyyy-MM-dd HH');
-        } else if (esMes) {
-          matches = format(orderDate, 'yyyy-MM') === format(date, 'yyyy-MM');
-        } else if (esSemanal90) {
-          const weekStart = startOfDay(date);
-          const weekEnd = subDays(weekStart, -7);
-          matches = isAfter(orderDate, weekStart) && !isAfter(orderDate, weekEnd);
-        } else {
-          matches = format(orderDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
-        }
-
-        if (matches) {
-          revenue += Number(order.total);
-          orderCount += 1;
-        }
-      });
-
-      return { name: label, ventas: revenue, ordenes: orderCount };
-    });
-  }, [orders, dateFilter]);
+  // salesTrendData ("Tendencias") se calcula ahora en
+  // actualizarEstadisticasYTendencia (llamada desde fetchData) — ver
+  // comentario junto a su useState y a construirTramosTendencia.
 
   const getChartData = useMemo(() => {
     if (!selectedStat) return [];
@@ -3990,9 +4049,12 @@ const AdminDashboard = () => {
           <DashboardAgente
             canal="whatsapp"
             onCerrar={() => setActiveSection('agente-whatsapp')}
-            nombreAgente={restaurantName ?? 'tu restaurante'}
+            nombreAgente={sucursalSeleccionadaWhatsapp === 'global' ? (restaurantName ?? 'Todas las sucursales') : (sucursalesAgente.find((s) => s.id === sucursalSeleccionadaWhatsapp)?.name ?? 'tu sucursal')}
             statsAgentes={statsAgentes}
             mensajesPromedioWhatsapp={conversacionesWhatsapp?.promedioMensajes ?? null}
+            sucursalesAgente={sucursalesAgente}
+            sucursalSeleccionada={sucursalSeleccionadaWhatsapp}
+            onCambiarSucursal={setSucursalSeleccionadaWhatsapp}
             presets={PRESETS_RANGO_AGENTE}
             presetActivo={presetRangoAgente}
             onCambiarPreset={(id) => { setPresetRangoAgente(id); setRangoAgenteAplicado(undefined); }}

@@ -10,12 +10,20 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AtiendeMark } from "@/components/AtiendeLogo";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ModalFormularioEleganteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Ícono a mostrar en la insignia circular del header, en vez del
+   * AtiendeMark por default — mismo tratamiento (w-11 h-11 rounded-full
+   * bg-primary/10, ícono w-5 h-5 text-primary) que usa "Editar sucursal"
+   * en SucursalesSection.tsx. Úsalo cuando el modal tenga un tema visual
+   * claro (ej. Clock para horarios) en vez del logo genérico.
+   */
+  icono?: LucideIcon;
   /** Título centrado bajo el logo — mismo tratamiento que los headers de paso de ModalClonarVoz. */
   titulo: string;
   /** Texto secundario opcional, centrado, debajo del título. */
@@ -81,6 +89,7 @@ export function CampoFormulario({ id, label, hint, error, children, className }:
 export function ModalFormularioElegante({
   open,
   onOpenChange,
+  icono: Icono,
   titulo,
   subtitulo,
   children,
@@ -102,7 +111,13 @@ export function ModalFormularioElegante({
         <div className="h-1 bg-gradient-to-r from-primary to-secondary" />
 
         <div className="px-6 pt-6 pb-5 flex flex-col items-center text-center border-b border-border">
-          <AtiendeMark className="h-7 w-auto mb-3" />
+          {Icono ? (
+            <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+              <Icono className="w-5 h-5 text-primary" strokeWidth={1.75} />
+            </div>
+          ) : (
+            <AtiendeMark className="h-7 w-auto mb-3" />
+          )}
           <p className="font-display text-lg font-semibold text-foreground">{titulo}</p>
           {subtitulo && <p className="text-[13px] text-muted-foreground mt-1 max-w-sm">{subtitulo}</p>}
         </div>

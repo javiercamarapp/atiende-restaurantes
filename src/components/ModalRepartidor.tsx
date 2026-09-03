@@ -141,10 +141,10 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
       onGuardar={handleGuardar}
       guardando={guardando}
       textoBotonGuardar="Agregar repartidor"
-      anchoClase="max-w-xl"
+      anchoClase="max-w-3xl"
       bloquearCierre={guardando}
     >
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         <CampoFormulario id="rep-nombre" label="Nombre completo" error={errores.nombre_completo} className="col-span-2">
           <Input id="rep-nombre" value={form.nombre_completo} onChange={(ev) => set("nombre_completo", ev.target.value)} autoFocus />
         </CampoFormulario>

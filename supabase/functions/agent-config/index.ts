@@ -711,7 +711,7 @@ Deno.serve(async (req: Request) => {
       const {
         agent_id, name, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost,
         background_sound_id, background_sound_volume, background_sound_crossfade, first_message_interruptible,
-        llm, backup_llm,
+        llm, backup_llm, reasoning_effort,
       } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
@@ -732,12 +732,18 @@ Deno.serve(async (req: Request) => {
       if (first_message !== undefined) agentPatch.first_message = first_message;
       if (language !== undefined) agentPatch.language = language;
       if (first_message_interruptible !== undefined) agentPatch.disable_first_message_interruptions = !first_message_interruptible;
-      if (prompt !== undefined || temperature !== undefined || llm !== undefined || backup_llm !== undefined) {
+      if (prompt !== undefined || temperature !== undefined || llm !== undefined || backup_llm !== undefined || reasoning_effort !== undefined) {
         agentPatch.prompt = {};
         if (prompt !== undefined) agentPatch.prompt.prompt = prompt;
         if (temperature !== undefined) agentPatch.prompt.temperature = temperature;
         if (llm !== undefined) agentPatch.prompt.llm = llm;
         if (backup_llm !== undefined) agentPatch.prompt.backup_llm_config = { preference: "override", order: [backup_llm] };
+        // Modelos "thinking" (ej. gemini-3.5-flash-lite) exponen razonamiento
+        // visible si reasoning_effort queda sin definir — se coló texto de
+        // planeación interna dentro de la respuesta hablada real en una
+        // llamada de prueba en vivo. "minimal" apaga ese razonamiento visible
+        // sin tener que cambiar de modelo.
+        if (reasoning_effort !== undefined) agentPatch.prompt.reasoning_effort = reasoning_effort;
       }
 
       // deno-lint-ignore no-explicit-any
