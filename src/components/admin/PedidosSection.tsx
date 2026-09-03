@@ -81,43 +81,53 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
   const repartidorById = useMemo(() => new Map(repartidores.map((r) => [r.user_id, r])), [repartidores]);
 
   const cargar = async () => {
-    const sb: any = supabase;
-    // Recibidas/Enviadas/Programadas es un tablero operativo, no un
-    // histórico — se acota a los últimos 3 días (de sobra para cualquier
-    // pedido activo real) para no traer las 90,000 filas de demo completo
-    // a un tablero que solo necesita lo reciente/sin completar. El
-    // histórico completo vive en HistorialOrdenesSection.
-    const desde = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    const ordersQueryBase = sb.from("orders").select("*").order("created_at", { ascending: false }).gte("created_at", desde)
-      // El widget de WhatsApp de prueba de la página pública crea pedidos
-      // reales con customer_phone = "widget-<uuid>" para poder probar la
-      // conversación de punta a punta — no son pedidos operativos reales,
-      // nunca deben aparecer en el tablero de despacho.
-      .not("customer_phone", "ilike", "widget-%");
-    const ordersQuery = restaurantId
-      ? ordersQueryBase.eq("restaurant_id", restaurantId)
-      : ordersQueryBase;
-    const [{ data: ordersData }, { data: branchesData }, { data: repartidoresRoles }] = await Promise.all([
-      ordersQuery,
-      restaurantId
-        ? supabase.from("branches").select("id, name, lat, lng").eq("restaurant_id", restaurantId)
-        : supabase.from("branches").select("id, name, lat, lng"),
-      supabase.from("user_roles").select("user_id").eq("role", "repartidor"),
-    ]);
-    setOrders((ordersData as OrderRow[]) || []);
-    setBranches((branchesData as BranchRow[]) || []);
+    // Sin try/finally aquí, cualquier falla de red (la query no siempre
+    // resuelve a { data, error }; a veces el fetch subyacente truena de
+    // verdad) dejaba `loading` en true para siempre — la pantalla se
+    // quedaba pasmada en el spinner sin importar cuántas veces refrescara
+    // el poll de 60s (mismo patrón de bug que Sucursales/Voces e idiomas).
+    try {
+      const sb: any = supabase;
+      // Recibidas/Enviadas/Programadas es un tablero operativo, no un
+      // histórico — se acota a los últimos 3 días (de sobra para cualquier
+      // pedido activo real) para no traer las 90,000 filas de demo completo
+      // a un tablero que solo necesita lo reciente/sin completar. El
+      // histórico completo vive en HistorialOrdenesSection.
+      const desde = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const ordersQueryBase = sb.from("orders").select("*").order("created_at", { ascending: false }).gte("created_at", desde)
+        // El widget de WhatsApp de prueba de la página pública crea pedidos
+        // reales con customer_phone = "widget-<uuid>" para poder probar la
+        // conversación de punta a punta — no son pedidos operativos reales,
+        // nunca deben aparecer en el tablero de despacho.
+        .not("customer_phone", "ilike", "widget-%");
+      const ordersQuery = restaurantId
+        ? ordersQueryBase.eq("restaurant_id", restaurantId)
+        : ordersQueryBase;
+      const [{ data: ordersData }, { data: branchesData }, { data: repartidoresRoles }] = await Promise.all([
+        ordersQuery,
+        restaurantId
+          ? supabase.from("branches").select("id, name, lat, lng").eq("restaurant_id", restaurantId)
+          : supabase.from("branches").select("id, name, lat, lng"),
+        supabase.from("user_roles").select("user_id").eq("role", "repartidor"),
+      ]);
+      setOrders((ordersData as OrderRow[]) || []);
+      setBranches((branchesData as BranchRow[]) || []);
 
-    if (repartidoresRoles && repartidoresRoles.length > 0) {
-      const userIds = repartidoresRoles.map((r) => r.user_id);
-      const { data: repartidorProfiles } = await supabase
-        .from("profiles")
-        .select("user_id, email, nombre, telefono")
-        .in("user_id", userIds);
-      setRepartidores((repartidorProfiles as RepartidorRow[]) || []);
-    } else {
-      setRepartidores([]);
+      if (repartidoresRoles && repartidoresRoles.length > 0) {
+        const userIds = repartidoresRoles.map((r) => r.user_id);
+        const { data: repartidorProfiles } = await supabase
+          .from("profiles")
+          .select("user_id, email, nombre, telefono")
+          .in("user_id", userIds);
+        setRepartidores((repartidorProfiles as RepartidorRow[]) || []);
+      } else {
+        setRepartidores([]);
+      }
+    } catch (err) {
+      console.error("No se pudo cargar Pedidos:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

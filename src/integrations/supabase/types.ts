@@ -241,8 +241,11 @@ export type Database = {
       }
       customers: {
         Row: {
+          address: string | null
+          branch_id: string | null
           created_at: string
           id: string
+          is_demo: boolean
           last_order_at: string | null
           name: string | null
           order_count: number
@@ -251,8 +254,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address?: string | null
+          branch_id?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           last_order_at?: string | null
           name?: string | null
           order_count?: number
@@ -261,8 +267,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address?: string | null
+          branch_id?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           last_order_at?: string | null
           name?: string | null
           order_count?: number
@@ -271,6 +280,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "customers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "customers_restaurant_id_fkey"
             columns: ["restaurant_id"]

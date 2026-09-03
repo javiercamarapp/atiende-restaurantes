@@ -79,30 +79,43 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
     if (!validar()) return;
 
     setGuardando(true);
-    const { data, error } = await supabase.functions.invoke("crear-cuenta-staff", {
-      body: {
-        restaurant_id: restaurantId,
-        nombre: form.nombre.trim(),
-        apellidos: form.apellidos.trim(),
-        email: form.email.trim(),
-        telefono: `${form.codigoPais} ${form.telefono.trim()}`,
-        role: form.role,
-      },
-    });
-    setGuardando(false);
+    // try/finally: si supabase.functions.invoke truena de verdad (red) en
+    // vez de resolver a { data, error }, sin esto `guardando` se quedaba en
+    // true para siempre — el botón "Guardando…" nunca se volvía a habilitar,
+    // ni siquiera reabriendo el modal (el estado sigue montado).
+    try {
+      const { data, error } = await supabase.functions.invoke("crear-cuenta-staff", {
+        body: {
+          restaurant_id: restaurantId,
+          nombre: form.nombre.trim(),
+          apellidos: form.apellidos.trim(),
+          email: form.email.trim(),
+          telefono: `${form.codigoPais} ${form.telefono.trim()}`,
+          role: form.role,
+        },
+      });
 
-    if (error || data?.error) {
+      if (error || data?.error) {
+        toast({
+          title: "No se pudo crear la cuenta",
+          description: data?.error || error?.message || "Intenta de nuevo.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({ title: "¡Cuenta creada!", description: `${form.nombre} ${form.apellidos} ya puede iniciar sesión con Google o un enlace mágico a ${form.email.trim()}.` });
+      onOpenChange(false);
+      await onCuentaCreada();
+    } catch (err) {
       toast({
         title: "No se pudo crear la cuenta",
-        description: data?.error || error?.message || "Intenta de nuevo.",
+        description: err instanceof Error ? err.message : "Intenta de nuevo.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setGuardando(false);
     }
-
-    toast({ title: "¡Cuenta creada!", description: `${form.nombre} ${form.apellidos} ya puede iniciar sesión con Google o un enlace mágico a ${form.email.trim()}.` });
-    onOpenChange(false);
-    await onCuentaCreada();
   };
 
   return (
@@ -116,7 +129,7 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
       textoBotonGuardar="Crear cuenta"
       anchoClase="max-w-xl"
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <CampoFormulario id="cuenta-nombre" label="Nombre" error={errores.nombre}>
           <Input id="cuenta-nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
         </CampoFormulario>

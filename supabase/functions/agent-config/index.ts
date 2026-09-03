@@ -14,8 +14,20 @@
 //   { action: "upload_knowledge_base", text, name? } -> sube un documento de texto
 //                                                        a la base de conocimientos y
 //                                                        devuelve su id real
+//   { action: "upload_knowledge_base_file", file_base64, file_name, mime_type? } ->
+//                                                        sube un documento binario real
+//                                                        (PDF/imagen/etc., como lo suba el
+//                                                        admin desde "Importar documento")
+//                                                        a la base de conocimientos y
+//                                                        devuelve su id real
 //   { action: "set_knowledge_base", agent_id, knowledge_base } -> reemplaza el
 //                                                        arreglo knowledge_base del agente
+//   { action: "sync_knowledge_base", agent_id } -> regenera los documentos [Auto] de la
+//                                                        base de conocimiento (menú, sucursales,
+//                                                        ventas, personal) desde las tablas reales
+//                                                        de este restaurante y los deja adjuntos
+//                                                        al agente — nunca toca documentos subidos
+//                                                        a mano (los que no llevan el prefijo [Auto])
 //   { action: "set_languages", agent_id, languages, language_detection_enabled }
 //                                              -> agrega/quita idiomas adicionales
 //                                                 (conversation_config.language_presets)
@@ -133,6 +145,59 @@ Deno.serve(async (req: Request) => {
       return json({ id: data.id, name: data.name });
     }
 
+    if (action === "upload_knowledge_base_file") {
+      // Sube un documento BINARIO real (PDF, imagen, etc.) a la base de
+      // conocimientos compartida de ElevenLabs — hermano binario de
+      // upload_knowledge_base (texto), mismo patrón multipart que ya usa
+      // clone_voice más abajo en este archivo (base64 -> Blob -> FormData,
+      // sin fijar Content-Type a mano para que fetch ponga el boundary).
+      // Endpoint real, hermano documentado de knowledge-base/text:
+      //   POST https://api.elevenlabs.io/v1/convai/knowledge-base/file
+      //   multipart/form-data: file (binario), name (opcional)
+      //   -> { id, name }
+      // NOTA REAL (no verificable desde este entorno, sin forma de hacer un
+      // POST multipart real contra la API de ElevenLabs aquí): un PDF de
+      // verdad debería indexarse por texto sin problema; una imagen suelta
+      // (foto de un menú, por ejemplo) puede que ElevenLabs la acepte pero
+      // NO la transcriba por OCR — o puede rechazarla directamente. Esta
+      // acción nunca inventa esa respuesta: deja pasar tal cual lo que
+      // devuelva la API real, éxito o error, para que quede claro en el
+      // panel qué formatos funcionan de verdad.
+      const { file_base64, file_name, mime_type } = body as {
+        file_base64?: string;
+        file_name?: string;
+        mime_type?: string;
+      };
+      if (!file_base64 || !file_name) {
+        return json({ error: "file_base64 y file_name son requeridos" }, 400);
+      }
+
+      let base64Decodificable: string;
+      try {
+        base64Decodificable = atob(file_base64);
+      } catch {
+        return json({ error: "file_base64 no es base64 válido" }, 400);
+      }
+      const LIMITE_BYTES = 20 * 1024 * 1024; // 20 MB — tope defensivo del lado de esta función, no un límite real confirmado de ElevenLabs
+      if (base64Decodificable.length > LIMITE_BYTES) {
+        return json({ error: "El archivo pesa más de 20 MB — intenta con uno más ligero" }, 400);
+      }
+      const binario = Uint8Array.from(base64Decodificable, (c) => c.charCodeAt(0));
+
+      const form = new FormData();
+      form.append("file", new Blob([binario], { type: mime_type || "application/octet-stream" }), file_name);
+      form.append("name", file_name);
+
+      const res = await fetch("https://api.elevenlabs.io/v1/convai/knowledge-base/file", {
+        method: "POST",
+        headers: { "xi-api-key": apiKey },
+        body: form,
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      return json({ id: data.id, name: data.name });
+    }
+
     if (action === "set_knowledge_base") {
       // Reemplaza el arreglo completo de knowledge_base del agente (mismo
       // patrón que set_tools: leer, modificar el arreglo, volver a mandar el
@@ -154,6 +219,286 @@ Deno.serve(async (req: Request) => {
       });
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
+    }
+
+    if (action === "sync_knowledge_base") {
+      // Regenera la base de conocimiento del agente de voz a partir de
+      // datos REALES de este restaurante — nunca relleno. Cuatro
+      // documentos (menú, sucursales, estadísticas de ventas, personal),
+      // subidos vía el mismo endpoint que upload_knowledge_base y
+      // adjuntados al agente vía el mismo patrón que set_knowledge_base.
+      // Cada documento generado aquí se marca con el prefijo "[Auto] " en
+      // el nombre — SOLO esos se reemplazan en cada sync; cualquier
+      // documento subido a mano (ej. con "Importar documento") se
+      // conserva intacto.
+      const { agent_id } = body as { agent_id?: string };
+      if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+
+      const restaurantId = RESTAURANT_ID;
+      const ahora = new Date();
+      const fechaTexto = ahora.toLocaleString("es-MX", { dateStyle: "long", timeStyle: "short", timeZone: "America/Merida" });
+      const formatoMXN = (n: number) =>
+        (n || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2 });
+      const desde7 = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const desde30 = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const desde90 = new Date(ahora.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+      const [
+        { data: restauranteRow },
+        { data: sucursales },
+        { data: categorias },
+        { data: productos },
+        { count: overridesSucursal },
+        { data: staffRows },
+        { data: repartidores },
+        { count: totalClientes },
+        { data: topClientes },
+        { data: ordenesResumen },
+        { data: itemsRecientes },
+      ] = await Promise.all([
+        supabase.from("restaurants").select("name").eq("id", restaurantId).maybeSingle(),
+        supabase.from("branches").select("id, name, address, phone, hours, is_active, voice_agent_active, whatsapp_agent_active").eq("restaurant_id", restaurantId).order("display_order"),
+        supabase.from("categories").select("id, name, display_order").eq("restaurant_id", restaurantId).order("display_order"),
+        supabase.from("products").select("id, name, description, price, category_id, is_available, is_popular").eq("restaurant_id", restaurantId).order("display_order"),
+        // Sin filtro por restaurante (branch_products no tiene restaurant_id
+        // propio) — correcto mientras la app sea de un solo restaurante,
+        // igual que repartidor_perfil más abajo; si hay más de uno algún
+        // día, esto necesita acotarse por los ids reales de sus sucursales.
+        supabase.from("branch_products").select("id", { count: "exact", head: true }),
+        supabase.from("restaurant_staff").select("role, user_id").eq("restaurant_id", restaurantId),
+        // repartidor_perfil no tiene restaurant_id (la app hoy es de un solo
+        // restaurante) — si algún día hay más de uno, esta consulta necesita
+        // acotarse igual que las demás.
+        supabase.from("repartidor_perfil").select("nombre_completo, telefono, tipo_vehiculo, placas, fecha_alta"),
+        supabase.from("customers").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId),
+        supabase.from("customers").select("name, order_count, last_order_at").eq("restaurant_id", restaurantId).order("order_count", { ascending: false }).limit(10),
+        // Agregados reales de TODO el histórico — columnas angostas nada más
+        // (total/status/source/branch_id/created_at), no el pedido completo,
+        // con un tope defensivo por si el volumen crece mucho más.
+        supabase.from("orders").select("total, status, source, branch_id, created_at").eq("restaurant_id", restaurantId).limit(200000),
+        // Top de productos: acotado a los ~90 días y 10,000 pedidos más
+        // recientes (no los 90,000 históricos completos) — un aggregate
+        // real y representativo, no cada fila cruda del histórico completo.
+        supabase.from("orders").select("items").eq("restaurant_id", restaurantId).gte("created_at", desde90).order("created_at", { ascending: false }).limit(10000),
+      ]);
+
+      const nombreRestaurante = restauranteRow?.name ?? "el restaurante";
+
+      // deno-lint-ignore no-explicit-any
+      const staffUserIds = (staffRows ?? []).map((s: any) => s.user_id);
+      const { data: staffPerfiles } = staffUserIds.length
+        ? await supabase.from("profiles").select("user_id, nombre, email, telefono").in("user_id", staffUserIds)
+        : { data: [] as { user_id: string; nombre: string | null; email: string; telefono: string | null }[] };
+
+      // --- Documento 1: menú, precios y categorías -----------------------
+      // deno-lint-ignore no-explicit-any
+      const categoriasOrdenadas = [...(categorias ?? [])].sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0));
+      // deno-lint-ignore no-explicit-any
+      const productosPorCategoria = new Map<string, any[]>();
+      // deno-lint-ignore no-explicit-any
+      for (const p of (productos ?? []) as any[]) {
+        const key = p.category_id ?? "sin-categoria";
+        if (!productosPorCategoria.has(key)) productosPorCategoria.set(key, []);
+        productosPorCategoria.get(key)!.push(p);
+      }
+      let textoMenu = `# Menú, precios y categorías — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      // deno-lint-ignore no-explicit-any
+      for (const cat of categoriasOrdenadas as any[]) {
+        const items = productosPorCategoria.get(cat.id) ?? [];
+        if (items.length === 0) continue;
+        textoMenu += `## ${cat.name}\n`;
+        for (const p of items) {
+          const estado = p.is_available === false ? " (no disponible actualmente)" : "";
+          const popular = p.is_popular ? " ⭐ popular" : "";
+          textoMenu += `- ${p.name} — ${formatoMXN(Number(p.price))}${estado}${popular}${p.description ? ` — ${p.description}` : ""}\n`;
+        }
+        textoMenu += `\n`;
+      }
+      const sinCategoria = productosPorCategoria.get("sin-categoria") ?? [];
+      if (sinCategoria.length > 0) {
+        textoMenu += `## Sin categoría\n`;
+        for (const p of sinCategoria) textoMenu += `- ${p.name} — ${formatoMXN(Number(p.price))}\n`;
+        textoMenu += `\n`;
+      }
+      textoMenu += `---\nEstos son los precios BASE del restaurante. ${overridesSucursal ?? 0} combinaciones producto-sucursal tienen un precio o disponibilidad distinto a esta lista — antes de confirmar un precio con el cliente, confírmalo siempre con la herramienta buscar_producto para la sucursal exacta.\n`;
+
+      // --- Documento 2: sucursales, horarios y contacto -------------------
+      let textoSucursales = `# Sucursales, horarios y contacto — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      // deno-lint-ignore no-explicit-any
+      for (const s of (sucursales ?? []) as any[]) {
+        textoSucursales += `## ${s.name}\n`;
+        textoSucursales += `- Dirección: ${s.address ?? "sin dirección registrada"}\n`;
+        textoSucursales += `- Teléfono: ${s.phone ?? "sin teléfono registrado"}\n`;
+        textoSucursales += `- Horario: ${s.hours ?? "sin horario registrado"}\n`;
+        textoSucursales += `- Estado: ${s.is_active ? "activa" : "inactiva"}\n`;
+        const canales = [s.voice_agent_active ? "llamadas de voz" : null, s.whatsapp_agent_active ? "WhatsApp" : null].filter(Boolean);
+        textoSucursales += `- Canales de pedido con agente activo: ${canales.length ? canales.join(" y ") : "ninguno activo actualmente"}\n\n`;
+      }
+
+      // --- Documento 3: estadísticas reales de ventas y pedidos -----------
+      // deno-lint-ignore no-explicit-any
+      const ordenes = (ordenesResumen ?? []) as any[];
+      const totalPedidos = ordenes.length;
+      const conteoPorEstado = new Map<string, number>();
+      const ingresoPorEstado = new Map<string, number>();
+      const conteoPorFuente = new Map<string, number>();
+      const ingresoPorFuente = new Map<string, number>();
+      const conteoPorSucursal = new Map<string, number>();
+      const ingresoPorSucursal = new Map<string, number>();
+      let ingresoBruto = 0, ingreso7 = 0, pedidos7 = 0, ingreso30 = 0, pedidos30 = 0;
+      for (const o of ordenes) {
+        const total = Number(o.total) || 0;
+        ingresoBruto += total;
+        const estado = o.status ?? "sin_estado";
+        conteoPorEstado.set(estado, (conteoPorEstado.get(estado) ?? 0) + 1);
+        ingresoPorEstado.set(estado, (ingresoPorEstado.get(estado) ?? 0) + total);
+        const fuente = o.source ?? "desconocido";
+        conteoPorFuente.set(fuente, (conteoPorFuente.get(fuente) ?? 0) + 1);
+        ingresoPorFuente.set(fuente, (ingresoPorFuente.get(fuente) ?? 0) + total);
+        if (o.branch_id) {
+          conteoPorSucursal.set(o.branch_id, (conteoPorSucursal.get(o.branch_id) ?? 0) + 1);
+          ingresoPorSucursal.set(o.branch_id, (ingresoPorSucursal.get(o.branch_id) ?? 0) + total);
+        }
+        if (o.created_at) {
+          if (o.created_at >= desde7) { ingreso7 += total; pedidos7++; }
+          if (o.created_at >= desde30) { ingreso30 += total; pedidos30++; }
+        }
+      }
+      const entregados = (conteoPorEstado.get("entregado") ?? 0) + (conteoPorEstado.get("completado") ?? 0);
+      const ingresoEntregado = (ingresoPorEstado.get("entregado") ?? 0) + (ingresoPorEstado.get("completado") ?? 0);
+      const ingresoCancelado = ingresoPorEstado.get("cancelado") ?? 0;
+      const ticketPromedio = entregados > 0 ? ingresoEntregado / entregados : 0;
+      // deno-lint-ignore no-explicit-any
+      const nombreSucursalPorId = new Map(((sucursales ?? []) as any[]).map((s) => [s.id, s.name]));
+
+      const conteoProductos = new Map<string, number>();
+      // deno-lint-ignore no-explicit-any
+      for (const o of (itemsRecientes ?? []) as any[]) {
+        // deno-lint-ignore no-explicit-any
+        const items = (o.items ?? []) as any[];
+        for (const it of items) {
+          const key = it.name ?? it.id ?? "—";
+          conteoProductos.set(key, (conteoProductos.get(key) ?? 0) + (Number(it.quantity) || 0));
+        }
+      }
+      const topProductos = [...conteoProductos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+      let textoEstadisticas = `# Estadísticas reales de ventas y pedidos — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      textoEstadisticas += `## Volumen histórico\n- Pedidos totales registrados: ${totalPedidos.toLocaleString("es-MX")}\n`;
+      for (const [estado, n] of [...conteoPorEstado.entries()].sort((a, b) => b[1] - a[1])) {
+        textoEstadisticas += `  - ${estado}: ${n.toLocaleString("es-MX")}\n`;
+      }
+      textoEstadisticas += `\n## Ingresos\n`;
+      textoEstadisticas += `- Ingreso bruto (todos los pedidos, incluidos cancelados): ${formatoMXN(ingresoBruto)}\n`;
+      textoEstadisticas += `- Ingreso real (pedidos entregados/completados): ${formatoMXN(ingresoEntregado)}\n`;
+      textoEstadisticas += `- Monto perdido en pedidos cancelados: ${formatoMXN(ingresoCancelado)}\n`;
+      textoEstadisticas += `- Ticket promedio (pedidos entregados): ${formatoMXN(ticketPromedio)}\n`;
+      textoEstadisticas += `- Ingreso en los últimos 7 días: ${formatoMXN(ingreso7)} (${pedidos7} pedidos)\n`;
+      textoEstadisticas += `- Ingreso en los últimos 30 días: ${formatoMXN(ingreso30)} (${pedidos30} pedidos)\n\n`;
+      textoEstadisticas += `## Por canal\n`;
+      for (const [fuente, n] of [...conteoPorFuente.entries()].sort((a, b) => b[1] - a[1])) {
+        const pct = totalPedidos > 0 ? ((n / totalPedidos) * 100).toFixed(1) : "0";
+        textoEstadisticas += `- ${fuente}: ${n.toLocaleString("es-MX")} pedidos (${pct}%) — ${formatoMXN(ingresoPorFuente.get(fuente) ?? 0)}\n`;
+      }
+      textoEstadisticas += `\n## Por sucursal\n`;
+      for (const [branchId, n] of [...conteoPorSucursal.entries()].sort((a, b) => b[1] - a[1])) {
+        const nombre = nombreSucursalPorId.get(branchId) ?? branchId;
+        textoEstadisticas += `- ${nombre}: ${n.toLocaleString("es-MX")} pedidos — ${formatoMXN(ingresoPorSucursal.get(branchId) ?? 0)}\n`;
+      }
+      textoEstadisticas += `\n## Productos más pedidos (agregado real de los pedidos más recientes, hasta 10,000/últimos ~90 días)\n`;
+      for (const [nombre, cantidad] of topProductos) textoEstadisticas += `- ${nombre}: ${cantidad.toLocaleString("es-MX")} unidades\n`;
+      textoEstadisticas += `\n## Clientes\n`;
+      textoEstadisticas += `- Clientes registrados: ${(totalClientes ?? 0).toLocaleString("es-MX")}\n`;
+      textoEstadisticas += `- Clientes más frecuentes por número de pedidos (sin teléfono aquí por privacidad — usa la herramienta buscar_cliente en vivo para identificar a alguien por su número):\n`;
+      // deno-lint-ignore no-explicit-any
+      for (const c of (topClientes ?? []) as any[]) {
+        textoEstadisticas += `  - ${c.name ?? "Cliente sin nombre registrado"}: ${c.order_count} pedidos${c.last_order_at ? `, último el ${new Date(c.last_order_at).toLocaleDateString("es-MX")}` : ""}\n`;
+      }
+
+      // --- Documento 4: personal y equipo ---------------------------------
+      let textoPersonal = `# Personal y equipo — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      textoPersonal += `## Equipo administrativo\n`;
+      if ((staffRows ?? []).length === 0) {
+        textoPersonal += `Sin personal administrativo dado de alta en el sistema.\n\n`;
+      } else {
+        // deno-lint-ignore no-explicit-any
+        for (const s of (staffRows ?? []) as any[]) {
+          // deno-lint-ignore no-explicit-any
+          const perfil = ((staffPerfiles ?? []) as any[]).find((p) => p.user_id === s.user_id);
+          textoPersonal += `- ${perfil?.nombre ?? "Sin nombre registrado"} — rol: ${s.role}${perfil?.email ? ` — ${perfil.email}` : ""}${perfil?.telefono ? ` — ${perfil.telefono}` : ""}\n`;
+        }
+        textoPersonal += `\n`;
+      }
+      textoPersonal += `## Repartidores\n`;
+      if ((repartidores ?? []).length === 0) {
+        textoPersonal += `Actualmente no hay repartidores dados de alta en el sistema (repartidor_perfil está vacía). Cuando se registre uno real, este documento lo reflejará la próxima vez que se sincronice la base de conocimiento — no hay datos de repartidores que mostrar hoy.\n`;
+      } else {
+        // deno-lint-ignore no-explicit-any
+        for (const r of (repartidores ?? []) as any[]) {
+          textoPersonal += `- ${r.nombre_completo} — vehículo: ${r.tipo_vehiculo}${r.placas ? ` (placas ${r.placas})` : ""} — teléfono: ${r.telefono} — de alta desde ${new Date(r.fecha_alta).toLocaleDateString("es-MX")}\n`;
+        }
+      }
+
+      // --- Subir y reemplazar solo los documentos [Auto] ------------------
+      const PREFIJO_AUTO = "[Auto] ";
+      const documentosGenerados = [
+        { name: `${PREFIJO_AUTO}Menú, precios y categorías`, text: textoMenu },
+        { name: `${PREFIJO_AUTO}Sucursales, horarios y contacto`, text: textoSucursales },
+        { name: `${PREFIJO_AUTO}Estadísticas de ventas y pedidos`, text: textoEstadisticas },
+        { name: `${PREFIJO_AUTO}Personal y equipo`, text: textoPersonal },
+      ];
+
+      const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+      const agenteActual = await getRes.json();
+      // deno-lint-ignore no-explicit-any
+      const kbActual: any[] = agenteActual.conversation_config?.agent?.prompt?.knowledge_base ?? [];
+      const documentosManuales = kbActual.filter((k) => !String(k.name ?? "").startsWith(PREFIJO_AUTO));
+      const documentosAutoViejos = kbActual.filter((k) => String(k.name ?? "").startsWith(PREFIJO_AUTO));
+
+      const documentosNuevos: { id: string; name: string; type: string }[] = [];
+      for (const doc of documentosGenerados) {
+        const subeRes = await fetch("https://api.elevenlabs.io/v1/convai/knowledge-base/text", {
+          method: "POST",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ text: doc.text, name: doc.name }),
+        });
+        if (!subeRes.ok) return json({ error: `No se pudo subir "${doc.name}": ${await subeRes.text()}` }, subeRes.status);
+        const subida = await subeRes.json();
+        documentosNuevos.push({ id: subida.id, name: subida.name, type: "text" });
+      }
+
+      const kbFinal = [...documentosManuales, ...documentosNuevos];
+      const patchRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        method: "PATCH",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_config: { agent: { prompt: { knowledge_base: kbFinal } } } }),
+      });
+      if (!patchRes.ok) return json({ error: await patchRes.text() }, patchRes.status);
+
+      // Solo ahora, con el agente ya apuntando a los documentos nuevos, se
+      // borran del store los [Auto] de la sincronización anterior —
+      // best-effort: si uno falla no se rompe el sync, el agente ya quedó
+      // con los datos frescos, que es lo que importa.
+      for (const viejo of documentosAutoViejos) {
+        if (!viejo?.id) continue;
+        try {
+          await fetch(`https://api.elevenlabs.io/v1/convai/knowledge-base/${viejo.id}`, {
+            method: "DELETE",
+            headers: { "xi-api-key": apiKey },
+          });
+        } catch (err) {
+          console.error(`sync_knowledge_base: no se pudo borrar el documento viejo ${viejo.id}:`, err);
+        }
+      }
+
+      return json({
+        ok: true,
+        documentos: documentosNuevos.map((d) => ({ id: d.id, name: d.name })),
+        reemplazados: documentosAutoViejos.length,
+      });
     }
 
     if (action === "set_languages") {

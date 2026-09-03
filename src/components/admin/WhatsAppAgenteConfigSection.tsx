@@ -112,6 +112,20 @@ const WhatsAppAgenteConfigSection = ({ restaurantId }: Props) => {
           setBorrador(DEFAULT_BORRADOR);
         }
         setCargando(false);
+      },
+      // Segundo argumento de .then() en vez de .catch(): el builder de
+      // Supabase se tipa como PromiseLike (sin .catch), pero sigue
+      // aceptando un callback de rechazo aquí. Sin esto, un fallo de red
+      // real (la promesa se rechaza en vez de resolver a { data, error })
+      // dejaba `cargando` en true para siempre — la sección se quedaba
+      // pasmada en "Leyendo la configuración real del agente de
+      // WhatsApp…" sin importar cuántas veces se recargara. Mismo patrón
+      // de bug que Sucursales/Voces e idiomas.
+      (err: unknown) => {
+        if (cancelado) return;
+        console.error("No se pudo leer whatsapp_agent_config:", err);
+        setError("No se pudo cargar la configuración real del agente.");
+        setCargando(false);
       });
     return () => { cancelado = true; };
   }, [restaurantId]);
@@ -130,23 +144,33 @@ const WhatsAppAgenteConfigSection = ({ restaurantId }: Props) => {
     setGuardando(true);
     setGuardadoOk(false);
     setError(null);
-    const { data, error: err } = await supabase
-      .from("whatsapp_agent_config")
-      .upsert({ restaurant_id: restaurantId, ...borrador }, { onConflict: "restaurant_id" })
-      .select()
-      .single();
-    setGuardando(false);
-    if (err || !data) {
+    // try/finally: si el upsert truena de verdad (red) en vez de resolver a
+    // { data, error }, sin esto `guardando` se quedaba fijo en true para
+    // siempre — el botón "Guardando…" nunca se volvía a habilitar.
+    try {
+      const { data, error: err } = await supabase
+        .from("whatsapp_agent_config")
+        .upsert({ restaurant_id: restaurantId, ...borrador }, { onConflict: "restaurant_id" })
+        .select()
+        .single();
+      if (err || !data) {
+        console.error("No se pudo guardar whatsapp_agent_config:", err);
+        setError("No se pudo guardar — intenta de nuevo en un momento.");
+        toast({ title: "No se pudo guardar", description: err?.message ?? "Intenta de nuevo.", variant: "destructive" });
+        return;
+      }
+      const row = data as WhatsAppAgentConfigRow;
+      setFila(row);
+      setBorrador({ system_prompt: row.system_prompt, tone_style: row.tone_style, llm_model: row.llm_model, temperature: row.temperature });
+      setGuardadoOk(true);
+      setTimeout(() => setGuardadoOk(false), 3000);
+    } catch (err) {
       console.error("No se pudo guardar whatsapp_agent_config:", err);
       setError("No se pudo guardar — intenta de nuevo en un momento.");
-      toast({ title: "No se pudo guardar", description: err?.message ?? "Intenta de nuevo.", variant: "destructive" });
-      return;
+      toast({ title: "No se pudo guardar", description: err instanceof Error ? err.message : "Intenta de nuevo.", variant: "destructive" });
+    } finally {
+      setGuardando(false);
     }
-    const row = data as WhatsAppAgentConfigRow;
-    setFila(row);
-    setBorrador({ system_prompt: row.system_prompt, tone_style: row.tone_style, llm_model: row.llm_model, temperature: row.temperature });
-    setGuardadoOk(true);
-    setTimeout(() => setGuardadoOk(false), 3000);
   };
 
   if (!restaurantId || cargando) {

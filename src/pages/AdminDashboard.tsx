@@ -441,13 +441,15 @@ function DashboardAgente({
   // ElevenLabs vía la función de borde agent-config (nunca expone la key
   // al navegador). `borrador` es lo que el usuario está editando;
   // `original` es lo último confirmado guardado, para poder cancelar.
+  type DocumentoKB = { id: string; name: string; type: string };
   type ConfigAgente = {
     first_message: string; language: string; prompt: string; temperature: number;
     voice_id: string | null; voice_public_owner_id?: string | null; speed: number; stability: number; similarity_boost: number;
     background_sound_id: string | null; background_sound_volume: number; background_sound_crossfade: boolean;
     first_message_interruptible: boolean;
+    knowledge_base?: DocumentoKB[];
   };
-  type VozDisponible = { voice_id: string; public_owner_id: string; name: string; gender: string; accent: string; description: string; preview_url: string };
+  type VozDisponible = { voice_id: string; public_owner_id: string; name: string; gender: string; accent: string | null; description: string; preview_url: string };
   const [config, setConfig] = useState<ConfigAgente | null>(null);
   const [borrador, setBorrador] = useState<ConfigAgente | null>(null);
   const [voces, setVoces] = useState<VozDisponible[]>([]);
@@ -460,6 +462,18 @@ function DashboardAgente({
   const [guardadoOk, setGuardadoOk] = useState(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [voceandoId, setVoceandoId] = useState<string | null>(null);
+
+  // Base de conocimientos REAL del agente de voz — sincronizada contra las
+  // tablas reales (productos, sucursales, pedidos, clientes, personal) vía
+  // la acción sync_knowledge_base de agent-config, e importación de
+  // documentos (PDF/imagen) vía upload_knowledge_base_file. Nunca datos de
+  // relleno: si algo no existe en la base todavía (ej. repartidores dados
+  // de alta), el documento generado lo dice tal cual en vez de inventarlo.
+  const [sincronizandoKb, setSincronizandoKb] = useState(false);
+  const [sincKbOk, setSincKbOk] = useState<string | null>(null);
+  const [errorKb, setErrorKb] = useState<string | null>(null);
+  const [subiendoArchivoKb, setSubiendoArchivoKb] = useState(false);
+  const inputArchivoKbRef = useRef<HTMLInputElement | null>(null);
 
   // Clonación real de voz (Instant Voice Cloning) — vive en su propio modal
   // (ModalClonarVoz), branded, con el flujo de varias muestras real de
@@ -497,7 +511,7 @@ function DashboardAgente({
     'dominican', 'puertorrique', 'centroamerican', 'sudamerican', 'neutral',
   ];
   const ACENTOS_NO_LATAM = ['spain', 'españ', 'castellan', 'castiz', 'castilian', 'iberi', 'european', 'europe'];
-  const esAcentoMexicanoOLatam = (acento: string) => {
+  const esAcentoMexicanoOLatam = (acento: string | null) => {
     const a = (acento || '').toLowerCase();
     if (a === 'clonada') return true; // voz propia — no aplica filtro de acento
     if (ACENTOS_NO_LATAM.some((k) => a.includes(k))) return false;
@@ -515,19 +529,25 @@ function DashboardAgente({
   const vocesFiltradas = todasLasVoces.filter((v) => {
     if (filtroGenero === 'mias') return misVoces.some((m) => m.voice_id === v.voice_id);
     if (filtroGenero !== 'todos' && v.gender !== filtroGenero) return false;
-    if (busquedaVoz && !v.name.toLowerCase().includes(busquedaVoz.toLowerCase()) && !v.accent.toLowerCase().includes(busquedaVoz.toLowerCase())) return false;
+    if (busquedaVoz && !v.name.toLowerCase().includes(busquedaVoz.toLowerCase()) && !(v.accent || '').toLowerCase().includes(busquedaVoz.toLowerCase())) return false;
     return true;
   });
   const traducirGenero = (g: string) => (g === 'male' ? 'Hombre' : g === 'female' ? 'Mujer' : g);
-  const traducirAcento = (a: string) => {
-    const t = a.toLowerCase();
+  // `accent` puede venir null/undefined desde ElevenLabs (típico en voces
+  // clonadas — IVC — y en algunas entradas del catálogo compartido que no
+  // traen ese campo). Sin este guard, `.toLowerCase()` sobre null/undefined
+  // tira un TypeError en pleno render de cada tarjeta de voz y congela toda
+  // la pestaña "Voces e idiomas".
+  const traducirAcento = (a: string | null | undefined) => {
+    const t = (a || '').toLowerCase();
+    if (!t) return '—';
     if (t.includes('mexic')) return 'mexicano';
     if (t.includes('colomb')) return 'colombiano';
     if (t.includes('argentin')) return 'argentino';
     if (t.includes('latin')) return 'latinoamericano';
     if (t.includes('neutral')) return 'neutral';
     if (t === 'clonada') return 'clonada';
-    return a;
+    return a as string;
   };
   // Los nombres del catálogo compartido de ElevenLabs suelen traer un
   // sufijo descriptivo en inglés pegado con " - " (ej. "Daniela - Warm,
@@ -600,6 +620,85 @@ function DashboardAgente({
       setErrorConfig('No se pudo guardar — intenta de nuevo en un momento.');
     } finally {
       setGuardando(false);
+    }
+  };
+
+  // Regenera los documentos [Auto] de la base de conocimiento a partir de
+  // los datos reales del restaurante (menú, sucursales, ventas, personal) y
+  // los vuelve a subir al agente — reemplaza solo los documentos [Auto] de
+  // la vez anterior, nunca los que el admin subió a mano con "Importar
+  // documento". Vuelve a leer el agente al final para reflejar la lista
+  // real que quedó, en vez de asumir qué se guardó.
+  const sincronizarBaseConocimiento = async () => {
+    if (!agentId) return;
+    setSincronizandoKb(true);
+    setErrorKb(null);
+    setSincKbOk(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('agent-config', {
+        body: { action: 'sync_knowledge_base', agent_id: agentId },
+      });
+      if (error || data?.error) throw error ?? new Error(data.error);
+
+      const { data: getData, error: getError } = await supabase.functions.invoke('agent-config', {
+        body: { action: 'get', agent_id: agentId },
+      });
+      if (getError || getData?.error) throw getError ?? new Error(getData.error);
+      const kbNueva: DocumentoKB[] = getData.knowledge_base ?? [];
+      setConfig((prev) => (prev ? { ...prev, knowledge_base: kbNueva } : prev));
+      setBorrador((prev) => (prev ? { ...prev, knowledge_base: kbNueva } : prev));
+      setSincKbOk(`Sincronizado — ${data.documentos?.length ?? 0} documentos actualizados.`);
+      setTimeout(() => setSincKbOk(null), 5000);
+    } catch (err) {
+      console.error('No se pudo sincronizar la base de conocimiento real:', err);
+      setErrorKb('No se pudo sincronizar — intenta de nuevo en un momento.');
+    } finally {
+      setSincronizandoKb(false);
+    }
+  };
+
+  const archivoABase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const lector = new FileReader();
+      lector.onload = () => resolve(((lector.result as string) || '').split(',')[1] ?? '');
+      lector.onerror = () => reject(lector.error ?? new Error('No se pudo leer el archivo'));
+      lector.readAsDataURL(file);
+    });
+
+  // Sube un PDF/imagen real a la base de conocimientos de ElevenLabs
+  // (upload_knowledge_base_file, endpoint binario real /v1/convai/knowledge-base/file)
+  // y lo adjunta al agente reutilizando set_knowledge_base tal cual ya
+  // hace el flujo de texto — un documento subido a mano aquí NUNCA se
+  // reemplaza automáticamente por "Sincronizar" (esa acción solo toca los
+  // documentos etiquetados [Auto]).
+  const importarDocumentoKb = async (file: File) => {
+    if (!agentId) return;
+    setSubiendoArchivoKb(true);
+    setErrorKb(null);
+    try {
+      const base64 = await archivoABase64(file);
+      const { data: subida, error: errorSubida } = await supabase.functions.invoke('agent-config', {
+        body: { action: 'upload_knowledge_base_file', file_base64: base64, file_name: file.name, mime_type: file.type },
+      });
+      if (errorSubida || subida?.error) throw errorSubida ?? new Error(subida.error);
+
+      const kbActual = borrador?.knowledge_base ?? [];
+      const kbNueva: DocumentoKB[] = [...kbActual, { id: subida.id, name: subida.name, type: 'file' }];
+      const { data: setData, error: errorSet } = await supabase.functions.invoke('agent-config', {
+        body: { action: 'set_knowledge_base', agent_id: agentId, knowledge_base: kbNueva },
+      });
+      if (errorSet || setData?.error) throw errorSet ?? new Error(setData.error);
+
+      setConfig((prev) => (prev ? { ...prev, knowledge_base: kbNueva } : prev));
+      setBorrador((prev) => (prev ? { ...prev, knowledge_base: kbNueva } : prev));
+      setSincKbOk(`"${file.name}" agregado a la base de conocimiento.`);
+      setTimeout(() => setSincKbOk(null), 5000);
+    } catch (err) {
+      console.error('No se pudo importar el documento a la base de conocimiento:', err);
+      setErrorKb('No se pudo importar el documento — verifica que sea un PDF u otro formato que ElevenLabs acepte, e intenta de nuevo.');
+    } finally {
+      setSubiendoArchivoKb(false);
+      if (inputArchivoKbRef.current) inputArchivoKbRef.current.value = '';
     }
   };
 
@@ -820,21 +919,92 @@ function DashboardAgente({
 
       {pestana === 'conocimiento' && (
         canal === 'voz' ? (
-          <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <FileText className="w-4 h-4" strokeWidth={1.75} />
+          <div className="space-y-3">
+            <input
+              ref={inputArchivoKbRef}
+              type="file"
+              accept="application/pdf,.pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const archivo = e.target.files?.[0];
+                if (archivo) importarDocumentoKb(archivo);
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={sincronizarBaseConocimiento}
+                disabled={sincronizandoKb || !agentId}
+                className="h-8 px-3.5 rounded-full bg-primary text-primary-foreground text-[12px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {sincronizandoKb ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {sincronizandoKb ? 'Sincronizando…' : 'Sincronizar base de conocimiento'}
+              </button>
+              <button
+                onClick={() => inputArchivoKbRef.current?.click()}
+                disabled={subiendoArchivoKb || !agentId}
+                className="h-8 px-3.5 rounded-full border border-border text-[12px] text-foreground hover:bg-muted transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {subiendoArchivoKb ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {subiendoArchivoKb ? 'Importando…' : 'Importar documento (PDF/imagen)'}
+              </button>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] text-foreground truncate">Menu Fco. de Montejo — Los Taquitos de PM</p>
-              <p className="text-[11px] text-muted-foreground">18.2 kB · Documento de texto</p>
-            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              "Sincronizar" regenera el menú, sucursales, estadísticas de ventas y personal reales desde el
+              sistema y los sube como documentos propios. "Importar documento" agrega un PDF o imagen aparte
+              (ej. un manual o una promoción) sin tocar los generados automáticamente.
+            </p>
+            {(sincKbOk || errorKb) && (
+              <p className={`text-[12px] ${errorKb ? 'text-destructive' : 'text-primary'}`}>
+                {errorKb ?? sincKbOk}
+              </p>
+            )}
+
+            {!borrador?.knowledge_base || borrador.knowledge_base.length === 0 ? (
+              <VacioDashboardVoz
+                icon={BookOpen}
+                titulo="No se han recopilado datos de la base de conocimientos"
+                detalle='Presiona "Sincronizar base de conocimiento" para generarla desde el menú, las sucursales, las ventas y el personal reales del sistema.'
+              />
+            ) : (
+              <div className="space-y-2">
+                {borrador.knowledge_base.map((doc, i) => (
+                  <motion.div
+                    key={doc.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: i * 0.04 }}
+                    className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
+                  >
+                    <div className="w-8 h-8 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4" strokeWidth={1.75} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] text-foreground truncate">{doc.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {doc.name.startsWith('[Auto]') ? 'Generado desde datos reales del sistema' : 'Importado a mano'} · {doc.type}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          <VacioDashboardVoz
-            icon={BookOpen}
-            titulo="No se han recopilado datos de la base de conocimientos"
-            detalle="Qué tan seguido consulta el agente tu menú al responder todavía no se está midiendo."
-          />
+          <div className="space-y-2.5">
+            <div className="rounded-xl border border-border bg-card p-3.5">
+              <p className="text-[13px] text-foreground font-medium mb-1">El agente de WhatsApp no usa documentos de base de conocimiento</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                A diferencia del agente de voz (ElevenLabs), el agente de WhatsApp consulta el menú y los datos del
+                cliente en vivo con las mismas herramientas reales (buscar_producto, buscar_cliente) en cada
+                mensaje — no hay un documento estático que sincronizar aquí. Los datos son los mismos del sistema;
+                solo cambia cómo cada canal los consulta.
+              </p>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              La base de conocimiento con menú, sucursales, ventas y personal generada en la pestaña de voz vive
+              en el agente de ElevenLabs y refleja los mismos datos reales que usa este canal.
+            </p>
+          </div>
         )
       )}
 
@@ -1583,74 +1753,85 @@ const AdminDashboard = () => {
   const cargarDatosAgentes = async (branchId?: string, branchIdWhatsapp?: string) => {
     if (!restaurantId) return;
     setCargandoAgentes(true);
-    const sb: any = supabase;
-    const filtroSucursal = branchId && branchId !== 'global' ? { branch_id: branchId } : null;
-    const conFiltro = (q: any) => (filtroSucursal ? q.eq('branch_id', filtroSucursal.branch_id) : q);
-    // Filtro independiente para el encabezado de Agente de WhatsApp — su
-    // propio selector de sucursal, sin depender del de voz.
-    const filtroSucursalWhatsapp = branchIdWhatsapp && branchIdWhatsapp !== 'global' ? { branch_id: branchIdWhatsapp } : null;
-    const conFiltroWhatsapp = (q: any) => (filtroSucursalWhatsapp ? q.eq('branch_id', filtroSucursalWhatsapp.branch_id) : q);
+    // try/finally: sin esto, cualquier falla real de red en el Promise.all
+    // de abajo (no un error devuelto por Supabase, sino la promesa
+    // rechazándose) dejaba `cargandoAgentes` en true para siempre — las
+    // pantallas de Agente de voz/WhatsApp se quedaban pasmadas en el
+    // spinner, incluso con el refresco automático de 45s corriendo (una
+    // llamada fallida deja el flag en true; las siguientes vuelven a
+    // ponerlo en true al iniciar, así que nunca se despega).
+    try {
+      const sb: any = supabase;
+      const filtroSucursal = branchId && branchId !== 'global' ? { branch_id: branchId } : null;
+      const conFiltro = (q: any) => (filtroSucursal ? q.eq('branch_id', filtroSucursal.branch_id) : q);
+      // Filtro independiente para el encabezado de Agente de WhatsApp — su
+      // propio selector de sucursal, sin depender del de voz.
+      const filtroSucursalWhatsapp = branchIdWhatsapp && branchIdWhatsapp !== 'global' ? { branch_id: branchIdWhatsapp } : null;
+      const conFiltroWhatsapp = (q: any) => (filtroSucursalWhatsapp ? q.eq('branch_id', filtroSucursalWhatsapp.branch_id) : q);
 
-    const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
-      { count: waTotal }, { count: waCompletados }, { count: waCancelados },
-      { data: vozRecientes }, { data: waRecientes }, { data: sucursales },
-      { data: todasLasOrdenes }, { data: ordenesWhatsappIngreso }] = await Promise.all([
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId)),
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice")),
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"])),
-      conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado")),
-      conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
-      conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"])),
-      conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado")),
-      conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8)),
-      conFiltroWhatsapp(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8)),
-      sb.from("branches").select("id, name, elevenlabs_agent_id").eq("restaurant_id", restaurantId).order("display_order"),
-      // Ingreso real por canal — se necesita el total de cada pedido, no solo
-      // el conteo, así que aquí sí se trae `total` y `source` de todas las
-      // filas (a diferencia de los counts de arriba, que no bajan datos).
-      conFiltro(sb.from("orders").select("total, source").eq("restaurant_id", restaurantId)),
-      // Ingreso de WhatsApp acotado a su propio filtro de sucursal (puede
-      // ser distinto al de voz), separado del combinado de arriba.
-      conFiltroWhatsapp(sb.from("orders").select("total").eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
-    ]);
+      const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
+        { count: waTotal }, { count: waCompletados }, { count: waCancelados },
+        { data: vozRecientes }, { data: waRecientes }, { data: sucursales },
+        { data: todasLasOrdenes }, { data: ordenesWhatsappIngreso }] = await Promise.all([
+        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId)),
+        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice")),
+        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"])),
+        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado")),
+        conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
+        conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"])),
+        conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado")),
+        conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8)),
+        conFiltroWhatsapp(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8)),
+        sb.from("branches").select("id, name, elevenlabs_agent_id").eq("restaurant_id", restaurantId).order("display_order"),
+        // Ingreso real por canal — se necesita el total de cada pedido, no solo
+        // el conteo, así que aquí sí se trae `total` y `source` de todas las
+        // filas (a diferencia de los counts de arriba, que no bajan datos).
+        conFiltro(sb.from("orders").select("total, source").eq("restaurant_id", restaurantId)),
+        // Ingreso de WhatsApp acotado a su propio filtro de sucursal (puede
+        // ser distinto al de voz), separado del combinado de arriba.
+        conFiltroWhatsapp(sb.from("orders").select("total").eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
+      ]);
 
-    setSucursalesAgente(sucursales ?? []);
+      setSucursalesAgente(sucursales ?? []);
 
-    const filasIngreso: { total: number; source: string | null }[] = todasLasOrdenes ?? [];
-    const ingresoTotal = filasIngreso.reduce((s, o) => s + Number(o.total), 0);
-    const ingresoVoz = filasIngreso.filter((o) => o.source === 'voice').reduce((s, o) => s + Number(o.total), 0);
-    const ingresoWhatsapp = (ordenesWhatsappIngreso ?? []).reduce((s: number, o: { total: number }) => s + Number(o.total), 0);
+      const filasIngreso: { total: number; source: string | null }[] = todasLasOrdenes ?? [];
+      const ingresoTotal = filasIngreso.reduce((s, o) => s + Number(o.total), 0);
+      const ingresoVoz = filasIngreso.filter((o) => o.source === 'voice').reduce((s, o) => s + Number(o.total), 0);
+      const ingresoWhatsapp = (ordenesWhatsappIngreso ?? []).reduce((s: number, o: { total: number }) => s + Number(o.total), 0);
 
-    setStatsAgentes({
-      totalOrdenes: totalOrdenes ?? 0,
-      ingresoTotal,
-      voz: { total: vozTotal ?? 0, completados: vozCompletados ?? 0, cancelados: vozCancelados ?? 0, ingreso: ingresoVoz },
-      whatsapp: { total: waTotal ?? 0, completados: waCompletados ?? 0, cancelados: waCancelados ?? 0, ingreso: ingresoWhatsapp },
-    });
-    setOrdenesVoz(vozRecientes ?? []);
-    setOrdenesWhatsapp(waRecientes ?? []);
-
-    const idsSucursales = filtroSucursalWhatsapp
-      ? [filtroSucursalWhatsapp.branch_id]
-      : (sucursales ?? []).map((s: { id: string }) => s.id);
-    if (idsSucursales.length > 0) {
-      const { data: conversaciones } = await sb
-        .from("whatsapp_conversations")
-        .select("id, messages, order_id")
-        .in("branch_id", idsSucursales);
-      const lista = conversaciones ?? [];
-      const conPedido = lista.filter((c: { order_id: string | null }) => c.order_id).length;
-      const totalMensajes = lista.reduce((suma: number, c: { messages: unknown }) => suma + (Array.isArray(c.messages) ? c.messages.length : 0), 0);
-      setConversacionesWhatsapp({
-        total: lista.length,
-        conPedido,
-        promedioMensajes: lista.length > 0 ? totalMensajes / lista.length : 0,
+      setStatsAgentes({
+        totalOrdenes: totalOrdenes ?? 0,
+        ingresoTotal,
+        voz: { total: vozTotal ?? 0, completados: vozCompletados ?? 0, cancelados: vozCancelados ?? 0, ingreso: ingresoVoz },
+        whatsapp: { total: waTotal ?? 0, completados: waCompletados ?? 0, cancelados: waCancelados ?? 0, ingreso: ingresoWhatsapp },
       });
-    } else {
-      setConversacionesWhatsapp({ total: 0, conPedido: 0, promedioMensajes: 0 });
-    }
+      setOrdenesVoz(vozRecientes ?? []);
+      setOrdenesWhatsapp(waRecientes ?? []);
 
-    setCargandoAgentes(false);
+      const idsSucursales = filtroSucursalWhatsapp
+        ? [filtroSucursalWhatsapp.branch_id]
+        : (sucursales ?? []).map((s: { id: string }) => s.id);
+      if (idsSucursales.length > 0) {
+        const { data: conversaciones } = await sb
+          .from("whatsapp_conversations")
+          .select("id, messages, order_id")
+          .in("branch_id", idsSucursales);
+        const lista = conversaciones ?? [];
+        const conPedido = lista.filter((c: { order_id: string | null }) => c.order_id).length;
+        const totalMensajes = lista.reduce((suma: number, c: { messages: unknown }) => suma + (Array.isArray(c.messages) ? c.messages.length : 0), 0);
+        setConversacionesWhatsapp({
+          total: lista.length,
+          conPedido,
+          promedioMensajes: lista.length > 0 ? totalMensajes / lista.length : 0,
+        });
+      } else {
+        setConversacionesWhatsapp({ total: 0, conPedido: 0, promedioMensajes: 0 });
+      }
+    } catch (err) {
+      console.error("No se pudieron cargar los datos de agentes:", err);
+    } finally {
+      setCargandoAgentes(false);
+    }
   };
 
   // "Vista previa" abre nuestra propia pantalla completa (clon del layout
@@ -1714,42 +1895,59 @@ const AdminDashboard = () => {
   }, [location.state, loading]);
   useEffect(() => {
     const checkAuth = async () => {
-      const {
-        data: {
-          session
+      // try/finally alrededor de todo lo que sigue al chequeo de sesión: sin
+      // esto, cualquier falla real de red en cualquiera de estos awaits (no
+      // un error devuelto por Supabase, sino la promesa rechazándose) dejaba
+      // `loading` en true para siempre — el panel entero se quedaba pasmado
+      // en el spinner de pantalla completa (`if (loading) { ... }` más abajo)
+      // sin importar cuántas veces se recargara. Mismo patrón de bug que
+      // Sucursales/Voces e idiomas, aquí a escala de todo el dashboard.
+      try {
+        const {
+          data: {
+            session
+          }
+        } = await supabase.auth.getSession();
+        if (!session || session.user.email !== ADMIN_EMAIL) {
+          navigate("/admin/login");
+          return;
         }
-      } = await supabase.auth.getSession();
-      if (!session || session.user.email !== ADMIN_EMAIL) {
-        navigate("/admin/login");
-        return;
-      }
-      setUser(session.user);
-      supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle()
-        .then(({ data: profile }) => {
-          setNombreAdmin(profile?.nombre || (session.user.email ?? "").split("@")[0]);
+        setUser(session.user);
+        supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle()
+          .then(({ data: profile }) => {
+            setNombreAdmin(profile?.nombre || (session.user.email ?? "").split("@")[0]);
+          }, (err: unknown) => console.error("No se pudo leer el nombre del admin:", err));
+
+        // Un superadmin llega aquí con "?restaurante=<id>" desde "Ver cuenta"
+        // en su panel — ve esa cuenta puntual. Sin ese parámetro, se resuelve
+        // el restaurante propio desde restaurant_staff (dueño/staff normal).
+        const paramRestaurantId = searchParams.get("restaurante");
+        let effectiveRestaurantId = paramRestaurantId;
+        if (!effectiveRestaurantId) {
+          const { data: staffRow } = await supabase
+            .from("restaurant_staff")
+            .select("restaurant_id")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+          effectiveRestaurantId = staffRow?.restaurant_id ?? null;
+        }
+        setRestaurantId(effectiveRestaurantId);
+        if (effectiveRestaurantId) {
+          const { data: r } = await supabase.from("restaurants").select("name").eq("id", effectiveRestaurantId).maybeSingle();
+          setRestaurantName(r?.name ?? null);
+        }
+
+        await fetchData(effectiveRestaurantId);
+      } catch (err) {
+        console.error("No se pudo cargar el panel de administración:", err);
+        toast({
+          title: "No se pudo cargar el panel",
+          description: "Ocurrió un problema de conexión. Intenta recargar la página.",
+          variant: "destructive",
         });
-
-      // Un superadmin llega aquí con "?restaurante=<id>" desde "Ver cuenta"
-      // en su panel — ve esa cuenta puntual. Sin ese parámetro, se resuelve
-      // el restaurante propio desde restaurant_staff (dueño/staff normal).
-      const paramRestaurantId = searchParams.get("restaurante");
-      let effectiveRestaurantId = paramRestaurantId;
-      if (!effectiveRestaurantId) {
-        const { data: staffRow } = await supabase
-          .from("restaurant_staff")
-          .select("restaurant_id")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-        effectiveRestaurantId = staffRow?.restaurant_id ?? null;
+      } finally {
+        setLoading(false);
       }
-      setRestaurantId(effectiveRestaurantId);
-      if (effectiveRestaurantId) {
-        const { data: r } = await supabase.from("restaurants").select("name").eq("id", effectiveRestaurantId).maybeSingle();
-        setRestaurantName(r?.name ?? null);
-      }
-
-      await fetchData(effectiveRestaurantId);
-      setLoading(false);
     };
     checkAuth();
     const {
@@ -1787,9 +1985,17 @@ const AdminDashboard = () => {
 
   const refrescarDatos = async () => {
     setRefrescando(true);
-    await fetchData(restaurantId);
-    setUltimaActualizacion(new Date());
-    setRefrescando(false);
+    // try/finally: si fetchData truena de verdad (red), sin esto
+    // `refrescando` se quedaba en true para siempre — el botón de refresco
+    // bajo "Actualizado" se quedaba girando sin parar.
+    try {
+      await fetchData(restaurantId);
+      setUltimaActualizacion(new Date());
+    } catch (err) {
+      console.error("No se pudo refrescar el dashboard:", err);
+    } finally {
+      setRefrescando(false);
+    }
   };
 
   const saludoHorario = () => {
@@ -3291,6 +3497,12 @@ const AdminDashboard = () => {
                 ))}
               </div>
             )}
+
+            <ModalRepartidor
+              open={modalRepartidorAbierto}
+              onOpenChange={setModalRepartidorAbierto}
+              onGuardado={() => fetchData(restaurantId)}
+            />
           </div>
         )}
 
@@ -3505,11 +3717,6 @@ const AdminDashboard = () => {
                 </p>
               )}
             </div>
-            <ModalRepartidor
-              open={modalRepartidorAbierto}
-              onOpenChange={setModalRepartidorAbierto}
-              onGuardado={() => fetchData(restaurantId)}
-            />
           </div>
         )}
 

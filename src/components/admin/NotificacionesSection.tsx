@@ -232,42 +232,63 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
       .then(({ data }: { data: PreferenciasRow | null }) => {
         setFila(data);
         setLoadingPrefs(false);
+      })
+      // Sin este .catch(), un fallo de red aquí (la promesa se rechaza en
+      // vez de resolver a { data, error }) dejaba `loadingPrefs` en true
+      // para siempre — el componente entero devuelve null mientras tanto
+      // (ver `if (loadingPrefs) return null;` abajo), así que la sección
+      // completa de Notificaciones se quedaba en blanco sin spinner ni
+      // error visible. Mismo patrón de bug que Sucursales/Voces e idiomas.
+      .catch((err: unknown) => {
+        console.error("No se pudo leer preferencias de notificaciones:", err);
+        setFila(null);
+        setLoadingPrefs(false);
       });
   }, [userId]);
 
   const cargarListas = useCallback(async (restaurantId: string) => {
     setCargandoListas(true);
-    const sb: any = supabase;
-    const umbralProgramado = new Date(Date.now() + VENTANA_PROGRAMADO_POR_VENCER_MIN * 60_000).toISOString();
-    const [recibidosRes, entregadosRes, reclamosRes, entregaTardiaRes, programadosRes, quejasRes, escalarRes] = await Promise.all([
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
-        .order("created_at", { ascending: false }).limit(50),
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
-        .order("created_at", { ascending: false }).limit(50),
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "cancelado")
-        .order("created_at", { ascending: false }).limit(50),
-      // Candidatos a "entrega tardía": todo lo entregado con marca real de
-      // hora de entrega — el filtro fino (¿de verdad tardó?) es client-side
-      // en `esEntregaTardia`, porque cruza dos columnas distintas.
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
-        .not("delivered_at", "is", null).order("delivered_at", { ascending: false }).limit(100),
-      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
-        .not("scheduled_for", "is", null).lte("scheduled_for", umbralProgramado)
-        .order("scheduled_for", { ascending: true }).limit(50),
-      supabase.from("callback_requests").select("*").eq("restaurant_id", restaurantId)
-        .or(PALABRAS_QUEJA.map((p) => `reason.ilike.%${p}%`).join(","))
-        .order("created_at", { ascending: false }).limit(50),
-      supabase.from("callback_requests").select("*").eq("restaurant_id", restaurantId)
-        .eq("resolved", false).order("created_at", { ascending: false }).limit(50),
-    ]);
-    setRecibidos((recibidosRes.data as OrderRow[] | null) ?? []);
-    setEntregados((entregadosRes.data as OrderRow[] | null) ?? []);
-    setReclamos((reclamosRes.data as OrderRow[] | null) ?? []);
-    setEntregaTardiaPool((entregaTardiaRes.data as OrderRow[] | null) ?? []);
-    setProgramados((programadosRes.data as OrderRow[] | null) ?? []);
-    setQuejas((quejasRes.data as CallbackRow[] | null) ?? []);
-    setEscalar((escalarRes.data as CallbackRow[] | null) ?? []);
-    setCargandoListas(false);
+    // try/finally: sin esto, cualquier falla real de red en el Promise.all
+    // (no un error devuelto por Supabase, sino la promesa rechazándose) dejaba
+    // `cargandoListas` en true para siempre y las 7 pestañas de pedidos se
+    // quedaban en el spinner sin importar cuántas veces recargara la página —
+    // mismo patrón de bug que Sucursales/Voces e idiomas.
+    try {
+      const sb: any = supabase;
+      const umbralProgramado = new Date(Date.now() + VENTANA_PROGRAMADO_POR_VENCER_MIN * 60_000).toISOString();
+      const [recibidosRes, entregadosRes, reclamosRes, entregaTardiaRes, programadosRes, quejasRes, escalarRes] = await Promise.all([
+        sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
+          .order("created_at", { ascending: false }).limit(50),
+        sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
+          .order("created_at", { ascending: false }).limit(50),
+        sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "cancelado")
+          .order("created_at", { ascending: false }).limit(50),
+        // Candidatos a "entrega tardía": todo lo entregado con marca real de
+        // hora de entrega — el filtro fino (¿de verdad tardó?) es client-side
+        // en `esEntregaTardia`, porque cruza dos columnas distintas.
+        sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
+          .not("delivered_at", "is", null).order("delivered_at", { ascending: false }).limit(100),
+        sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
+          .not("scheduled_for", "is", null).lte("scheduled_for", umbralProgramado)
+          .order("scheduled_for", { ascending: true }).limit(50),
+        supabase.from("callback_requests").select("*").eq("restaurant_id", restaurantId)
+          .or(PALABRAS_QUEJA.map((p) => `reason.ilike.%${p}%`).join(","))
+          .order("created_at", { ascending: false }).limit(50),
+        supabase.from("callback_requests").select("*").eq("restaurant_id", restaurantId)
+          .eq("resolved", false).order("created_at", { ascending: false }).limit(50),
+      ]);
+      setRecibidos((recibidosRes.data as OrderRow[] | null) ?? []);
+      setEntregados((entregadosRes.data as OrderRow[] | null) ?? []);
+      setReclamos((reclamosRes.data as OrderRow[] | null) ?? []);
+      setEntregaTardiaPool((entregaTardiaRes.data as OrderRow[] | null) ?? []);
+      setProgramados((programadosRes.data as OrderRow[] | null) ?? []);
+      setQuejas((quejasRes.data as CallbackRow[] | null) ?? []);
+      setEscalar((escalarRes.data as CallbackRow[] | null) ?? []);
+    } catch (err) {
+      console.error("No se pudieron cargar las listas de notificaciones:", err);
+    } finally {
+      setCargandoListas(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -281,17 +302,27 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
     const anterior = fila;
     setFila({ ...fila, [key]: value });
     setGuardando(key);
-    const { error } = await supabase.from("restaurant_staff").update({ [key]: value }).eq("id", fila.id);
-    setGuardando(null);
-    if (error) {
+    // try/finally: si el update truena de verdad (red) en vez de resolver a
+    // { error }, sin esto `guardando` se quedaba fijo en este switch para
+    // siempre — el toggle correspondiente quedaba deshabilitado/girando por
+    // el resto de la sesión.
+    try {
+      const { error } = await supabase.from("restaurant_staff").update({ [key]: value }).eq("id", fila.id);
+      if (error) {
+        setFila(anterior);
+        toast({
+          title: "No se pudo guardar",
+          description: key === "notify_entrega_tardia" || key === "notify_programado_por_vencer"
+            ? "Esta preferencia es nueva y su columna todavía no existe en la base real — aplica la migración pendiente y vuelve a intentar."
+            : error.message,
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
       setFila(anterior);
-      toast({
-        title: "No se pudo guardar",
-        description: key === "notify_entrega_tardia" || key === "notify_programado_por_vencer"
-          ? "Esta preferencia es nueva y su columna todavía no existe en la base real — aplica la migración pendiente y vuelve a intentar."
-          : error.message,
-        variant: "destructive",
-      });
+      toast({ title: "No se pudo guardar", description: err instanceof Error ? err.message : "Intenta de nuevo.", variant: "destructive" });
+    } finally {
+      setGuardando(null);
     }
   };
 

@@ -284,21 +284,38 @@ const SucursalesSection = ({ restaurantId }: Props) => {
     if (!restaurantId) return;
     let cancelado = false;
     setCargando(true);
-    supabase
-      .from("branches")
-      .select("id, name, address, phone, hours, lat, lng, is_active, display_order, voice_agent_active, whatsapp_agent_active")
-      .eq("restaurant_id", restaurantId)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true })
-      .then(({ data, error }) => {
+    // try/finally: sin esto, cualquier falla real de red (no un error
+    // devuelto por Supabase, sino la promesa rechazándose — timeout, DNS,
+    // CORS, un proxy que corta la conexión) dejaba `cargando` en true para
+    // siempre y la pestaña se quedaba pasmada en "Cargando sucursales…" sin
+    // importar cuántas veces se recargara. Mismo patrón ya corregido en
+    // checkAuth y cargarDatosAgentes (AdminDashboard.tsx) — aquí faltaba.
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("branches")
+          .select("id, name, address, phone, hours, lat, lng, is_active, display_order, voice_agent_active, whatsapp_agent_active")
+          .eq("restaurant_id", restaurantId)
+          .order("display_order", { ascending: true })
+          .order("name", { ascending: true });
         if (cancelado) return;
         if (error) {
           toast({ title: "No se pudieron cargar las sucursales", description: error.message, variant: "destructive" });
         } else {
           setBranches((data ?? []) as Branch[]);
         }
-        setCargando(false);
-      });
+      } catch (err) {
+        if (cancelado) return;
+        toast({
+          title: "No se pudieron cargar las sucursales",
+          description: "Ocurrió un problema de conexión. Intenta recargar la página.",
+          variant: "destructive",
+        });
+        console.error("No se pudieron cargar las sucursales:", err);
+      } finally {
+        if (!cancelado) setCargando(false);
+      }
+    })();
     return () => { cancelado = true; };
   }, [restaurantId, toast]);
 

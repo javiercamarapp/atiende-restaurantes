@@ -96,30 +96,40 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
     if (Object.keys(e).length > 0) return;
 
     setGuardando(true);
-    const { data, error } = await supabase.functions.invoke("crear-repartidor", {
-      body: {
-        nombre_completo: form.nombre_completo.trim(),
-        telefono: form.telefono.trim(),
-        correo: form.correo.trim(),
-        fecha_nacimiento: form.fecha_nacimiento,
-        tipo_vehiculo: form.tipo_vehiculo,
-        placas: form.placas.trim() || null,
-        numero_licencia: form.numero_licencia.trim() || null,
-        direccion: form.direccion.trim(),
-        contacto_emergencia_nombre: form.contacto_emergencia_nombre.trim(),
-        contacto_emergencia_telefono: form.contacto_emergencia_telefono.trim(),
-      },
-    });
-    setGuardando(false);
+    // try/finally: el modal se bloquea mientras `guardando` es true
+    // (bloquearCierre={guardando} más abajo) — si supabase.functions.invoke
+    // truena de verdad (red) en vez de resolver a { data, error }, sin esto
+    // `guardando` se quedaba en true para siempre y el modal quedaba
+    // atrapado, sin poder cerrarse ni reintentar.
+    try {
+      const { data, error } = await supabase.functions.invoke("crear-repartidor", {
+        body: {
+          nombre_completo: form.nombre_completo.trim(),
+          telefono: form.telefono.trim(),
+          correo: form.correo.trim(),
+          fecha_nacimiento: form.fecha_nacimiento,
+          tipo_vehiculo: form.tipo_vehiculo,
+          placas: form.placas.trim() || null,
+          numero_licencia: form.numero_licencia.trim() || null,
+          direccion: form.direccion.trim(),
+          contacto_emergencia_nombre: form.contacto_emergencia_nombre.trim(),
+          contacto_emergencia_telefono: form.contacto_emergencia_telefono.trim(),
+        },
+      });
 
-    if (error || data?.error) {
-      toast({ title: "No se pudo agregar", description: data?.error || error?.message, variant: "destructive" });
-      return;
+      if (error || data?.error) {
+        toast({ title: "No se pudo agregar", description: data?.error || error?.message, variant: "destructive" });
+        return;
+      }
+
+      toast({ title: "¡Repartidor agregado!", description: `${form.nombre_completo.trim()} ya puede iniciar sesión con Google o un enlace mágico a ${form.correo.trim()}.` });
+      onOpenChange(false);
+      await onGuardado();
+    } catch (err) {
+      toast({ title: "No se pudo agregar", description: err instanceof Error ? err.message : "Intenta de nuevo.", variant: "destructive" });
+    } finally {
+      setGuardando(false);
     }
-
-    toast({ title: "¡Repartidor agregado!", description: `${form.nombre_completo.trim()} ya puede iniciar sesión con Google o un enlace mágico a ${form.correo.trim()}.` });
-    onOpenChange(false);
-    await onGuardado();
   };
 
   return (

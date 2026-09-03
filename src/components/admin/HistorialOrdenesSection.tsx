@@ -157,16 +157,27 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
     if (!restaurantId) return;
     setCargando(true);
     setError(null);
-    const { data, error: err, count } = await construirQuery(0, PAGE_SIZE - 1);
-    if (err) {
-      setError(err.message);
+    // try/finally: si la query truena de verdad (falla de red, no un error
+    // devuelto por Supabase) en vez de resolver a { data, error }, sin esto
+    // `cargando` se quedaba en true para siempre y la sección no salía
+    // nunca del spinner — mismo patrón de bug que Sucursales/Voces e idiomas.
+    try {
+      const { data, error: err, count } = await construirQuery(0, PAGE_SIZE - 1);
+      if (err) {
+        setError(err.message);
+        setOrdenes([]);
+        setTotalFiltrado(0);
+      } else {
+        setOrdenes((data ?? []) as OrderRow[]);
+        setTotalFiltrado(count ?? 0);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar el historial.");
       setOrdenes([]);
       setTotalFiltrado(0);
-    } else {
-      setOrdenes((data ?? []) as OrderRow[]);
-      setTotalFiltrado(count ?? 0);
+    } finally {
+      setCargando(false);
     }
-    setCargando(false);
   }, [construirQuery, restaurantId]);
 
   useEffect(() => {
@@ -175,11 +186,16 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
 
   const cargarMas = async () => {
     setCargandoMas(true);
-    const desde = ordenes.length;
-    const hasta = Math.min(desde + PAGE_SIZE, MAX_CARGADOS) - 1;
-    const { data, error: err } = await construirQuery(desde, hasta);
-    if (!err) setOrdenes((prev) => [...prev, ...((data ?? []) as OrderRow[])]);
-    setCargandoMas(false);
+    try {
+      const desde = ordenes.length;
+      const hasta = Math.min(desde + PAGE_SIZE, MAX_CARGADOS) - 1;
+      const { data, error: err } = await construirQuery(desde, hasta);
+      if (!err) setOrdenes((prev) => [...prev, ...((data ?? []) as OrderRow[])]);
+    } catch (err) {
+      console.error("No se pudo cargar más historial:", err);
+    } finally {
+      setCargandoMas(false);
+    }
   };
 
   const nombreSucursal = (o: OrderRow) => sucursales.find((s) => s.id === o.branch_id)?.name ?? o.branch ?? "—";
