@@ -63,6 +63,10 @@ Deno.serve(async (req: Request) => {
         speed: tts.speed ?? 1.0,
         stability: tts.stability ?? 0.5,
         similarity_boost: tts.similarity_boost ?? 0.8,
+        // deno-lint-ignore no-explicit-any
+        tools: (agent.prompt?.tools ?? []).map((t: any) => ({ type: t.type, name: t.name })),
+        // deno-lint-ignore no-explicit-any
+        knowledge_base: (agent.prompt?.knowledge_base ?? []).map((k: any) => ({ id: k.id, name: k.name, type: k.type })),
       });
     }
 
@@ -104,17 +108,24 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "clone_voice") {
-      // Clonación real de voz (Instant Voice Cloning) — audio_base64 es la
-      // grabación real hecha en el navegador (MediaRecorder), no una
-      // muestra de ejemplo. ElevenLabs quiere multipart/form-data con el
-      // archivo real, así que se reconstruye el Blob desde el base64 aquí.
-      const { name, audio_base64, mime_type } = body;
-      if (!name || !audio_base64) return json({ error: "name y audio_base64 requeridos" }, 400);
+      // Clonación real de voz (Instant Voice Cloning) — cada muestra en
+      // `samples` es audio real (grabado en el navegador con MediaRecorder o
+      // subido por el usuario), nunca una muestra de ejemplo. ElevenLabs
+      // acepta varios archivos a la vez en /v1/voices/add (mejor clonación
+      // con más muestras reales) — se reconstruye cada Blob desde su base64.
+      // deno-lint-ignore no-explicit-any
+      const { name, samples, remove_background_noise } = body as { name?: string; samples?: any[]; remove_background_noise?: boolean };
+      if (!name || !samples || !Array.isArray(samples) || samples.length === 0) {
+        return json({ error: "name y samples (al menos 1 audio) son requeridos" }, 400);
+      }
 
-      const binario = Uint8Array.from(atob(audio_base64), (c) => c.charCodeAt(0));
       const form = new FormData();
       form.append("name", name);
-      form.append("files", new Blob([binario], { type: mime_type || "audio/webm" }), "muestra.webm");
+      if (remove_background_noise !== undefined) form.append("remove_background_noise", String(remove_background_noise));
+      samples.forEach((s, i) => {
+        const binario = Uint8Array.from(atob(s.audio_base64), (c) => c.charCodeAt(0));
+        form.append("files", new Blob([binario], { type: s.mime_type || "audio/webm" }), `muestra-${i + 1}.webm`);
+      });
 
       const res = await fetch("https://api.elevenlabs.io/v1/voices/add", {
         method: "POST",

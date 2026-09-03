@@ -27,6 +27,7 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import NotificacionesSection from "@/components/admin/NotificacionesSection";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
+import { ModalClonarVoz } from "@/components/ModalClonarVoz";
 import { CampoPixeles } from "@/components/CampoPixeles";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
@@ -436,57 +437,15 @@ function DashboardAgente({
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [voceandoId, setVoceandoId] = useState<string | null>(null);
 
-  // Clonación real de voz (Instant Voice Cloning) — graba de verdad con el
-  // micrófono del navegador, sube el audio real a ElevenLabs vía
-  // agent-config, y agrega la voz clonada real al catálogo/selección.
-  const [grabandoVoz, setGrabandoVoz] = useState(false);
-  const [clonandoVoz, setClonandoVoz] = useState(false);
-  const [errorClonacion, setErrorClonacion] = useState<string | null>(null);
-  const grabadorRef = useRef<MediaRecorder | null>(null);
-  const trozosRef = useRef<Blob[]>([]);
-
-  const alternarGrabacion = async () => {
-    if (grabandoVoz) {
-      grabadorRef.current?.stop();
-      setGrabandoVoz(false);
-      return;
-    }
-    setErrorClonacion(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const grabador = new MediaRecorder(stream);
-      trozosRef.current = [];
-      grabador.ondataavailable = (e) => { if (e.data.size > 0) trozosRef.current.push(e.data); };
-      grabador.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setClonandoVoz(true);
-        try {
-          const blob = new Blob(trozosRef.current, { type: 'audio/webm' });
-          const buffer = await blob.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          const { data, error } = await supabase.functions.invoke('agent-config', {
-            body: { action: 'clone_voice', name: `Voz de Javier — Los Taquitos de PM`, audio_base64: base64, mime_type: 'audio/webm' },
-          });
-          if (error || data?.error) throw error ?? new Error(data.error);
-          const nuevaVoz: VozDisponible = {
-            voice_id: data.voice_id, public_owner_id: '', name: 'Voz de Javier (clonada)', gender: '—', accent: 'clonada', description: '', preview_url: '',
-          };
-          setVoces((prev) => [nuevaVoz, ...prev]);
-          if (borrador) setBorrador({ ...borrador, voice_id: data.voice_id, voice_public_owner_id: undefined });
-        } catch (err) {
-          console.error('No se pudo clonar la voz:', err);
-          setErrorClonacion('No se pudo clonar la voz — intenta de nuevo.');
-        } finally {
-          setClonandoVoz(false);
-        }
-      };
-      grabador.start();
-      grabadorRef.current = grabador;
-      setGrabandoVoz(true);
-    } catch (err) {
-      console.error('No se pudo acceder al micrófono:', err);
-      setErrorClonacion('No se pudo acceder al micrófono — revisa los permisos del navegador.');
-    }
+  // Clonación real de voz (Instant Voice Cloning) — vive en su propio modal
+  // (ModalClonarVoz), branded, con el flujo de varias muestras real de
+  // ElevenLabs. Aquí solo se guarda si está abierto y qué hacer cuando
+  // termina: agregar la voz nueva al catálogo y seleccionarla.
+  const [modalClonarVozAbierto, setModalClonarVozAbierto] = useState(false);
+  const onVozClonada = (voiceId: string, nombre: string) => {
+    const nuevaVoz: VozDisponible = { voice_id: voiceId, public_owner_id: '', name: nombre, gender: '—', accent: 'clonada', description: '', preview_url: '' };
+    setVoces((prev) => [nuevaVoz, ...prev]);
+    if (borrador) setBorrador({ ...borrador, voice_id: voiceId, voice_public_owner_id: undefined });
   };
   const vocesFiltradas = voces.filter((v) => {
     if (filtroGenero !== 'todos' && v.gender !== filtroGenero) return false;
@@ -868,22 +827,12 @@ function DashboardAgente({
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-[13px] font-medium text-foreground">Voz — {vocesFiltradas.length}/{voces.length || '…'} voces en español latino/mexicano</p>
                     <button
-                      onClick={alternarGrabacion}
-                      disabled={clonandoVoz}
-                      className={`flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors disabled:opacity-50 ${
-                        grabandoVoz ? 'bg-destructive text-destructive-foreground border-destructive' : 'border-primary/40 text-primary hover:bg-primary/5'
-                      }`}
+                      onClick={() => setModalClonarVozAbierto(true)}
+                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-primary/40 text-primary hover:bg-primary/5 text-[11px] font-medium transition-colors"
                     >
-                      {clonandoVoz ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mic className="w-3 h-3" />}
-                      {clonandoVoz ? 'Clonando…' : grabandoVoz ? 'Detener y clonar' : 'Clonar mi voz'}
+                      <Mic className="w-3 h-3" /> Clonar mi voz
                     </button>
                   </div>
-                  {errorClonacion && <p className="text-[11px] text-destructive mb-2">{errorClonacion}</p>}
-                  {grabandoVoz && (
-                    <p className="text-[11px] text-muted-foreground mb-2 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" /> Grabando — habla normal 20-30 segundos y aprieta "Detener y clonar".
-                    </p>
-                  )}
                   <div className="flex items-center gap-1.5 mb-2">
                     <div className="flex-1 flex items-center gap-1.5 h-8 rounded-lg border border-border bg-card px-2.5">
                       <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
@@ -1027,6 +976,7 @@ function DashboardAgente({
           </div>
         )
       )}
+      <ModalClonarVoz open={modalClonarVozAbierto} onOpenChange={setModalClonarVozAbierto} onVozClonada={onVozClonada} />
     </div>
   );
 }
