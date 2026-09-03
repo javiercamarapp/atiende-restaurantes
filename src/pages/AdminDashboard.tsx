@@ -787,12 +787,12 @@ const AdminDashboard = () => {
         <div className="text-primary-foreground">Cargando...</div>
       </div>;
   }
-  return <div className="min-h-screen bg-background flex">
-      {/* Desktop Sidebar */}
+  return <div className="min-h-screen bg-muted/30 flex md:gap-3 md:p-3">
+      {/* Desktop Sidebar — panel flotante, separado del resto */}
       <AdminSidebar user={user} activeSection={activeSection} onSectionChange={setActiveSection} onLogout={handleLogout} />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 flex flex-col md:gap-3">
         {/* Mobile Header */}
         <header className="md:hidden bg-primary text-primary-foreground p-4 shadow-lg">
           <div className="flex items-center justify-between">
@@ -803,30 +803,28 @@ const AdminDashboard = () => {
           </div>
         </header>
 
-        {/* Desktop Header */}
-        <header className="hidden md:block bg-background p-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-foreground">
-              {activeSection === 'dashboard' && 'Estadísticas'}
-              {activeSection === 'products' && 'Productos'}
-              {activeSection === 'categories' && 'Categorías'}
-              {activeSection === 'promos' && 'Promociones'}
-              {activeSection === 'orders' && 'Pedidos'}
-              {activeSection === 'users' && 'Usuarios'}
-              {activeSection === 'repartidores' && 'Repartidores'}
-              {activeSection === 'notificaciones' && 'Notificaciones'}
-              {activeSection === 'help' && 'Centro de Ayuda'}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {format(new Date(), "EEEE d 'de' MMMM, yyyy", {
-              locale: es
-            })}
-            </p>
-          </div>
+        {/* Desktop Header — su propio panel flotante, no fundido con el sidebar ni el contenido */}
+        <header className="hidden md:flex items-center justify-between rounded-2xl border border-border bg-card h-16 px-6 shrink-0 sticky top-3 z-10">
+          <h1 className="text-lg font-semibold text-foreground">
+            {activeSection === 'dashboard' && 'Estadísticas'}
+            {activeSection === 'products' && 'Productos'}
+            {activeSection === 'categories' && 'Categorías'}
+            {activeSection === 'promos' && 'Promociones'}
+            {activeSection === 'orders' && 'Pedidos'}
+            {activeSection === 'users' && 'Usuarios'}
+            {activeSection === 'repartidores' && 'Repartidores'}
+            {activeSection === 'notificaciones' && 'Notificaciones'}
+            {activeSection === 'help' && 'Centro de Ayuda'}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {format(new Date(), "EEEE d 'de' MMMM, yyyy", {
+            locale: es
+          })}
+          </p>
         </header>
 
         {searchParams.get("restaurante") && (
-          <div className="bg-primary/10 border-b border-primary/20 px-4 md:px-6 py-2 flex items-center justify-between text-sm">
+          <div className="rounded-2xl border border-primary/20 bg-primary/10 px-4 md:px-6 py-2 flex items-center justify-between text-sm shrink-0">
             <span className="text-primary font-medium">
               Viendo la cuenta de {restaurantName ?? "este restaurante"} como superadmin
             </span>
@@ -836,7 +834,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        <main className="flex-1 p-4 md:p-6 space-y-6 overflow-auto bg-muted/30">
+        <main className="flex-1 p-4 space-y-6 overflow-auto">
 
         {/* Dashboard Stats - Only show on dashboard section */}
         {activeSection === 'dashboard' && (
