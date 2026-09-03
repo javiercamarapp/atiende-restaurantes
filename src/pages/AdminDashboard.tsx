@@ -986,26 +986,27 @@ const AdminDashboard = () => {
           </div>
         </header>
 
+        {/* Barra de "viendo como" — tarjeta PROPIA, separada del panel
+            principal por el mismo gap que separa sidebar/panel (no es la
+            franja superior de un panel más grande: es su propia pieza). */}
+        {searchParams.get("restaurante") && (
+          <div className="hidden md:flex items-center justify-between px-4 py-2.5 rounded-2xl border border-border bg-primary/5 text-[13px] shadow-sm shrink-0">
+            <span className="flex items-center gap-1.5 text-foreground">
+              <Eye className="w-3.5 h-3.5 text-primary shrink-0" strokeWidth={1.75} />
+              Estás viendo el panel de <strong className="font-semibold">{restaurantName ?? "este restaurante"}</strong> como superadmin.
+            </span>
+            <button
+              onClick={() => navigate("/admin/superadmin")}
+              className="text-primary underline underline-offset-2 hover:opacity-70 transition-opacity shrink-0"
+            >
+              ← Volver a superadmin
+            </button>
+          </div>
+        )}
+
         {/* Un solo panel grande (como la consola real de Likida): encabezado
             blanco arriba, cuerpo gris abajo con las tarjetas encima. */}
         <div className="hidden md:flex flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex-col">
-          {/* Barra de "viendo como" — igual a la de Likida: franja fina de
-              todo el ancho, azul claro (no gris), texto compacto, el link de
-              regreso subrayado plano, no botón. */}
-          {searchParams.get("restaurante") && (
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-primary/5 text-[13px] shrink-0">
-              <span className="flex items-center gap-1.5 text-foreground">
-                <Eye className="w-3.5 h-3.5 text-primary shrink-0" strokeWidth={1.75} />
-                Estás viendo el panel de <strong className="font-semibold">{restaurantName ?? "este restaurante"}</strong> como superadmin.
-              </span>
-              <button
-                onClick={() => navigate("/admin/superadmin")}
-                className="text-primary underline underline-offset-2 hover:opacity-70 transition-opacity shrink-0"
-              >
-                ← Volver a superadmin
-              </button>
-            </div>
-          )}
           {activeSection !== 'pregunta' && (
             <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card">
               <h1 className="flex items-center gap-2 text-sm font-medium text-foreground">
