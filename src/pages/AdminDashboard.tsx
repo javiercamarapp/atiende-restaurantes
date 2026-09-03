@@ -455,6 +455,68 @@ const AdminDashboard = () => {
   };
 
   // Sales trend chart data based on date filter
+  // Rango propio de la gráfica de Tendencias — independiente del filtro
+  // FECHA general de arriba (ese controla las tarjetas de "Tus ventas").
+  const [trendRange, setTrendRange] = useState<'dia' | '7' | 'mes' | 'año' | 'historico'>('7');
+
+  const chartTrendData = useMemo(() => {
+    const now = new Date();
+    let intervals: Date[] = [];
+    let groupFormat: string;
+    let esHora = false;
+    let esMes = false;
+
+    if (trendRange === 'dia') {
+      for (let i = 23; i >= 0; i--) intervals.push(new Date(now.getTime() - i * 60 * 60 * 1000));
+      groupFormat = 'HH:00';
+      esHora = true;
+    } else if (trendRange === '7') {
+      for (let i = 6; i >= 0; i--) intervals.push(subDays(now, i));
+      groupFormat = 'EEE';
+    } else if (trendRange === 'mes') {
+      for (let i = 29; i >= 0; i--) intervals.push(subDays(now, i));
+      groupFormat = 'dd MMM';
+    } else if (trendRange === 'año') {
+      for (let i = 11; i >= 0; i--) intervals.push(subMonths(now, i));
+      groupFormat = 'MMM yy';
+      esMes = true;
+    } else {
+      // histórico: un punto por mes desde el pedido más antiguo (tope de
+      // 36 meses para no dibujar de más si hay datos muy viejos).
+      const fechas = orders.map((o) => new Date(o.created_at).getTime());
+      const inicio = fechas.length > 0 ? new Date(Math.min(...fechas)) : now;
+      const mesesDesdeInicio = Math.min(
+        36,
+        Math.max(0, (now.getFullYear() - inicio.getFullYear()) * 12 + (now.getMonth() - inicio.getMonth()))
+      );
+      for (let i = mesesDesdeInicio; i >= 0; i--) intervals.push(subMonths(now, i));
+      groupFormat = 'MMM yy';
+      esMes = true;
+    }
+
+    return intervals.map((date) => {
+      const label = format(date, groupFormat, { locale: es });
+      let revenue = 0;
+      let orderCount = 0;
+      orders.forEach((order) => {
+        const orderDate = new Date(order.created_at);
+        let matches = false;
+        if (esHora) {
+          matches = format(orderDate, 'yyyy-MM-dd HH') === format(date, 'yyyy-MM-dd HH');
+        } else if (esMes) {
+          matches = format(orderDate, 'yyyy-MM') === format(date, 'yyyy-MM');
+        } else {
+          matches = format(orderDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
+        }
+        if (matches) {
+          revenue += Number(order.total);
+          orderCount += 1;
+        }
+      });
+      return { name: label, ventas: revenue, ordenes: orderCount };
+    });
+  }, [orders, trendRange]);
+
   const salesTrendData = useMemo(() => {
     const now = new Date();
     let intervals: Date[] = [];
@@ -1125,7 +1187,30 @@ const AdminDashboard = () => {
 
             {/* Sales & Orders Trend Charts */}
             <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tendencias</p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tendencias</p>
+                <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 p-0.5">
+                  {([
+                    ['dia', 'Día'],
+                    ['7', '7 días'],
+                    ['mes', 'Mes'],
+                    ['año', 'Año'],
+                    ['historico', 'Histórico'],
+                  ] as const).map(([valor, etiqueta]) => (
+                    <button
+                      key={valor}
+                      onClick={() => setTrendRange(valor)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                        trendRange === valor
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {etiqueta}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Ventas Chart */}
                 <Card>
@@ -1138,7 +1223,7 @@ const AdminDashboard = () => {
                   <CardContent>
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={salesTrendData}>
+                        <LineChart data={chartTrendData} key={`ventas-${trendRange}`}>
                           <XAxis
                             dataKey="name"
                             tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
@@ -1163,10 +1248,13 @@ const AdminDashboard = () => {
                           <Line
                             type="monotone"
                             dataKey="ventas"
-                            stroke="hsl(var(--primary))" 
+                            stroke="hsl(var(--primary))"
                             strokeWidth={2}
                             dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }}
                             activeDot={{ r: 5, fill: 'hsl(var(--primary))' }}
+                            isAnimationActive
+                            animationDuration={450}
+                            animationEasing="ease-out"
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -1185,7 +1273,7 @@ const AdminDashboard = () => {
                   <CardContent>
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={salesTrendData}>
+                        <LineChart data={chartTrendData} key={`ordenes-${trendRange}`}>
                           <XAxis
                             dataKey="name"
                             tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
@@ -1209,10 +1297,13 @@ const AdminDashboard = () => {
                           <Line
                             type="monotone"
                             dataKey="ordenes"
-                            stroke="hsl(var(--secondary))" 
+                            stroke="hsl(var(--secondary))"
                             strokeWidth={2}
                             dot={{ fill: 'hsl(var(--secondary))', strokeWidth: 2, r: 3 }}
                             activeDot={{ r: 5, fill: 'hsl(var(--secondary))' }}
+                            isAnimationActive
+                            animationDuration={450}
+                            animationEasing="ease-out"
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -1596,7 +1687,7 @@ const AdminDashboard = () => {
                             boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
                           }}
                           formatter={(value: number) => [selectedStat === 'revenue' ? `$${value.toLocaleString()}` : value, getStatTitle()]} />
-                        <Bar dataKey="value" fill={selectedStat === 'revenue' ? 'hsl(142 71% 45%)' : selectedStat === 'customers' ? 'hsl(var(--primary))' : selectedStat === 'orders' ? 'hsl(var(--secondary))' : 'hsl(142 71% 45%)'} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="value" fill={selectedStat === 'revenue' ? 'hsl(142 71% 45%)' : selectedStat === 'customers' ? 'hsl(var(--primary))' : selectedStat === 'orders' ? 'hsl(var(--secondary))' : 'hsl(142 71% 45%)'} radius={[4, 4, 0, 0]} isAnimationActive animationDuration={450} animationEasing="ease-out" />
                       </BarChart>
                     </ResponsiveContainer>}
                 </div>
@@ -1772,7 +1863,7 @@ const AdminDashboard = () => {
                                       contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))' }}
                                       formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ventas']}
                                     />
-                                    <Line type="monotone" dataKey="ventas" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} />
+                                    <Line type="monotone" dataKey="ventas" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} isAnimationActive animationDuration={450} animationEasing="ease-out" />
                                   </LineChart>
                                 </ResponsiveContainer>
                               </div>
