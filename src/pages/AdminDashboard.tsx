@@ -4,7 +4,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, PhoneCall, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2 } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Bike, Phone, PhoneCall, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -2580,7 +2580,7 @@ const AdminDashboard = () => {
                 {activeSection === 'promos' && (<><Percent className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Promociones</>)}
                 {activeSection === 'orders' && (<><ShoppingCart className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Pedidos</>)}
                 {activeSection === 'users' && (<><Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Usuarios</>)}
-                {activeSection === 'repartidores' && (<><Truck className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
+                {activeSection === 'repartidores' && (<><Bike className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
                 {activeSection === 'notificaciones' && (<><Bell className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Notificaciones</>)}
                 {activeSection === 'contactos' && (<><PhoneCall className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Contactos por regresar llamada</>)}
                 {activeSection === 'help' && (<><HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Centro de Ayuda</>)}
@@ -3365,7 +3365,7 @@ const AdminDashboard = () => {
 
             {repartidores.length === 0 ? (
               <div className="py-12 text-center">
-                <Truck className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <Bike className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
                 <p className="text-[13px] text-muted-foreground">No hay repartidores registrados</p>
                 <p className="text-[12px] text-muted-foreground mt-1">
                   Los usuarios pueden registrarse como repartidores desde la página de registro
@@ -3381,7 +3381,7 @@ const AdminDashboard = () => {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <Truck className="w-5 h-5 text-primary" strokeWidth={1.75} />
+                        <Bike className="w-5 h-5 text-primary" strokeWidth={1.75} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[13px] font-medium text-foreground truncate">
