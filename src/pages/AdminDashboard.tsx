@@ -376,34 +376,6 @@ function BarraComparativa({ completados, cancelados }: { completados: number; ca
   );
 }
 
-// Texto real y completo del prompt del agente (leído una vez de ElevenLabs
-// vía CLI, no un resumen) — usado tanto en la caja chica como en el modal
-// expandido de la pestaña "Mensaje del sistema".
-const MENSAJE_SISTEMA_REAL = `Eres el asistente telefónico de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida. Contestas llamadas para tomar pedidos a domicilio. Hablas español de México, tono cálido y directo, como alguien que realmente trabaja en la taquería — sin sonar robótico ni leer listas completas de golpe, actúa natural.
-
-TU OBJETIVO: tomar un pedido completo y correcto, y registrarlo con la herramienta crear_pedido antes de colgar. Un pedido no existe hasta que la herramienta responde con éxito.
-
-FLUJO DE LA LLAMADA (en este orden):
-1. Saluda identificando la sucursal (ya lo hiciste en el primer mensaje). Pregunta el nombre de quien llama y confirma el número de teléfono.
-2. En cuanto tengas el teléfono, llama a buscar_cliente con ese número.
-   - Si es cliente conocido: salúdalo por su nombre (o confírmalo si no lo tienes), y si tiene una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar. Si menciona una dirección nueva, no hace falta que hagas nada especial — se guarda sola en su perfil al crear el pedido.
-   - Si es cliente nuevo: pide su dirección de entrega completa (calle, número, colonia, referencias).
-3. Toma el pedido. Usa tu base de conocimiento (el menú) para confirmar cada producto y su precio real — nunca inventes un precio ni un platillo que no esté en el menú. Antes de agregar cada platillo al pedido, llama a buscar_producto con el nombre para obtener su id real — nunca inventes un id. Si el cliente conocido tiene un último pedido registrado, puedes ofrecerlo como sugerencia natural ("¿lo de siempre?"), sin forzarlo. Si piden algo que no existe en esta sucursal, dilo con naturalidad y sugiere una alternativa parecida.
-4. Para "kilos a domicilio", pregunta la carne y el peso (250g / 500g / 750g / 1kg) — el precio exacto ya está en tu base de conocimiento, no hagas la cuenta en voz alta, solo confírmalo.
-5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole, tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y pregunta si quiere alguna salsa en específico o alguna guarnición extra (tiene costo aparte).
-6. Da el total final del pedido.
-7. Da el tiempo de espera aproximado: 40 a 50 minutos (1 hora a 1h20 si está lloviendo).
-8. Si el pedido incluye alcohol (cerveza, licor, cóctel), confirma que quien recibe es mayor de edad.
-9. NO ofrezcas las promociones de 2x1 ni de nachos+aguas — esas son solo para comer en el restaurante, no aplican a domicilio.
-10. Cuando el cliente confirme que el pedido está completo, llama a la herramienta crear_pedido con los datos recopilados (usa siempre branch_slug: "fco-montejo" y source: "voice"). Si la herramienta devuelve un error (por ejemplo un producto no encontrado), díselo al cliente con naturalidad y corrige el pedido antes de reintentar — no cuelgues sin haber creado el pedido exitosamente o sin que el cliente decida cancelar.
-11. Confirma que el pedido quedó registrado y que ya se mandó a cocina, agradece y despídete.
-
-LÍMITES:
-- No inventes platillos, precios, horarios ni promociones que no estén en tu base de conocimiento.
-- No proceses pagos ni pidas número de tarjeta por teléfono — el cobro es contra entrega o con terminal física al momento de la entrega.
-- Si preguntan por horarios de apertura/cierre exactos, di que no los tienes confirmados y que se comuniquen a un humano — no los inventes.
-- Si la llamada no es para hacer un pedido (quejas, facturación, empleo), sé honesto: di que esta línea es para pedidos y que anotarás su contacto para que alguien del restaurante les regrese la llamada.`;
-
 function DashboardAgente({
   canal,
   onCerrar,
@@ -416,6 +388,7 @@ function DashboardAgente({
   presets = [],
   presetActivo,
   onCambiarPreset,
+  agentId,
 }: {
   canal: 'voz' | 'whatsapp';
   onCerrar: () => void;
@@ -433,8 +406,79 @@ function DashboardAgente({
   presets?: readonly { id: string; etiqueta: string }[];
   presetActivo?: string;
   onCambiarPreset?: (id: string) => void;
+  agentId?: string | null;
 }) {
   const [mostrarSelectorEnDashboard, setMostrarSelectorEnDashboard] = useState(false);
+
+  // Configuración REAL del agente — leída/editada en vivo contra la API de
+  // ElevenLabs vía la función de borde agent-config (nunca expone la key
+  // al navegador). `borrador` es lo que el usuario está editando;
+  // `original` es lo último confirmado guardado, para poder cancelar.
+  type ConfigAgente = {
+    first_message: string; language: string; prompt: string; temperature: number;
+    voice_id: string | null; speed: number; stability: number; similarity_boost: number;
+  };
+  type VozDisponible = { voice_id: string; name: string; gender: string; accent: string; description: string; preview_url: string };
+  const [config, setConfig] = useState<ConfigAgente | null>(null);
+  const [borrador, setBorrador] = useState<ConfigAgente | null>(null);
+  const [voces, setVoces] = useState<VozDisponible[]>([]);
+  const [cargandoConfig, setCargandoConfig] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorConfig, setErrorConfig] = useState<string | null>(null);
+  const [guardadoOk, setGuardadoOk] = useState(false);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const [voceandoId, setVoceandoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (canal !== 'voz' || !agentId) return;
+    setCargandoConfig(true);
+    setErrorConfig(null);
+    Promise.all([
+      supabase.functions.invoke('agent-config', { body: { action: 'get', agent_id: agentId } }),
+      supabase.functions.invoke('agent-config', { body: { action: 'voices' } }),
+    ]).then(([getRes, vocesRes]) => {
+      if (getRes.error || getRes.data?.error) throw getRes.error ?? new Error(getRes.data.error);
+      const c: ConfigAgente = getRes.data;
+      setConfig(c);
+      setBorrador(c);
+      if (!vocesRes.error && !vocesRes.data?.error) setVoces(vocesRes.data.voices ?? []);
+    }).catch((err) => {
+      console.error('No se pudo cargar la configuración real del agente:', err);
+      setErrorConfig('No se pudo conectar con ElevenLabs para leer la configuración real.');
+    }).finally(() => setCargandoConfig(false));
+  }, [canal, agentId]);
+
+  const hayCambios = config && borrador && JSON.stringify(config) !== JSON.stringify(borrador);
+
+  const guardarCambios = async () => {
+    if (!agentId || !borrador || !hayCambios) return;
+    setGuardando(true);
+    setGuardadoOk(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('agent-config', {
+        body: { action: 'update', agent_id: agentId, ...borrador },
+      });
+      if (error || data?.error) throw error ?? new Error(data.error);
+      setConfig(borrador);
+      setGuardadoOk(true);
+      setTimeout(() => setGuardadoOk(false), 3000);
+    } catch (err) {
+      console.error('No se pudo guardar la configuración real:', err);
+      setErrorConfig('No se pudo guardar — intenta de nuevo en un momento.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const reproducirPreview = (voiceId: string, url: string) => {
+    audioPreviewRef.current?.pause();
+    if (voceandoId === voiceId) { setVoceandoId(null); return; }
+    const audio = new Audio(url);
+    audio.play();
+    audio.onended = () => setVoceandoId(null);
+    audioPreviewRef.current = audio;
+    setVoceandoId(voiceId);
+  };
   const PESTANAS_VOZ = [
     { id: 'general' as const, etiqueta: 'General', icon: LayoutGrid },
     { id: 'audio' as const, etiqueta: 'Audio', icon: Volume2 },
@@ -661,72 +705,195 @@ function DashboardAgente({
         )
       )}
 
-      {pestana === 'comportamiento' && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-          <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} />
-          <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="Claude Sonnet 5" indice={1} />
-          <TileDashboardVoz icon={Settings2} label="Temperatura" valor="0.4" nota="Qué tan creativo vs. apegado al guion" indice={2} />
-          <TileDashboardVoz icon={Settings2} label="Personalidad" valor="Personalizada" nota="Predeterminada de ElevenLabs desactivada" indice={3} />
-        </div>
-      )}
-
-      {pestana === 'voces' && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-          <TileDashboardVoz icon={Mic} label="Voz" valor="Ramon" nota="Taquitos PM" indice={0} />
-          <TileDashboardVoz icon={Globe} label="Idioma" valor="Español" indice={1} />
-          <TileDashboardVoz icon={Mic} label="Velocidad" valor="1.0x" indice={2} />
-          <TileDashboardVoz icon={Mic} label="Estabilidad" valor="0.5" nota="Qué tan constante suena la voz" indice={3} />
-        </div>
-      )}
-
-      {pestana === 'mensaje' && (
-        <div className="space-y-3">
-          <div>
-            <p className="text-[13px] font-medium text-foreground mb-1.5">Primer mensaje</p>
-            <div className="rounded-xl border border-primary/40 p-3">
-              <p className="text-[13px] text-foreground">Los Taquitos de PM, sucursal Francisco de Montejo, ¿qué le preparamos hoy?</p>
-            </div>
+      {(pestana === 'comportamiento' || pestana === 'voces' || pestana === 'mensaje') && (
+        cargandoConfig ? (
+          <div className="flex items-center justify-center py-16 text-[13px] text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin mr-2" /> Leyendo la configuración real del agente…
           </div>
-          <div>
-            <p className="text-[13px] font-medium text-foreground mb-1.5">Mensaje del sistema</p>
-            <div className="relative rounded-xl border border-primary/40 overflow-hidden">
-              <div className="relative p-3 pr-9">
-                <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed max-h-52 overflow-hidden">
-                  {MENSAJE_SISTEMA_REAL}
-                </p>
-                <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <button className="absolute top-2.5 right-2.5 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors">
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-5 gap-3">
-                    <DialogHeader className="space-y-0">
-                      <DialogTitle className="text-[14px] font-medium tracking-normal">Mensaje del sistema</DialogTitle>
-                    </DialogHeader>
-                    <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-primary/40 overflow-hidden">
-                      <div className="flex-1 overflow-auto p-4">
-                        <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed">{MENSAJE_SISTEMA_REAL}</p>
-                      </div>
-                      <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/40">
-                        <span className="text-[12px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
-                        <BotonZonaHoraria />
-                      </div>
+        ) : !borrador ? (
+          <VacioDashboardVoz
+            icon={Settings2}
+            titulo={errorConfig ?? 'No se pudo leer la configuración del agente'}
+            detalle="Verifica que el agente tenga una API key real de ElevenLabs conectada."
+          />
+        ) : (
+          <div className="space-y-4">
+            {pestana === 'comportamiento' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} />
+                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="Claude Sonnet 5" indice={1} />
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[13px] font-medium text-foreground">Temperatura</span>
+                    <span className="font-mono text-[13px] tabular-nums text-primary">{borrador.temperature.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range" min={0} max={1} step={0.05}
+                    value={borrador.temperature}
+                    onChange={(e) => setBorrador({ ...borrador, temperature: Number(e.target.value) })}
+                    className="w-full accent-primary"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Qué tan creativo vs. apegado al guion — más bajo es más predecible.</p>
+                </div>
+              </div>
+            )}
+
+            {pestana === 'voces' && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[13px] font-medium text-foreground mb-1.5">Idioma</p>
+                  <select
+                    value={borrador.language}
+                    onChange={(e) => setBorrador({ ...borrador, language: e.target.value })}
+                    className="w-full h-9 rounded-lg border border-border bg-card px-3 text-[13px] text-foreground"
+                  >
+                    <option value="es">Español</option>
+                    <option value="en">English</option>
+                    <option value="pt">Português</option>
+                    <option value="fr">Français</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-xl border border-border bg-card p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[13px] font-medium text-foreground">Velocidad</span>
+                      <span className="font-mono text-[13px] tabular-nums text-primary">{borrador.speed.toFixed(2)}x</span>
                     </div>
-                  </DialogContent>
-                </Dialog>
+                    <input
+                      type="range" min={0.7} max={1.2} step={0.01}
+                      value={borrador.speed}
+                      onChange={(e) => setBorrador({ ...borrador, speed: Number(e.target.value) })}
+                      className="w-full accent-primary"
+                    />
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[13px] font-medium text-foreground">Estabilidad</span>
+                      <span className="font-mono text-[13px] tabular-nums text-primary">{borrador.stability.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min={0} max={1} step={0.05}
+                      value={borrador.stability}
+                      onChange={(e) => setBorrador({ ...borrador, stability: Number(e.target.value) })}
+                      className="w-full accent-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-foreground mb-1.5">Voz — {voces.length || '…'} voces en español latino/mexicano</p>
+                  <div className="rounded-xl border border-border divide-y divide-border max-h-72 overflow-auto">
+                    {voces.map((v) => (
+                      <div
+                        key={v.voice_id}
+                        onClick={() => setBorrador({ ...borrador, voice_id: v.voice_id })}
+                        className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${borrador.voice_id === v.voice_id ? 'bg-primary/10' : 'hover:bg-muted'}`}
+                      >
+                        <button
+                          onClick={(e) => { e.stopPropagation(); reproducirPreview(v.voice_id, v.preview_url); }}
+                          className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0"
+                        >
+                          {voceandoId === v.voice_id ? <XCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] text-foreground truncate">{v.name}</p>
+                          <p className="text-[10.5px] text-muted-foreground truncate">{v.gender} · {v.accent}</p>
+                        </div>
+                        {borrador.voice_id === v.voice_id && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
+                      </div>
+                    ))}
+                    {voces.length === 0 && (
+                      <p className="text-[12px] text-muted-foreground p-3">No se pudo cargar el catálogo de voces.</p>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/40">
-                <span className="text-[11px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
-                <BotonZonaHoraria compacto />
+            )}
+
+            {pestana === 'mensaje' && (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[13px] font-medium text-foreground mb-1.5">Primer mensaje</p>
+                  <textarea
+                    value={borrador.first_message}
+                    onChange={(e) => setBorrador({ ...borrador, first_message: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-xl border border-primary/40 p-3 text-[13px] text-foreground bg-transparent resize-none"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[13px] font-medium text-foreground">Mensaje del sistema</p>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors">
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-5 gap-3">
+                        <DialogHeader className="space-y-0">
+                          <DialogTitle className="text-[14px] font-medium tracking-normal">Mensaje del sistema</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-primary/40 overflow-hidden">
+                          <textarea
+                            value={borrador.prompt}
+                            onChange={(e) => setBorrador({ ...borrador, prompt: e.target.value })}
+                            className="flex-1 p-4 text-[13px] text-foreground bg-transparent resize-none leading-relaxed"
+                          />
+                          <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/40">
+                            <span className="text-[12px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
+                            <BotonZonaHoraria />
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <textarea
+                    value={borrador.prompt}
+                    onChange={(e) => setBorrador({ ...borrador, prompt: e.target.value })}
+                    rows={8}
+                    className="w-full rounded-xl border border-primary/40 p-3 text-[13px] text-foreground bg-transparent resize-none leading-relaxed"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            <AnimatePresence>
+              {(hayCambios || guardadoOk) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  className="sticky bottom-0 flex items-center justify-between gap-2 rounded-xl border border-border bg-card shadow-lg px-3.5 py-2.5"
+                >
+                  <span className="text-[12px] text-muted-foreground">
+                    {guardadoOk ? '✓ Guardado — ya está aplicado en el agente real.' : errorConfig ?? 'Tienes cambios sin guardar.'}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {hayCambios && (
+                      <button
+                        onClick={() => setBorrador(config)}
+                        className="h-8 px-3 rounded-full border border-border text-[12px] text-foreground hover:bg-muted transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                    {hayCambios && (
+                      <button
+                        onClick={guardarCambios}
+                        disabled={guardando}
+                        className="h-8 px-3.5 rounded-full bg-primary text-primary-foreground text-[12px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {guardando ? 'Guardando…' : 'Guardar cambios'}
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          <p className="text-[10.5px] text-muted-foreground">
-            Esto es lo que tiene configurado tu agente ahora mismo — para poder editarlo desde aquí falta conectar la API de ElevenLabs.
-          </p>
-        </div>
+        )
       )}
     </div>
   );
@@ -3405,6 +3572,7 @@ const AdminDashboard = () => {
             presets={PRESETS_RANGO_AGENTE}
             presetActivo={presetRangoAgente}
             onCambiarPreset={(id) => { setPresetRangoAgente(id); setRangoAgenteAplicado(undefined); }}
+            agentId={agentIdActivo}
           />
         )}
 
