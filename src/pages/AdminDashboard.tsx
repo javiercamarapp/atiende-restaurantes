@@ -18,7 +18,7 @@ import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import NotificacionesSection from "@/components/admin/NotificacionesSection";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatCard, TrendStatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark } from "@/components/AtiendeLogo";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
@@ -867,98 +867,36 @@ const AdminDashboard = () => {
               </p>
             </div>
 
-            {/* Tus ventas Section */}
+            {/* Tus ventas Section — anatomía exacta de Likida: chip claro,
+                "Ver más", píldora de variación (verde/roja) contra el
+                periodo anterior. */}
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-foreground">Tus ventas</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Ventas netas */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Ventas netas</span>
-                      </div>
-                      <button onClick={() => openStatsDialog('revenue')} className="text-sm text-primary hover:underline">
-                        Ver más
-                      </button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-3xl font-bold text-foreground">${filteredStats.revenue.toLocaleString()}</p>
-                    <div className={`${filteredStats.revenueChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} border rounded-lg p-3`}>
-                      <div className={`flex items-center gap-1 ${filteredStats.revenueChange >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {filteredStats.revenueChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        <p className="text-sm font-medium">
-                          {filteredStats.revenueChange >= 0 ? '+' : ''}{filteredStats.revenueChange.toFixed(1)}%
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{getPeriodLabel()}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Número de órdenes */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <ShoppingCart className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Número de órdenes</span>
-                      </div>
-                      <button onClick={() => openStatsDialog('orders')} className="text-sm text-primary hover:underline">
-                        Ver más
-                      </button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-3xl font-bold text-foreground">{filteredStats.orders}</p>
-                    <div className={`${filteredStats.ordersChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} border rounded-lg p-3`}>
-                      <div className={`flex items-center gap-1 ${filteredStats.ordersChange >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {filteredStats.ordersChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        <p className="text-sm font-medium">
-                          {filteredStats.ordersChange >= 0 ? '+' : ''}{filteredStats.ordersChange.toFixed(1)}%
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{getPeriodLabel()}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Valor promedio de la orden */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Valor promedio</span>
-                      </div>
-                      <button onClick={() => openStatsDialog('customers')} className="text-sm text-primary hover:underline">
-                        Ver más
-                      </button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-3xl font-bold text-foreground">
-                      ${filteredStats.averageOrder.toFixed(2)}
-                    </p>
-                    <div className={`${filteredStats.avgOrderChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} border rounded-lg p-3`}>
-                      <div className={`flex items-center gap-1 ${filteredStats.avgOrderChange >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {filteredStats.avgOrderChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        <p className="text-sm font-medium">
-                          {filteredStats.avgOrderChange >= 0 ? '+' : ''}{filteredStats.avgOrderChange.toFixed(1)}%
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{getPeriodLabel()}</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <TrendStatCard
+                  icon={DollarSign}
+                  label="Ventas netas"
+                  value={`$${filteredStats.revenue.toLocaleString()}`}
+                  deltaPct={filteredStats.revenueChange}
+                  deltaLabel={getPeriodLabel()}
+                  onVerMas={() => openStatsDialog('revenue')}
+                />
+                <TrendStatCard
+                  icon={ShoppingCart}
+                  label="Número de órdenes"
+                  value={String(filteredStats.orders)}
+                  deltaPct={filteredStats.ordersChange}
+                  deltaLabel={getPeriodLabel()}
+                  onVerMas={() => openStatsDialog('orders')}
+                />
+                <TrendStatCard
+                  icon={DollarSign}
+                  label="Valor promedio"
+                  value={`$${filteredStats.averageOrder.toFixed(2)}`}
+                  deltaPct={filteredStats.avgOrderChange}
+                  deltaLabel={getPeriodLabel()}
+                  onVerMas={() => openStatsDialog('customers')}
+                />
               </div>
             </div>
 
