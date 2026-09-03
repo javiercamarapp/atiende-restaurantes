@@ -492,7 +492,14 @@ function RestaurantsTable({
                 <td className="py-3 text-right font-mono tabular-nums">{s.customers}</td>
                 <td className="py-3 text-right font-mono tabular-nums">${s.revenue.toLocaleString("es-MX")}</td>
                 <td className="py-3 text-right">
-                  <Button size="sm" variant="outline" onClick={() => onOpen(r.id)}>Ver cuenta</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onOpen(r.id)}
+                    className="h-7 px-3 rounded-full text-xs font-medium border-border/70"
+                  >
+                    Ver cuenta
+                  </Button>
                 </td>
               </tr>
             );

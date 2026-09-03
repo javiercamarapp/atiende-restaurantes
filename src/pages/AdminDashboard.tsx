@@ -1004,7 +1004,7 @@ const AdminDashboard = () => {
               </button>
             </div>
           )}
-          <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card sticky top-0 z-10">
+          <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card">
             <h1 className="text-sm font-semibold text-foreground">
               {activeSection === 'dashboard' && 'Estadísticas'}
               {activeSection === 'products' && 'Productos'}
