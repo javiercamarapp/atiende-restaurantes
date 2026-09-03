@@ -1410,12 +1410,7 @@ const AdminDashboard = () => {
                             axisLine={false}
                           />
                           <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'hsl(var(--popover))',
-                              border: '1px solid hsl(var(--border))',
-                              borderRadius: '8px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
-                            }}
+                            {...tooltipEstiloCompartido}
                             formatter={(value: number) => [value, 'Órdenes']}
                           />
                           <Line
@@ -1844,12 +1839,7 @@ const AdminDashboard = () => {
                         fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))"
                       }} tickLine={false} axisLine={false} />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'hsl(var(--popover))',
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
-                          }}
+                          {...tooltipEstiloCompartido}
                           formatter={(value: number) => [selectedStat === 'revenue' ? `$${value.toLocaleString()}` : value, getStatTitle()]} />
                         <Bar dataKey="value" fill={selectedStat === 'revenue' ? 'hsl(142 71% 45%)' : selectedStat === 'customers' ? 'hsl(var(--primary))' : selectedStat === 'orders' ? 'hsl(var(--secondary))' : 'hsl(142 71% 45%)'} radius={[4, 4, 0, 0]} isAnimationActive animationDuration={450} animationEasing="ease-out" />
                       </BarChart>
@@ -1934,7 +1924,7 @@ const AdminDashboard = () => {
             {/* Panel de historial — idéntico al de Likida: "Nuevo chat",
                 buscador, etiqueta "RECIENTES", lista o estado vacío. */}
             {mostrarHistorial && (
-              <div className="fixed right-3 top-3 bottom-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
+              <div className="absolute right-3 inset-y-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
                 <div className="p-3 flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => { setMensajesChat([]); setMostrarHistorial(false); setMostrarSugerencias(false); }}
@@ -2024,7 +2014,7 @@ const AdminDashboard = () => {
                                     <XAxis dataKey="name" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
                                     <YAxis tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
                                     <Tooltip
-                                      contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))' }}
+                                      {...tooltipEstiloCompartido}
                                       formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ventas']}
                                     />
                                     <Line type="monotone" dataKey="ventas" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} isAnimationActive animationDuration={450} animationEasing="ease-out" />
