@@ -9,13 +9,17 @@
 // tanto atiende.ai (src/lib/sales/llm-router.ts) como Likida
 // (src/lib/llm/models.ts).
 //
+// Un solo bot para las 7 sucursales (mismo cambio que ya tiene el agente de
+// voz real): decide la sucursal más cercana por la dirección del cliente en
+// vez de estar fijo a una sola — ya no hay PILOT_BRANCH_SLUG.
+//
 // Setup needed (Supabase project secrets):
 //   OPENROUTER_API_KEY                - de openrouter.ai (una sola key para cualquier modelo/proveedor)
 //   TWILIO_ACCOUNT_SID                - from the Twilio console
 //   TWILIO_AUTH_TOKEN                 - from the Twilio console
 //   TWILIO_WHATSAPP_FROM              - e.g. "whatsapp:+14155238886" for the sandbox number
 //   OPENROUTER_MODEL (opcional)          - default: google/gemini-2.5-flash-lite
-//   OPENROUTER_MODEL_ESCALADO (opcional) - default: anthropic/claude-sonnet-5
+//   OPENROUTER_MODEL_ESCALADO (opcional) - default: openai/gpt-5.4-mini (mismo escalón barato-de-respaldo que el agente de voz)
 //
 // Twilio webhook URL to configure (Sandbox settings -> "When a message comes in"):
 //   https://<project-ref>.supabase.co/functions/v1/whatsapp-webhook
@@ -23,35 +27,21 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createOrderCore, lookupCustomer, OrderValidationError } from "../_shared/create-order-core.ts";
 
-// Cascada de dos escalones, mismo patrón que usan de verdad Likida y
-// atiende.ai: modelo barato para el 95% del tráfico, uno caro solo cuando
-// el barato ya falló una vez en esta conversación.
-//
-// Escalón 1 (default): Gemini 2.5 Flash-Lite — $0.10/$0.40 por millón de
-// tokens, el más barato de los que de verdad sirven. Es el modelo que
-// Likida usa de verdad en su propio chat de alto volumen (citado en su
-// código como "mejor español barato + baja latencia"), con evidencia real
-// de calidad de español (top del índice multilingüe de Artificial
-// Analysis) — a diferencia de DeepSeek, que no tiene ese dato verificado.
-// Se compararon también Gemini 3.1/3.5/3.6/3.7/3.8 Flash y Flash-Lite,
-// GPT-5/5.4 nano/mini, GLM-4.5-air/4.6 y DeepSeek V3.2/V4 Flash (precios
-// de OpenRouter, sept-2026): las variantes "Flash" sin "lite" de Gemini
-// 3.x salen 3-7x más caras sin mejorar tool-calling para este caso de uso,
-// y DeepSeek V4 Flash mostró en benchmarks públicos un patrón real de
-// "finalización forzada" en dos tercios de sus corridas agénticas
-// multi-paso — justo lo que este bot hace todo el rato (buscar_producto
-// varias veces seguidas). No vale la pena apostarle eso a la demo.
-//
-// Escalón 2 (solo tras un fallo de herramienta en esta conversación):
-// Claude Sonnet 5 — el mismo escalón caro que usan Likida y atiende.ai
-// para lo que de verdad no se puede permitir fallar dos veces, en su
-// versión más nueva disponible en OpenRouter hoy ($2/$10 por millón).
 const MODEL_DEFAULT = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash-lite";
-const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "anthropic/claude-sonnet-5";
-const PILOT_BRANCH_SLUG = "fco-montejo";
+const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "openai/gpt-5.4-mini";
+const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
 
-const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida.
+const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, una taquería con varias sucursales en Mérida.
 Tomas pedidos a domicilio por chat. Tono cálido, directo, mensajes cortos (esto es WhatsApp, no una carta), actúa natural — no leas listas completas de golpe, ve conversando.
+
+SUCURSALES REALES (usa esto para decidir cuál está más cerca de la dirección del cliente — nunca inventes otra sucursal ni otro slug):
+- Altabrisa (branch_slug: "altabrisa") — norte de Mérida, dentro de Plaza Victory Altabrisa, zona Altabrisa/Temozón.
+- García Lavín (branch_slug: "garcia-lavin") — San Ramón Norte.
+- Prol. Montejo (branch_slug: "prol-montejo") — Emiliano Zapata Norte / Prolongación Montejo.
+- Fco. de Montejo (branch_slug: "fco-montejo") — Fraccionamiento Francisco de Montejo, extremo norponiente.
+- Galerías (branch_slug: "galerias") — Col. Revolución/Cordemex, dentro de Plaza Galerías Mérida, cerca del periférico norte.
+- Pensiones (branch_slug: "pensiones") — Residencial Pensiones, cerca de Plaza Las Américas, zona centro-sur.
+- Chicxulub (branch_slug: "chicxulub") — Chicxulub Puerto, en la costa (sólo si el cliente está en Chicxulub o el puerto, no en Mérida ciudad).
 
 REGLAS DE NEGOCIO:
 - Formas de pago: tarjeta (pide la terminal al momento del pedido) o contra entrega. No proceses pagos ni pidas número de tarjeta por chat.
@@ -59,20 +49,22 @@ REGLAS DE NEGOCIO:
 - Las promos de 2x1 y nachos+aguas son SOLO para comer en el restaurante — nunca las ofrezcas para domicilio.
 - Los "kilos a domicilio" incluyen salsa roja, salsa verde, limones y tortillas sin costo extra.
 - No inventes productos ni precios: usa siempre la herramienta buscar_producto para confirmar nombre/precio real antes de agregar algo al pedido. Puedes recomendar productos populares o combinaciones típicas si el cliente no sabe qué pedir.
-- Si piden algo que no existe en el menú de esta sucursal, dilo con naturalidad y sugiere algo parecido.
+- Si piden algo que no existe en el menú, dilo con naturalidad y sugiere algo parecido.
 - Si el pedido incluye alcohol, confirma que quien recibe es mayor de edad.
 - No inventes horarios de apertura/cierre — ese dato no está confirmado todavía.
+- No inventes sucursales ni branch_slugs que no estén en la lista de arriba.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
-1. Saluda identificando la sucursal. Pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir).
+1. Saluda (sin mencionar sucursal todavía — aún no la sabes). Pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir).
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
-3. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto. Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
-4. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole, tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y pregunta si quiere alguna salsa en específico o alguna guarnición extra (tienen costo aparte).
-5. Da el total final del pedido.
-6. Da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).
-7. Cuando el cliente confirme todo, llama a crear_pedido con los product_id reales (no nombres). No llames a crear_pedido si todavía falta nombre, dirección o confirmación del cliente.
-8. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige.
-9. Cuando el pedido quede creado, confirma que ya se mandó a cocina.`;
+3. En cuanto tengas la dirección/colonia, decide con naturalidad cuál de las sucursales de arriba está más cerca — si la colonia no es clara, pregunta la colonia o una referencia cercana antes de decidir. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien.
+4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto. Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
+5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole, tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y pregunta si quiere alguna salsa en específico o alguna guarnición extra (tienen costo aparte).
+6. Da el total final del pedido, y pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos a alguien con terminal física al momento de la entrega.
+7. Da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).
+8. Cuando el cliente confirme todo, llama a crear_pedido con los product_id reales (no nombres) y el branch_slug de la sucursal que confirmaste en el paso 3. No llames a crear_pedido si todavía falta nombre, dirección, sucursal o confirmación del cliente.
+9. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige.
+10. Cuando el pedido quede creado, confirma que ya se mandó a cocina.`;
 
 // Formato OpenAI/OpenRouter: los tools van bajo function.parameters, no
 // input_schema directo como en la API de Anthropic.
@@ -93,10 +85,11 @@ const TOOLS = [
     type: "function",
     function: {
       name: "crear_pedido",
-      description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo.",
+      description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo, incluyendo la sucursal.",
       parameters: {
         type: "object",
         properties: {
+          branch_slug: { type: "string", description: "El branch_slug real de la sucursal más cercana, de la lista de sucursales del prompt." },
           customer_name: { type: "string" },
           customer_address: { type: "string" },
           items: {
@@ -111,7 +104,7 @@ const TOOLS = [
             },
           },
         },
-        required: ["customer_name", "customer_address", "items"],
+        required: ["branch_slug", "customer_name", "customer_address", "items"],
       },
     },
   },
@@ -139,29 +132,24 @@ Deno.serve(async (req: Request) => {
       .eq("phone", phone)
       .maybeSingle();
 
-    const { data: branch } = await supabase
-      .from("branches")
-      .select("id, restaurant_id")
-      .eq("slug", PILOT_BRANCH_SLUG)
-      .single();
-
     // deno-lint-ignore no-explicit-any
     const messages = (convo?.messages ?? []) as any[];
     messages.push({ role: "user", content: body });
 
-    const customer = await lookupCustomer(supabase, branch!.restaurant_id, phone);
-    const { reply, updatedMessages, orderId } = await runAgentTurn(supabase, messages, phone, customer, branch!.restaurant_id);
+    const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone);
+    const { reply, updatedMessages, orderId, branchId } = await runAgentTurn(supabase, messages, phone, customer, RESTAURANT_ID);
 
     if (convo) {
       await supabase.from("whatsapp_conversations").update({
         messages: updatedMessages,
         status: orderId ? "completed" : "active",
         order_id: orderId ?? convo.order_id,
+        branch_id: branchId ?? convo.branch_id,
       }).eq("phone", phone);
     } else {
       await supabase.from("whatsapp_conversations").insert({
         phone,
-        branch_id: branch!.id,
+        branch_id: branchId,
         messages: updatedMessages,
         status: orderId ? "completed" : "active",
         order_id: orderId ?? null,
@@ -185,8 +173,9 @@ async function runAgentTurn(
   // deno-lint-ignore no-explicit-any
   customer: any,
   restaurantId: string,
-): Promise<{ reply: string; updatedMessages: typeof messages; orderId: string | null }> {
+): Promise<{ reply: string; updatedMessages: typeof messages; orderId: string | null; branchId: string | null }> {
   let orderId: string | null = null;
+  let branchId: string | null = null;
   let huboFalloDeHerramienta = false; // dispara el escalón caro en el siguiente turno
   const systemPrompt = `${BASE_SYSTEM_PROMPT}\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
 
@@ -210,20 +199,20 @@ async function runAgentTurn(
 
     if (!res.ok) {
       console.error("OpenRouter API error:", await res.text());
-      return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId };
+      return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId, branchId };
     }
 
     const data = await res.json();
     const msg = data.choices?.[0]?.message;
     if (!msg) {
       console.error("OpenRouter respuesta sin choices:", JSON.stringify(data));
-      return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId };
+      return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId, branchId };
     }
     messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: msg.tool_calls });
 
     const toolCalls = msg.tool_calls as Array<{ id: string; function: { name: string; arguments: string } }> | undefined;
     if (!toolCalls || toolCalls.length === 0) {
-      return { reply: msg.content || "¿Me puedes repetir tu pedido?", updatedMessages: messages, orderId };
+      return { reply: msg.content || "¿Me puedes repetir tu pedido?", updatedMessages: messages, orderId, branchId };
     }
 
     for (const call of toolCalls) {
@@ -247,7 +236,7 @@ async function runAgentTurn(
             result = products ?? [];
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
-              branch_slug: PILOT_BRANCH_SLUG,
+              branch_slug: input.branch_slug as string,
               customer_name: input.customer_name as string,
               customer_phone: phone,
               customer_address: input.customer_address as string,
@@ -255,6 +244,7 @@ async function runAgentTurn(
               source: "whatsapp",
             });
             orderId = order.id;
+            branchId = order.branch_id ?? null;
             result = { order };
           } else {
             result = { error: `Herramienta desconocida: ${call.function.name}` };
@@ -274,7 +264,7 @@ async function runAgentTurn(
     }
   }
 
-  return { reply: "Se me complicó procesar tu pedido, un momento por favor.", updatedMessages: messages, orderId };
+  return { reply: "Se me complicó procesar tu pedido, un momento por favor.", updatedMessages: messages, orderId, branchId };
 }
 
 // deno-lint-ignore no-explicit-any
