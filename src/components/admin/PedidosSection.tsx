@@ -148,7 +148,21 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
     () => orders.filter((o) => o.status === "pending" && !esProgramada(o, ahora)),
     [orders, ahora],
   );
-  const enviadas = useMemo(() => orders.filter((o) => o.status === "en_camino"), [orders]);
+  // "Enviadas" es la entrega EN CURSO, no un historial — un pedido que
+  // sigue en "en_camino" mucho después de su ventana real de entrega
+  // (40-50 min, 1h-1h20 con lluvia) casi seguro ya se entregó y nadie le dio
+  // clic a "Marcar entregado"; se saca de esta vista activa (sigue existiendo
+  // en la base, solo deja de contar como "en trayecto ahora mismo").
+  const VENTANA_MAX_EN_TRAYECTO_MIN = 90;
+  const enviadas = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.status === "en_camino" &&
+          (ahora - new Date(o.created_at).getTime()) / 60000 <= VENTANA_MAX_EN_TRAYECTO_MIN,
+      ),
+    [orders, ahora],
+  );
   const programadas = useMemo(
     () => orders.filter((o) => o.status === "pending" && esProgramada(o, ahora)),
     [orders, ahora],
