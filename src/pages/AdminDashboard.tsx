@@ -596,58 +596,19 @@ function DashboardAgente({
 }
 
 // Pantalla completa de "Vista previa" del agente de voz — clon del layout
-// real de ElevenLabs (orbe a la izquierda sobre franjas diagonales, panel
-// de conversación a la derecha), pero con nuestra tipografía/colores y sin
-// las herramientas internas de ElevenLabs (Historial/Configuración de
-// voz/Herramientas simuladas son de su dashboard, no algo que el cliente
-// deba ver). No inventa una transcripción — el panel derecho es un estado
-// honesto hasta que la conversación real empieza, y el botón de abajo
-// dispara la llamada REAL simulando el click dentro del shadow DOM del
-// widget verdadero (mismo mecanismo ya usado para forzar el color del botón).
-// Orbe animado — clon del "pinwheel" de 4 pétalos azul/turquesa del widget
-// real de ElevenLabs (mismo lenguaje visual que ya usa CampoPixeles: azul
-// de marca, sin depender de ninguna librería 3D). 4 pétalos en forma de
-// hoja, girando lento como conjunto, con un pulso sutil de escala.
-function OrbeAgente() {
-  const petalos = [
-    { angulo: 0, color1: '#0ea5e9', color2: '#1d4ed8' },
-    { angulo: 90, color1: '#38bdf8', color2: '#0ea5e9' },
-    { angulo: 180, color1: '#1d4ed8', color2: '#0f2f8f' },
-    { angulo: 270, color1: '#0ea5e9', color2: '#38bdf8' },
-  ];
-  return (
-    <motion.div
-      animate={{ scale: [1, 1.03, 1] }}
-      transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-      className="relative w-56 h-56"
-    >
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
-        className="absolute inset-0"
-      >
-        {petalos.map((p, i) => (
-          <div
-            key={i}
-            className="absolute left-1/2 top-1/2 w-[46%] h-[46%]"
-            style={{
-              background: `linear-gradient(135deg, ${p.color1}, ${p.color2})`,
-              borderRadius: '0% 50% 50% 50%',
-              transform: `translate(-100%, -100%) rotate(${p.angulo}deg) translate(50%, 50%)`,
-              transformOrigin: '100% 100%',
-              filter: 'blur(0.5px)',
-            }}
-          />
-        ))}
-      </motion.div>
-      <div
-        className="absolute inset-[38%] rounded-full"
-        style={{ background: 'radial-gradient(circle at 35% 30%, #ffffff40, transparent 60%)' }}
-      />
-    </motion.div>
-  );
-}
-
+// real de ElevenLabs (orbe a la izquierda sobre el mismo fondo animado de
+// "Chatea con tus datos" — CampoPixeles —, panel de conversación a la
+// derecha), pero con nuestra tipografía/colores y sin las herramientas
+// internas de ElevenLabs (Historial/Configuración de voz/Herramientas
+// simuladas son de su dashboard, no algo que el cliente deba ver). El
+// orbe es un video real generado con Higgsfield (public/media/orbe-agente.mp4),
+// no una recreación en CSS. La transcripción es mejor esfuerzo: se lee el
+// DOM real del widget (su shadow root) mientras la llamada está activa —
+// conversationStarted/conversationEnded sí son eventos documentados; el
+// contenido de los mensajes no lo es, así que puede fallar si ElevenLabs
+// cambia su markup interno, y en ese caso simplemente no se llena — nunca
+// se inventa una línea. El botón de abajo dispara la llamada REAL
+// simulando el click dentro del shadow DOM del widget verdadero.
 function VistaPreviaAgentePantallaCompleta({
   onCerrar,
   nombreAgente,
@@ -657,11 +618,58 @@ function VistaPreviaAgentePantallaCompleta({
   nombreAgente: string;
   nombreSucursal: string;
 }) {
+  const [llamadaActiva, setLlamadaActiva] = useState(false);
+  const [mensajes, setMensajes] = useState<string[]>([]);
+
   const iniciarLlamadaReal = () => {
     const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
     const boton = widget?.shadowRoot?.querySelector('button') as HTMLElement | undefined;
     boton?.click();
   };
+
+  // Estado real de la llamada — conversationStarted/conversationEnded son
+  // eventos DOM reales que expone el widget oficial. La transcripción es
+  // mejor esfuerzo: el widget no documenta eventos de mensaje, así que se
+  // lee su propio DOM interno (shadow root) cada vez que cambia, tomando
+  // el texto de los nodos hoja nuevos — mismo mecanismo ya usado para
+  // forzar el color de su botón, sobre el contenido REAL que renderiza.
+  useEffect(() => {
+    const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
+    if (!widget) return;
+    const onStart = () => { setLlamadaActiva(true); setMensajes([]); };
+    const onEnd = () => setLlamadaActiva(false);
+    widget.addEventListener('conversationStarted', onStart);
+    widget.addEventListener('conversationEnded', onEnd);
+
+    let observer: MutationObserver | null = null;
+    const intentarObservar = (reintento = 0) => {
+      const root = widget.shadowRoot;
+      if (!root) {
+        if (reintento < 20) setTimeout(() => intentarObservar(reintento + 1), 300);
+        return;
+      }
+      observer = new MutationObserver(() => {
+        const vistos: string[] = [];
+        root.querySelectorAll('*').forEach((el) => {
+          if (el.children.length > 0 || el.tagName === 'BUTTON' || el.tagName === 'SVG') return;
+          const texto = el.textContent?.trim();
+          if (texto && texto.length > 1 && texto.length < 400) vistos.push(texto);
+        });
+        setMensajes((prev) => {
+          const nuevos = vistos.filter((v, i) => v !== vistos[i - 1]);
+          return nuevos.length >= prev.length ? nuevos : prev;
+        });
+      });
+      observer.observe(root, { childList: true, subtree: true, characterData: true });
+    };
+    intentarObservar();
+
+    return () => {
+      widget.removeEventListener('conversationStarted', onStart);
+      widget.removeEventListener('conversationEnded', onEnd);
+      observer?.disconnect();
+    };
+  }, []);
 
   return (
     <motion.div
@@ -684,33 +692,58 @@ function VistaPreviaAgentePantallaCompleta({
             <p className="text-[10.5px] text-muted-foreground truncate">{nombreSucursal}</p>
           </div>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground border border-border rounded-full px-2.5 py-1 shrink-0">
-          Vista previa
+        <span className={`font-mono text-[10px] uppercase tracking-wide rounded-full px-2.5 py-1 shrink-0 border ${llamadaActiva ? 'text-primary border-primary/30 bg-primary/10' : 'text-muted-foreground border-border'}`}>
+          {llamadaActiva ? '● Llamada en curso' : 'Vista previa'}
         </span>
       </header>
 
       <div className="flex-1 flex min-h-0">
-        <div
-          className="flex-[3] relative flex items-center justify-center overflow-hidden"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(135deg, hsl(var(--border)) 0px, hsl(var(--border)) 1.5px, transparent 1.5px, transparent 16px)',
-            maskImage: 'linear-gradient(to bottom, black 0%, black 35%, transparent 85%)',
-            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 35%, transparent 85%)',
-          }}
-        >
-          <OrbeAgente />
+        <div className="flex-[3] relative flex items-center justify-center overflow-hidden">
+          <CampoPixeles />
+          <video
+            src="/media/orbe-agente.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="relative w-56 h-56 rounded-full object-cover shadow-[0_0_60px_-10px_rgba(29,78,216,0.5)]"
+          />
         </div>
 
         <div className="flex-[2] border-l border-border flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 overflow-auto p-5 flex flex-col items-center justify-center text-center">
-            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mb-3">
-              <Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
-            </div>
-            <p className="text-[13px] font-medium text-foreground mb-1">Aún no hay una llamada activa</p>
-            <p className="text-[11.5px] text-muted-foreground max-w-[220px] leading-snug">
-              Inicia una llamada real de prueba y la conversación aparecerá aquí en vivo.
-            </p>
+          <div className="flex-1 min-h-0 overflow-auto p-5">
+            {mensajes.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center">
+                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mb-3">
+                  <Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+                </div>
+                <p className="text-[13px] font-medium text-foreground mb-1">
+                  {llamadaActiva ? 'Llamada iniciada' : 'Aún no hay una llamada activa'}
+                </p>
+                <p className="text-[11.5px] text-muted-foreground max-w-[220px] leading-snug">
+                  {llamadaActiva ? 'Esperando el primer mensaje…' : 'Inicia una llamada real de prueba y la conversación aparecerá aquí en vivo.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {mensajes.map((texto, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex items-start gap-2 ${i % 2 === 1 ? 'flex-row-reverse text-right' : ''}`}
+                  >
+                    {i % 2 === 0 && (
+                      <div
+                        className="w-6 h-6 rounded-full shrink-0 mt-0.5"
+                        style={{ background: 'linear-gradient(135deg, #38bdf8, #1d4ed8)' }}
+                      />
+                    )}
+                    <p className="text-[13px] text-foreground leading-snug">{texto}</p>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="p-4 border-t border-border">
             <button
