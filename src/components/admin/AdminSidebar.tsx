@@ -47,6 +47,14 @@ interface AdminSidebarProps {
 // dentro de nuestro propio producto).
 const menuSections = [
   {
+    title: 'ANÁLISIS',
+    siempreAbierto: true,
+    items: [
+      { id: 'dashboard', label: 'Estadísticas', icon: BarChart3 },
+      { id: 'pregunta', label: 'Pregunta a tus datos', icon: MessageCircle },
+    ],
+  },
+  {
     title: 'INICIO',
     items: [
       { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
@@ -54,14 +62,6 @@ const menuSections = [
       { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History, disabled: true },
       { id: 'pagos', label: 'Pagos', icon: CreditCard, disabled: true },
       { id: 'estados-solicitudes', label: 'Estados de solicitudes', icon: Clock, disabled: true },
-    ],
-  },
-  {
-    title: 'ANÁLISIS',
-    siempreAbierto: true,
-    items: [
-      { id: 'dashboard', label: 'Estadísticas', icon: BarChart3 },
-      { id: 'pregunta', label: 'Pregunta a tus datos', icon: MessageCircle },
     ],
   },
   {
@@ -103,12 +103,14 @@ const grupoDeSeccion = (seccion: string) =>
 
 const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
-  // Acordeón: solo un grupo (aparte de ANÁLISIS, que siempre está abierto)
-  // puede estar abierto a la vez. Se recuerda entre sesiones, y por default
-  // abre el grupo que contiene la sección activa.
+  // Acordeón: solo un grupo (aparte de ANÁLISIS, que siempre está abierto y
+  // no participa) puede estar abierto a la vez. Se recuerda entre sesiones;
+  // por default abre INICIO (o el grupo de la sección activa, si es otro).
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
     const guardado = typeof window !== 'undefined' ? localStorage.getItem(CLAVE_GRUPO_ABIERTO) : null;
-    return guardado ?? grupoDeSeccion(activeSection);
+    if (guardado) return guardado;
+    const grupoActivo = grupoDeSeccion(activeSection);
+    return grupoActivo && grupoActivo !== 'ANÁLISIS' ? grupoActivo : 'INICIO';
   });
 
   const alternarGrupo = (titulo: string) => {
