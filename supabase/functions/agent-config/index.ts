@@ -43,6 +43,60 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { action } = body;
 
+    if (action === "llm_list") {
+      // Catálogo real y vigente de modelos/precios — nunca se adivina un id
+      // de modelo, siempre se verifica aquí antes de fijarlo en un agente.
+      const res = await fetch("https://api.elevenlabs.io/v1/convai/llm/list", {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json(await res.json());
+    }
+
+    if (action === "add_tool") {
+      // Añade un webhook tool nuevo al agente (idempotente por nombre) —
+      // acción admin acotada en vez de un passthrough genérico de PATCH,
+      // para no ampliar el radio de lo que esta función puede reescribir.
+      const { agent_id, tool } = body as {
+        agent_id?: string;
+        // deno-lint-ignore no-explicit-any
+        tool?: any;
+      };
+      if (!agent_id || !tool?.name) return json({ error: "agent_id y tool (con name) son requeridos" }, 400);
+
+      const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+      const current = await getRes.json();
+      // deno-lint-ignore no-explicit-any
+      const tools: any[] = current.conversation_config?.agent?.prompt?.tools ?? [];
+      if (tools.some((t) => t.name === tool.name)) return json({ ok: true, already_existed: true });
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        method: "PATCH",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_config: { agent: { prompt: { tools: [...tools, tool] } } } }),
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json({ ok: true });
+    }
+
+    if (action === "get_raw") {
+      // Solo para depuración/auditoría desde este entorno — nunca se llama
+      // desde el frontend del cliente. Devuelve el JSON completo y real del
+      // agente tal como lo entrega la API, para verificar nombres de campos
+      // reales antes de construir cualquier control nuevo en el editor
+      // (nunca adivinar un parámetro).
+      const { agent_id } = body;
+      if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json(await res.json());
+    }
+
     if (action === "get") {
       const { agent_id } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
@@ -53,6 +107,8 @@ Deno.serve(async (req: Request) => {
       const data = await res.json();
       const agent = data.conversation_config?.agent ?? {};
       const tts = data.conversation_config?.tts ?? {};
+      const conversation = data.conversation_config?.conversation ?? {};
+      const backgroundSound = conversation.background_sound ?? {};
       return json({
         name: data.name,
         first_message: agent.first_message ?? "",
@@ -63,6 +119,11 @@ Deno.serve(async (req: Request) => {
         speed: tts.speed ?? 1.0,
         stability: tts.stability ?? 0.5,
         similarity_boost: tts.similarity_boost ?? 0.8,
+        // Sonido de fondo real durante la llamada — source_id null = desactivado.
+        background_sound_id: backgroundSound.source_id ?? null,
+        background_sound_volume: backgroundSound.volume ?? 0.15,
+        background_sound_crossfade: backgroundSound.crossfade_loop ?? true,
+        first_message_interruptible: agent.disable_first_message_interruptions !== true,
         // deno-lint-ignore no-explicit-any
         tools: (agent.prompt?.tools ?? []).map((t: any) => ({ type: t.type, name: t.name })),
         // deno-lint-ignore no-explicit-any
@@ -138,7 +199,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "update") {
-      const { agent_id, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost } = body;
+      const {
+        agent_id, name, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost,
+        background_sound_id, background_sound_volume, background_sound_crossfade, first_message_interruptible,
+        llm, backup_llm,
+      } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
       // Una voz de la biblioteca compartida de ElevenLabs no se puede
@@ -162,10 +227,13 @@ Deno.serve(async (req: Request) => {
       const agentPatch: Record<string, any> = {};
       if (first_message !== undefined) agentPatch.first_message = first_message;
       if (language !== undefined) agentPatch.language = language;
-      if (prompt !== undefined || temperature !== undefined) {
+      if (first_message_interruptible !== undefined) agentPatch.disable_first_message_interruptions = !first_message_interruptible;
+      if (prompt !== undefined || temperature !== undefined || llm !== undefined || backup_llm !== undefined) {
         agentPatch.prompt = {};
         if (prompt !== undefined) agentPatch.prompt.prompt = prompt;
         if (temperature !== undefined) agentPatch.prompt.temperature = temperature;
+        if (llm !== undefined) agentPatch.prompt.llm = llm;
+        if (backup_llm !== undefined) agentPatch.prompt.backup_llm_config = { preference: "override", order: [backup_llm] };
       }
 
       // deno-lint-ignore no-explicit-any
@@ -175,15 +243,34 @@ Deno.serve(async (req: Request) => {
       if (stability !== undefined) ttsPatch.stability = stability;
       if (similarity_boost !== undefined) ttsPatch.similarity_boost = similarity_boost;
 
+      // Sonido de fondo real (campo público de la API, distinto del
+      // "filtro de voz"/audio_effects que ElevenLabs documenta como
+      // exclusivo del dashboard — ver comentario arriba de esta función).
+      // deno-lint-ignore no-explicit-any
+      const conversationPatch: Record<string, any> = {};
+      if (background_sound_id !== undefined || background_sound_volume !== undefined || background_sound_crossfade !== undefined) {
+        conversationPatch.background_sound = {
+          source_type: background_sound_id ? "preset" : null,
+          source_id: background_sound_id ?? null,
+          volume: background_sound_volume ?? 0.15,
+          crossfade_loop: background_sound_crossfade ?? true,
+        };
+      }
+
       // deno-lint-ignore no-explicit-any
       const conversation_config: Record<string, any> = {};
       if (Object.keys(agentPatch).length) conversation_config.agent = agentPatch;
       if (Object.keys(ttsPatch).length) conversation_config.tts = ttsPatch;
+      if (Object.keys(conversationPatch).length) conversation_config.conversation = conversationPatch;
+
+      // deno-lint-ignore no-explicit-any
+      const patchBody: Record<string, any> = { conversation_config };
+      if (name !== undefined) patchBody.name = name; // top-level, hermano de conversation_config — no va anidado
 
       const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
         method: "PATCH",
         headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_config }),
+        body: JSON.stringify(patchBody),
       });
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });

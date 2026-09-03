@@ -53,6 +53,7 @@ REGLAS DE NEGOCIO:
 - Si el pedido incluye alcohol, confirma que quien recibe es mayor de edad.
 - No inventes horarios de apertura/cierre — ese dato no está confirmado todavía.
 - No inventes sucursales ni branch_slugs que no estén en la lista de arriba.
+- Si el mensaje NO es para hacer un pedido (queja, facturación, empleo, u otro motivo que no sea ordenar comida): sé honesto, di que este número es para pedidos, pide su nombre si no lo tienes, y llama a registrar_contacto con nombre, motivo y un resumen breve de lo que dijo — así alguien del restaurante le contesta de verdad, no lo prometas sin registrarlo.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda (sin mencionar sucursal todavía — aún no la sabes). Pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir).
@@ -105,6 +106,22 @@ const TOOLS = [
           },
         },
         required: ["branch_slug", "customer_name", "customer_address", "items"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "registrar_contacto",
+      description: "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales.",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_name: { type: "string" },
+          reason: { type: "string", description: "Motivo breve, ej. 'queja', 'facturación', 'empleo'." },
+          message: { type: "string", description: "Resumen breve de lo que dijo el cliente." },
+        },
+        required: ["customer_name", "reason"],
       },
     },
   },
@@ -246,6 +263,18 @@ async function runAgentTurn(
             orderId = order.id;
             branchId = order.branch_id ?? null;
             result = { order };
+          } else if (call.function.name === "registrar_contacto") {
+            const { error } = await supabase.from("callback_requests").insert({
+              restaurant_id: restaurantId,
+              branch_id: null,
+              customer_name: input.customer_name as string,
+              customer_phone: phone,
+              reason: (input.reason as string) ?? null,
+              message: (input.message as string) ?? null,
+              source: "whatsapp",
+            });
+            if (error) throw error;
+            result = { ok: true };
           } else {
             result = { error: `Herramienta desconocida: ${call.function.name}` };
           }

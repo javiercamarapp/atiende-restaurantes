@@ -28,6 +28,7 @@ import NotificacionesSection from "@/components/admin/NotificacionesSection";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
 import { ModalClonarVoz } from "@/components/ModalClonarVoz";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CampoPixeles } from "@/components/CampoPixeles";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
@@ -421,6 +422,8 @@ function DashboardAgente({
   type ConfigAgente = {
     first_message: string; language: string; prompt: string; temperature: number;
     voice_id: string | null; voice_public_owner_id?: string | null; speed: number; stability: number; similarity_boost: number;
+    background_sound_id: string | null; background_sound_volume: number; background_sound_crossfade: boolean;
+    first_message_interruptible: boolean;
   };
   type VozDisponible = { voice_id: string; public_owner_id: string; name: string; gender: string; accent: string; description: string; preview_url: string };
   const [config, setConfig] = useState<ConfigAgente | null>(null);
@@ -761,21 +764,29 @@ function DashboardAgente({
             {pestana === 'comportamiento' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2.5">
-                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.1 Flash Lite" indice={0} texto />
-                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="GPT-5.4 Mini" indice={1} texto />
+                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.5 Flash-Lite" indice={0} texto />
+                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="GPT-5.6 Terra" indice={1} texto />
                 </div>
                 <div className="rounded-xl border border-border bg-card p-3.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[13px] font-medium text-foreground">Temperatura</span>
-                    <span className="font-mono text-[13px] tabular-nums text-primary">{borrador.temperature.toFixed(2)}</span>
+                  <p className="text-[13px] font-medium text-foreground mb-1">Temperatura</p>
+                  <p className="text-[11.5px] text-muted-foreground mb-4 leading-snug">Controla la creatividad y aleatoriedad de las respuestas generadas por el LLM.</p>
+                  <div className="relative pt-7">
+                    <div
+                      className="absolute -top-0.5 -translate-x-1/2 bg-foreground text-background text-[13px] font-semibold font-mono tabular-nums rounded-lg px-2.5 py-1 pointer-events-none"
+                      style={{ left: `${borrador.temperature * 100}%` }}
+                    >
+                      {borrador.temperature.toFixed(2)}
+                    </div>
+                    <input
+                      type="range" min={0} max={1} step={0.05}
+                      value={borrador.temperature}
+                      onChange={(e) => setBorrador({ ...borrador, temperature: Number(e.target.value) })}
+                      className="w-full accent-primary"
+                    />
                   </div>
-                  <input
-                    type="range" min={0} max={1} step={0.05}
-                    value={borrador.temperature}
-                    onChange={(e) => setBorrador({ ...borrador, temperature: Number(e.target.value) })}
-                    className="w-full accent-primary"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">Qué tan creativo vs. apegado al guion — más bajo es más predecible.</p>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-0.5">
+                    <span>Más determinista</span><span>Más expresivo</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -905,6 +916,61 @@ function DashboardAgente({
                     )}
                   </div>
                 </div>
+
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <p className="text-[13px] font-medium text-foreground">Sonido de fondo</p>
+                      <p className="text-[11px] text-muted-foreground">Un ambiente de fondo real durante la llamada (opcional).</p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={!!borrador.background_sound_id}
+                      onClick={() => setBorrador({ ...borrador, background_sound_id: borrador.background_sound_id ? null : 'restaurant' })}
+                      className={`w-9 h-5 rounded-full shrink-0 transition-colors relative ${borrador.background_sound_id ? 'bg-primary' : 'bg-muted'}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${borrador.background_sound_id ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+                  {borrador.background_sound_id && (
+                    <div className="mt-3 space-y-3">
+                      <select
+                        value={borrador.background_sound_id}
+                        onChange={(e) => setBorrador({ ...borrador, background_sound_id: e.target.value })}
+                        className="w-full h-9 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground"
+                      >
+                        <option value="restaurant">Restaurante</option>
+                        <option value="office1">Oficina (Tranquila)</option>
+                        <option value="office2">Oficina (Con actividad)</option>
+                        <option value="city">Ciudad</option>
+                        <option value="typing">Escribiendo</option>
+                        <option value="elevator1">Música de ascensor 1</option>
+                        <option value="elevator2">Música de ascensor 2</option>
+                        <option value="elevator3">Música de ascensor 3</option>
+                        <option value="elevator4">Música de ascensor 4</option>
+                      </select>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[12px] text-muted-foreground">Volumen</span>
+                          <span className="font-mono tabular-nums text-[11px] text-primary bg-primary/10 rounded-full px-2 py-0.5">{Math.round(borrador.background_sound_volume * 100)}%</span>
+                        </div>
+                        <input
+                          type="range" min={0.01} max={1} step={0.01}
+                          value={borrador.background_sound_volume}
+                          onChange={(e) => setBorrador({ ...borrador, background_sound_volume: Number(e.target.value) })}
+                          className="w-full accent-primary"
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox checked={borrador.background_sound_crossfade} onCheckedChange={(v) => setBorrador({ ...borrador, background_sound_crossfade: v === true })} />
+                        <span className="text-[12.5px] text-foreground">Bucle con fundido cruzado (evita chasquidos al repetirse)</span>
+                      </label>
+                    </div>
+                  )}
+                  <p className="text-[10.5px] text-muted-foreground/70 mt-3 pt-3 border-t border-dashed border-border">
+                    El "filtro de teléfono" (que suena a llamada de baja calidad) no está disponible aquí — ElevenLabs lo documenta como exclusivo de su propio dashboard, sin soporte en la API pública, así que no se puede activar desde este panel.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -918,6 +984,17 @@ function DashboardAgente({
                     rows={2}
                     className="w-full rounded-xl border border-primary/40 p-3 text-[13px] text-foreground bg-transparent resize-none"
                   />
+                  <div className="flex items-center justify-end gap-2 mt-1.5" title="Permitir a los usuarios interrumpir al agente mientras se entrega el primer mensaje.">
+                    <button
+                      role="switch"
+                      aria-checked={borrador.first_message_interruptible}
+                      onClick={() => setBorrador({ ...borrador, first_message_interruptible: !borrador.first_message_interruptible })}
+                      className={`w-8 h-[18px] rounded-full shrink-0 transition-colors relative ${borrador.first_message_interruptible ? 'bg-primary' : 'bg-muted'}`}
+                    >
+                      <span className={`absolute top-0.5 w-[14px] h-[14px] rounded-full bg-white transition-transform ${borrador.first_message_interruptible ? 'translate-x-[17px]' : 'translate-x-0.5'}`} />
+                    </button>
+                    <span className="text-[11.5px] text-muted-foreground">Interrumpible</span>
+                  </div>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
