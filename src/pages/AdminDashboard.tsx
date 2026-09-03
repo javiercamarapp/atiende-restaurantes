@@ -844,9 +844,9 @@ const AdminDashboard = () => {
             <span className="text-primary font-medium">
               Viendo la cuenta de {restaurantName ?? "este restaurante"} como superadmin
             </span>
-            <button onClick={() => navigate("/admin/superadmin")} className="text-primary underline underline-offset-2">
+            <Button variant="link" onClick={() => navigate("/admin/superadmin")} className="h-auto p-0 text-primary">
               Volver a superadmin
-            </button>
+            </Button>
           </div>
         )}
 
@@ -932,32 +932,30 @@ const AdminDashboard = () => {
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={salesTrendData}>
-                          <XAxis 
-                            dataKey="name" 
-                            stroke="#666" 
-                            fontSize={11}
+                          <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
                             tickLine={false}
                             axisLine={false}
                           />
-                          <YAxis 
-                            stroke="#666" 
-                            fontSize={11}
+                          <YAxis
+                            tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
                             tickLine={false}
                             axisLine={false}
                             tickFormatter={(value) => `$${value}`}
                           />
-                          <Tooltip 
+                          <Tooltip
                             contentStyle={{
                               backgroundColor: 'hsl(var(--popover))',
-                              border: 'none',
+                              border: '1px solid hsl(var(--border))',
                               borderRadius: '8px',
                               boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
                             }}
                             formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ventas']}
                           />
-                          <Line 
-                            type="monotone" 
-                            dataKey="ventas" 
+                          <Line
+                            type="monotone"
+                            dataKey="ventas"
                             stroke="hsl(var(--primary))" 
                             strokeWidth={2}
                             dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }}
@@ -981,31 +979,29 @@ const AdminDashboard = () => {
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={salesTrendData}>
-                          <XAxis 
-                            dataKey="name" 
-                            stroke="#666" 
-                            fontSize={11}
+                          <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
                             tickLine={false}
                             axisLine={false}
                           />
-                          <YAxis 
-                            stroke="#666" 
-                            fontSize={11}
+                          <YAxis
+                            tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
                             tickLine={false}
                             axisLine={false}
                           />
-                          <Tooltip 
+                          <Tooltip
                             contentStyle={{
                               backgroundColor: 'hsl(var(--popover))',
-                              border: 'none',
+                              border: '1px solid hsl(var(--border))',
                               borderRadius: '8px',
                               boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
                             }}
                             formatter={(value: number) => [value, 'Órdenes']}
                           />
-                          <Line 
-                            type="monotone" 
-                            dataKey="ordenes" 
+                          <Line
+                            type="monotone"
+                            dataKey="ordenes"
                             stroke="hsl(var(--secondary))" 
                             strokeWidth={2}
                             dot={{ fill: 'hsl(var(--secondary))', strokeWidth: 2, r: 3 }}
@@ -1023,14 +1019,14 @@ const AdminDashboard = () => {
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-foreground">Tu Operación</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button className="text-left" onClick={() => setActiveSection('products')}>
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('products')}>
                   <StatCard icon={Package} label="Total de productos" value={String(stats.products)} />
                 </button>
-                <button className="text-left" onClick={() => setActiveSection('users')}>
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('users')}>
                   <StatCard icon={Users} label="Usuarios registrados" value={String(stats.users)} />
                 </button>
                 <StatCard icon={Users} label="Clientes únicos" value={String(filteredStats.customers)} />
-                <button className="text-left" onClick={() => setActiveSection('categories')}>
+                <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('categories')}>
                   <StatCard icon={Tag} label="Categorías" value={String(categories.length)} />
                 </button>
               </div>
@@ -1055,43 +1051,48 @@ const AdminDashboard = () => {
               </Dialog>
             </div>
             
-            <div className="grid gap-4">
-              {products.map((product) => (
-                <Card 
-                  key={product.id} 
-                  className="cursor-pointer transition-shadow hover:shadow-md"
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        {product.image_url ? (
-                          <img src={product.image_url} alt={product.name} className="w-12 h-12 rounded-lg object-cover" />
-                        ) : (
-                          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                            <Package className="w-6 h-6 text-primary" />
-                          </div>
-                        )}
-                        <div>
-                          <p className="font-semibold text-foreground">{product.name}</p>
-                          <p className="text-sm text-foreground">${product.price}</p>
+            {products.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Package className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
+                  <p className="text-muted-foreground">No hay productos registrados</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                {products.map((product) => (
+                  <div
+                    key={product.id}
+                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
+                  >
+                    <div className="flex items-center gap-4">
+                      {product.image_url ? (
+                        <img src={product.image_url} alt={product.name} className="w-12 h-12 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Package className="w-6 h-6 text-primary" />
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${product.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {product.is_available ? 'Disponible' : 'No disponible'}
-                        </span>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditProduct(product)} className="hover:bg-blue-50">
-                          <Edit className="w-4 h-4 text-primary" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)} className="hover:bg-red-50">
-                          <Trash2 className="w-4 h-4 stroke-red-500" />
-                        </Button>
+                      )}
+                      <div>
+                        <p className="font-semibold text-foreground">{product.name}</p>
+                        <p className="text-sm text-foreground">${product.price}</p>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${product.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {product.is_available ? 'Disponible' : 'No disponible'}
+                      </span>
+                      <Button variant="ghost" size="icon" onClick={() => handleEditProduct(product)} className="hover:bg-blue-50">
+                        <Edit className="w-4 h-4 text-primary" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)} className="hover:bg-red-50">
+                        <Trash2 className="w-4 h-4 stroke-red-500" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+            )}
           </div>
         )}
 
@@ -1112,31 +1113,36 @@ const AdminDashboard = () => {
               </Dialog>
             </div>
             
-            <div className="grid gap-4">
-              {categories.map((category) => (
-                <Card 
-                  key={category.id} 
-                  className="transition-shadow hover:shadow-md"
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Tag className="w-6 h-6 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">{category.name}</p>
-                          <p className="text-sm text-foreground">{category.slug}</p>
-                        </div>
+            {categories.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Tag className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
+                  <p className="text-muted-foreground">No hay categorías registradas</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                {categories.map((category) => (
+                  <div
+                    key={category.id}
+                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Tag className="w-6 h-6 text-primary" />
                       </div>
-                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                        Activa
-                      </span>
+                      <div>
+                        <p className="font-semibold text-foreground">{category.name}</p>
+                        <p className="text-sm text-foreground">{category.slug}</p>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                      Activa
+                    </span>
+                  </div>
+                ))}
+              </Card>
+            )}
           </div>
         )}
 
@@ -1158,42 +1164,38 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4">
+              <Card className="overflow-hidden">
                 {orders.map((order) => (
-                  <Card 
-                    key={order.id} 
-                    className="transition-shadow hover:shadow-md"
+                  <div
+                    key={order.id}
+                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                            <ShoppingCart className="w-6 h-6 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-foreground">{order.customer_name}</p>
-                            <p className="text-sm text-foreground">
-                              {format(new Date(order.created_at), "d MMM yyyy, HH:mm", { locale: es })}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <p className="font-bold text-foreground">${order.total.toLocaleString()}</p>
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            order.status === 'completado' || order.status === 'entregado' 
-                              ? 'bg-green-100 text-green-700' 
-                              : order.status === 'en_camino' 
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {order.status === 'completado' || order.status === 'entregado' ? 'Entregado' : order.status === 'en_camino' ? 'En camino' : 'Pendiente'}
-                          </span>
-                        </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <ShoppingCart className="w-6 h-6 text-primary" />
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div>
+                        <p className="font-semibold text-foreground">{order.customer_name}</p>
+                        <p className="text-sm text-foreground">
+                          {format(new Date(order.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <p className="font-bold text-foreground">${order.total.toLocaleString()}</p>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        order.status === 'completado' || order.status === 'entregado'
+                          ? 'bg-green-100 text-green-700'
+                          : order.status === 'en_camino'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {order.status === 'completado' || order.status === 'entregado' ? 'Entregado' : order.status === 'en_camino' ? 'En camino' : 'Pendiente'}
+                      </span>
+                    </div>
+                  </div>
                 ))}
-              </div>
+              </Card>
             )}
           </div>
         )}
@@ -1216,39 +1218,35 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4">
+              <Card className="overflow-hidden">
                 {profiles.map((profile) => (
-                  <Card 
-                    key={profile.id} 
-                    className="transition-shadow hover:shadow-md"
+                  <div
+                    key={profile.id}
+                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Users className="w-6 h-6 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-foreground">{profile.nombre || 'Sin nombre'}</p>
-                            <p className="text-sm text-foreground">{profile.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          {profile.telefono && (
-                            <div className="flex items-center gap-2 text-sm text-foreground">
-                              <Phone className="w-4 h-4" />
-                              {profile.telefono}
-                            </div>
-                          )}
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                            Activo
-                          </span>
-                        </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Users className="w-6 h-6 text-primary" />
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div>
+                        <p className="font-semibold text-foreground">{profile.nombre || 'Sin nombre'}</p>
+                        <p className="text-sm text-foreground">{profile.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {profile.telefono && (
+                        <div className="flex items-center gap-2 text-sm text-foreground">
+                          <Phone className="w-4 h-4" />
+                          {profile.telefono}
+                        </div>
+                      )}
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                        Activo
+                      </span>
+                    </div>
+                  </div>
                 ))}
-              </div>
+              </Card>
             )}
           </div>
         )}
@@ -1278,35 +1276,31 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4">
+              <Card className="overflow-hidden">
                 {promos.map((promo) => (
-                  <Card 
-                    key={promo.id} 
-                    className="transition-shadow hover:shadow-md"
+                  <div
+                    key={promo.id}
+                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          {promo.image_url ? (
-                            <img src={promo.image_url} alt={promo.title} className="w-12 h-12 rounded-lg object-cover" />
-                          ) : (
-                            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                              <Percent className="w-6 h-6 text-primary" />
-                            </div>
-                          )}
-                          <div>
-                            <p className="font-semibold text-foreground">{promo.title}</p>
-                            {promo.discount_text && <p className="text-sm text-foreground">{promo.discount_text}</p>}
-                          </div>
+                    <div className="flex items-center gap-4">
+                      {promo.image_url ? (
+                        <img src={promo.image_url} alt={promo.title} className="w-12 h-12 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Percent className="w-6 h-6 text-primary" />
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${promo.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {promo.is_active ? 'Activa' : 'Inactiva'}
-                        </span>
+                      )}
+                      <div>
+                        <p className="font-semibold text-foreground">{promo.title}</p>
+                        {promo.discount_text && <p className="text-sm text-foreground">{promo.discount_text}</p>}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${promo.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {promo.is_active ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </div>
                 ))}
-              </div>
+              </Card>
             )}
           </div>
         )}
@@ -1333,13 +1327,20 @@ const AdminDashboard = () => {
                     </div> : <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={getChartData}>
                         <XAxis dataKey="name" tick={{
-                        fontSize: 12
-                      }} />
+                        fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))"
+                      }} tickLine={false} axisLine={false} />
                         <YAxis tick={{
-                        fontSize: 12
-                      }} />
-                        <Tooltip formatter={(value: number) => [selectedStat === 'revenue' ? `$${value.toLocaleString()}` : value, getStatTitle()]} />
-                        <Bar dataKey="value" fill={selectedStat === 'revenue' ? '#22c55e' : selectedStat === 'customers' ? 'hsl(var(--primary))' : selectedStat === 'orders' ? 'hsl(var(--secondary))' : '#22c55e'} radius={[4, 4, 0, 0]} />
+                        fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))"
+                      }} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--popover))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '8px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
+                          }}
+                          formatter={(value: number) => [selectedStat === 'revenue' ? `$${value.toLocaleString()}` : value, getStatTitle()]} />
+                        <Bar dataKey="value" fill={selectedStat === 'revenue' ? 'hsl(142 71% 45%)' : selectedStat === 'customers' ? 'hsl(var(--primary))' : selectedStat === 'orders' ? 'hsl(var(--secondary))' : 'hsl(142 71% 45%)'} radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>}
                 </div>
@@ -1369,42 +1370,38 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4">
+              <Card className="overflow-hidden">
                 {repartidores.map((repartidor) => (
-                  <Card 
-                    key={repartidor.user_id} 
-                    className="cursor-pointer transition-shadow hover:shadow-md"
+                  <div
+                    key={repartidor.user_id}
+                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 cursor-pointer transition-all hover:bg-muted/40 hover:-translate-y-0.5"
                     onClick={() => navigate(`/admin/repartidor/${repartidor.user_id}`)}
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Truck className="w-6 h-6 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {repartidor.nombre || 'Sin nombre'}
-                            </p>
-                            <p className="text-sm text-foreground">{repartidor.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          {repartidor.telefono && (
-                            <div className="flex items-center gap-2 text-sm text-foreground">
-                              <Phone className="w-4 h-4" />
-                              {repartidor.telefono}
-                            </div>
-                          )}
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                            Activo
-                          </span>
-                        </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Truck className="w-6 h-6 text-primary" />
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {repartidor.nombre || 'Sin nombre'}
+                        </p>
+                        <p className="text-sm text-foreground">{repartidor.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {repartidor.telefono && (
+                        <div className="flex items-center gap-2 text-sm text-foreground">
+                          <Phone className="w-4 h-4" />
+                          {repartidor.telefono}
+                        </div>
+                      )}
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                        Activo
+                      </span>
+                    </div>
+                  </div>
                 ))}
-              </div>
+              </Card>
             )}
           </div>
         )}

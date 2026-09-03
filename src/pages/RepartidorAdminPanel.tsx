@@ -221,9 +221,14 @@ const RepartidorAdminPanel = () => {
                 No hay pedidos registrados
               </div>
             ) : (
-              <div className="divide-y divide-border">
-                {orders.map((order) => (
-                  <div key={order.id} className="p-4 hover:bg-muted/50 transition-colors">
+              <div>
+                {orders.map((order, i) => (
+                  <div
+                    key={order.id}
+                    className={`p-4 hover:bg-muted/50 transition-colors border-dashed border-border ${
+                      i < orders.length - 1 ? "border-b" : ""
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -246,7 +251,7 @@ const RepartidorAdminPanel = () => {
                         )}
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-bold text-foreground">${order.total.toLocaleString()}</p>
+                        <p className="font-display font-semibold tabular-nums text-foreground">${order.total.toLocaleString()}</p>
                         <p className="text-xs text-muted-foreground">
                           {format(new Date(order.created_at), "d MMM, HH:mm", { locale: es })}
                         </p>

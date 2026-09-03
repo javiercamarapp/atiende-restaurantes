@@ -185,7 +185,7 @@ const RepartidorDashboard = () => {
 
           {/* Order Items */}
           <div className="bg-muted rounded-lg p-3 mb-3">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Productos:</p>
+            <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground mb-2">Productos</p>
             <div className="space-y-1">
               {itemsList.slice(0, 3).map((item: any, idx: number) => (
                 <p key={idx} className="text-sm text-foreground">
@@ -287,8 +287,8 @@ const RepartidorDashboard = () => {
             
             {/* Stats - Clickable */}
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <Card 
-                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
+              <Card
+                className="cursor-pointer active:scale-95 transition-transform hover:-translate-y-0.5 hover:shadow-md"
                 onClick={() => setActiveSection('pending')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -296,13 +296,13 @@ const RepartidorDashboard = () => {
                     <Clock className="w-4 h-4 md:w-5 md:h-5 text-yellow-600 dark:text-yellow-400" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-foreground">{pendingOrders.length}</p>
-                    <p className="text-[10px] md:text-xs text-muted-foreground">Pendientes</p>
+                    <p className="font-display text-xl md:text-2xl font-semibold tabular-nums text-foreground">{pendingOrders.length}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Pendientes</p>
                   </div>
                 </CardContent>
               </Card>
-              <Card 
-                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
+              <Card
+                className="cursor-pointer active:scale-95 transition-transform hover:-translate-y-0.5 hover:shadow-md"
                 onClick={() => setActiveSection('active')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -310,13 +310,13 @@ const RepartidorDashboard = () => {
                     <Truck className="w-4 h-4 md:w-5 md:h-5 text-blue-600 dark:text-secondary" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-foreground">{activeOrders.length}</p>
-                    <p className="text-[10px] md:text-xs text-muted-foreground">En Camino</p>
+                    <p className="font-display text-xl md:text-2xl font-semibold tabular-nums text-foreground">{activeOrders.length}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">En Camino</p>
                   </div>
                 </CardContent>
               </Card>
-              <Card 
-                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
+              <Card
+                className="cursor-pointer active:scale-95 transition-transform hover:-translate-y-0.5 hover:shadow-md"
                 onClick={() => setActiveSection('today-delivered')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -324,13 +324,13 @@ const RepartidorDashboard = () => {
                     <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-foreground">{todayDelivered}</p>
-                    <p className="text-[10px] md:text-xs text-muted-foreground">Entregados</p>
+                    <p className="font-display text-xl md:text-2xl font-semibold tabular-nums text-foreground">{todayDelivered}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Entregados</p>
                   </div>
                 </CardContent>
               </Card>
-              <Card 
-                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
+              <Card
+                className="cursor-pointer active:scale-95 transition-transform hover:-translate-y-0.5 hover:shadow-md"
                 onClick={() => setActiveSection('cash-received')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -338,8 +338,8 @@ const RepartidorDashboard = () => {
                     <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-foreground">${todayEarnings.toFixed(0)}</p>
-                    <p className="text-[10px] md:text-xs text-muted-foreground">Efectivo</p>
+                    <p className="font-display text-xl md:text-2xl font-semibold tabular-nums text-foreground">${todayEarnings.toFixed(0)}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Efectivo</p>
                   </div>
                 </CardContent>
               </Card>
@@ -629,7 +629,7 @@ const RepartidorDashboard = () => {
                 <Card className="bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30">
                   <CardContent className="p-4">
                     <div className="text-center">
-                      <p className="text-3xl font-bold text-emerald-600">${cashTotal.toFixed(2)}</p>
+                      <p className="font-display text-3xl font-semibold tabular-nums text-emerald-600">${cashTotal.toFixed(2)}</p>
                       <p className="text-sm text-muted-foreground">{cashOrders.length} pedidos en efectivo</p>
                     </div>
                   </CardContent>
@@ -732,9 +732,9 @@ const RepartidorDashboard = () => {
       <div className="md:hidden fixed top-0 left-0 right-0 bg-card border-b border-border z-50 safe-area-top">
         <div className="flex items-center justify-between px-4 py-3">
           <AtiendeWordmark />
-          <button onClick={handleLogout} className="p-2">
-            <LogOut className="w-5 h-5 text-destructive" />
-          </button>
+          <Button variant="ghost" size="icon" onClick={handleLogout} className="text-destructive hover:bg-destructive hover:text-destructive-foreground">
+            <LogOut className="w-5 h-5" />
+          </Button>
         </div>
       </div>
 

@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { AtiendeWordmark } from '@/components/AtiendeLogo';
+import { AtiendeMark, AtiendeWordmark } from '@/components/AtiendeLogo';
 
 interface RepartidorSidebarProps {
   user: { email: string } | null;
@@ -40,12 +40,6 @@ const menuSections = [
       { id: 'history', label: 'Historial', icon: History },
     ]
   },
-  {
-    title: 'SOPORTE',
-    items: [
-      { id: 'help', label: 'Ayuda', icon: HelpCircle },
-    ]
-  }
 ];
 
 const RepartidorSidebar = ({ 
@@ -67,15 +61,13 @@ const RepartidorSidebar = ({
   return (
     <aside
       className={cn(
-        "hidden md:flex flex-col bg-card border-r border-border h-screen sticky top-0 transition-all duration-300",
+        "hidden md:flex flex-col bg-card border border-border rounded-2xl sticky top-3 h-[calc(100vh-1.5rem)] overflow-hidden transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="p-4 flex items-center justify-between">
-        {!collapsed && (
-          <AtiendeWordmark />
-        )}
+      <div className="h-16 px-4 flex items-center justify-between border-b border-border shrink-0">
+        {!collapsed ? <AtiendeWordmark /> : <AtiendeMark className="h-6 w-auto" />}
         <Button
           variant="ghost"
           size="icon"
@@ -96,7 +88,7 @@ const RepartidorSidebar = ({
                   {section.title}
                 </p>
               )}
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const badgeCount = 'badge' in item && item.badge ? getBadgeCount(item.id) : 0;
                   return (
@@ -104,9 +96,9 @@ const RepartidorSidebar = ({
                       key={item.id}
                       onClick={() => onSectionChange(item.id)}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative",
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative",
                         activeSection === item.id
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-primary text-primary-foreground font-medium"
                           : "text-muted-foreground hover:bg-muted"
                       )}
                     >
@@ -131,38 +123,43 @@ const RepartidorSidebar = ({
         </nav>
       </ScrollArea>
 
-      {/* User section at bottom */}
-      <div className="border-t border-border p-4">
-        {!collapsed ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold">
+      {/* Bloque de cuenta — mismo patrón que AdminSidebar.tsx: recuadro gris
+          aparte con Ayuda (se movió aquí desde ENTREGAS, ver menuSections
+          arriba) y un recuadro blanco separado con el chip de usuario. */}
+      <div className="p-3 space-y-2 shrink-0">
+        {!collapsed && (
+          <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
+            <button
+              onClick={() => onSectionChange('help')}
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
+              <span className="truncate">Centro de ayuda</span>
+            </button>
+          </div>
+        )}
+
+        {/* Usuario — recuadro aparte, blanco */}
+        <div className={cn("rounded-xl border border-border bg-card", collapsed ? "p-2" : "p-2.5")}>
+          {!collapsed ? (
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || 'R'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{user?.email}</p>
-                <p className="text-xs text-muted-foreground">Repartidor</p>
+                <p className="text-sm text-foreground truncate">{user?.email}</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Repartidor</p>
               </div>
+              <button onClick={onLogout} className="text-destructive hover:opacity-70 shrink-0">
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
-            <Button
-              onClick={onLogout}
-              variant="outline"
-              className="w-full justify-start text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Cerrar Sesión
+          ) : (
+            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground">
+              <LogOut className="w-5 h-5" />
             </Button>
-          </div>
-        ) : (
-          <Button
-            onClick={onLogout}
-            variant="ghost"
-            size="icon"
-            className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
-          >
-            <LogOut className="w-5 h-5" />
-          </Button>
-        )}
+          )}
+        </div>
       </div>
     </aside>
   );
