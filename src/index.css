@@ -252,4 +252,28 @@
       transform: translateY(-6px) rotate(0.5deg) scale(1.015);
     }
   }
+
+  /* Likida's real button/pill mechanism (proyect-x-/src/app/globals.css,
+     already ported once for the login screen in src/pages/login.css) —
+     applied here app-wide so every <button> gets the same press
+     feedback, not just Button-component or login instances. Gated
+     behind prefers-reduced-motion exactly like the source. */
+  @media (prefers-reduced-motion: no-preference) {
+    button:not(:disabled):active {
+      transform: scale(0.97);
+      transition: transform 80ms ease-out;
+    }
+
+    /* Opt-in hover lift for clickable card-like elements (Likida's
+       a.card). Not wired into any component yet — add this class to a
+       card that acts as a link/button to get the same lift + shadow
+       language as the pill buttons. */
+    .card-interactive {
+      transition: transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease, border-color 150ms ease;
+    }
+    .card-interactive:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-elevated);
+    }
+  }
 }
