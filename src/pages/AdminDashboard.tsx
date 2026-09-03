@@ -212,12 +212,15 @@ function VacioDashboardVoz({ icon: Icon, titulo, detalle }: { icon: React.Compon
 // el resto son estados vacíos honestos — no hay fuente de datos real para
 // ellas todavía (requeriría la API de ElevenLabs + una función de borde).
 // Nunca muestra costos/créditos: eso es infraestructura interna, no del cliente.
-function DashboardAgenteVoz({
+function DashboardAgente({
+  canal,
   onCerrar,
   nombreAgente,
   statsAgentes,
+  mensajesPromedioWhatsapp,
   etiquetaRango,
 }: {
+  canal: 'voz' | 'whatsapp';
   onCerrar: () => void;
   nombreAgente: string;
   statsAgentes: {
@@ -226,18 +229,26 @@ function DashboardAgenteVoz({
     voz: { total: number; completados: number; cancelados: number; ingreso: number };
     whatsapp: { total: number; completados: number; cancelados: number; ingreso: number };
   } | null;
+  mensajesPromedioWhatsapp?: number | null;
   etiquetaRango: string;
 }) {
-  const [pestana, setPestana] = useState<'general' | 'audio' | 'herramientas' | 'conocimiento'>('general');
-  const voz = statsAgentes?.voz;
-  const tasaExito = voz && voz.total > 0 ? (voz.completados / voz.total) * 100 : null;
-
-  const PESTANAS = [
+  const PESTANAS_VOZ = [
     { id: 'general' as const, etiqueta: 'General', icon: LayoutGrid },
     { id: 'audio' as const, etiqueta: 'Audio', icon: Volume2 },
     { id: 'herramientas' as const, etiqueta: 'Herramientas', icon: Wrench },
     { id: 'conocimiento' as const, etiqueta: 'Base de conocimientos', icon: BookOpen },
   ];
+  const PESTANAS_WHATSAPP = [
+    { id: 'general' as const, etiqueta: 'General', icon: LayoutGrid },
+    { id: 'herramientas' as const, etiqueta: 'Herramientas', icon: Wrench },
+    { id: 'conocimiento' as const, etiqueta: 'Base de conocimientos', icon: BookOpen },
+  ];
+  const PESTANAS = canal === 'voz' ? PESTANAS_VOZ : PESTANAS_WHATSAPP;
+  const [pestana, setPestana] = useState<'general' | 'audio' | 'herramientas' | 'conocimiento'>('general');
+
+  const datos = canal === 'voz' ? statsAgentes?.voz : statsAgentes?.whatsapp;
+  const tasaExito = datos && datos.total > 0 ? (datos.completados / datos.total) * 100 : null;
+  const unidad = canal === 'voz' ? 'llamada' : 'conversación';
 
   return (
     <motion.div
@@ -285,7 +296,7 @@ function DashboardAgenteVoz({
       <div className="p-4">
         {pestana === 'general' && (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-            <TileDashboardVoz icon={Phone} label="Conversaciones" valor={voz ? String(voz.total) : '—'} indice={0} />
+            <TileDashboardVoz icon={Phone} label="Conversaciones" valor={datos ? String(datos.total) : '—'} indice={0} />
             <TileDashboardVoz
               icon={CheckCircle2}
               label="Tasa de éxito"
@@ -293,21 +304,31 @@ function DashboardAgenteVoz({
               nota={tasaExito === null ? 'Aún sin conversaciones para calcularla' : undefined}
               indice={1}
             />
-            <TileDashboardVoz icon={XCircle} label="Canceladas" valor={voz ? String(voz.cancelados) : '—'} indice={2} />
-            <TileDashboardVoz icon={ShoppingCart} label="Pedidos completados" valor={voz ? String(voz.completados) : '—'} indice={3} />
+            <TileDashboardVoz icon={XCircle} label="Canceladas" valor={datos ? String(datos.cancelados) : '—'} indice={2} />
+            <TileDashboardVoz icon={ShoppingCart} label="Pedidos completados" valor={datos ? String(datos.completados) : '—'} indice={3} />
             <TileDashboardVoz
               icon={DollarSign}
               label="Ingresos generados"
-              valor={voz ? `$${voz.ingreso.toLocaleString('es-MX')}` : '—'}
+              valor={datos ? `$${datos.ingreso.toLocaleString('es-MX')}` : '—'}
               indice={4}
             />
-            <TileDashboardVoz
-              icon={Clock}
-              label="Duración media"
-              valor="N/D"
-              nota="Falta guardar la duración de cada llamada"
-              indice={5}
-            />
+            {canal === 'voz' ? (
+              <TileDashboardVoz
+                icon={Clock}
+                label="Duración media"
+                valor="N/D"
+                nota="Falta guardar la duración de cada llamada"
+                indice={5}
+              />
+            ) : (
+              <TileDashboardVoz
+                icon={MessageCircle}
+                label="Mensajes promedio"
+                valor={mensajesPromedioWhatsapp ? mensajesPromedioWhatsapp.toFixed(1) : 'N/D'}
+                nota={!mensajesPromedioWhatsapp ? 'Aún sin conversaciones para calcularlo' : 'Por conversación'}
+                indice={5}
+              />
+            )}
           </div>
         )}
 
@@ -323,7 +344,7 @@ function DashboardAgenteVoz({
           <VacioDashboardVoz
             icon={Wrench}
             titulo="No se han recopilado datos de herramientas"
-            detalle="Qué tanto usa el agente buscar_cliente, buscar_producto y crear_pedido en cada llamada aparecerá aquí próximamente."
+            detalle={`Qué tanto usa el agente buscar_cliente, buscar_producto y crear_pedido en cada ${unidad} aparecerá aquí próximamente.`}
           />
         )}
 
@@ -419,7 +440,9 @@ const AdminDashboard = () => {
   const [sucursalesAgente, setSucursalesAgente] = useState<{ id: string; name: string; elevenlabs_agent_id: string | null }[]>([]);
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string>('global');
   const [mostrarSelectorSucursal, setMostrarSelectorSucursal] = useState(false);
-  const [mostrarDashboardVoz, setMostrarDashboardVoz] = useState(false);
+  // "Vista previa" sólo se ve azul/activo mientras el panel del widget real
+  // está abierto — el resto del tiempo es un botón neutro más, como los demás.
+  const [vistaPreviaActiva, setVistaPreviaActiva] = useState(false);
 
   // Rango de fecha del "Llamadas recientes" de Agente de voz — presets +
   // rango personalizado con calendario real, mismo esqueleto que el
@@ -535,10 +558,35 @@ const AdminDashboard = () => {
     setCargandoAgentes(false);
   };
 
+  // "Vista previa" del agente de voz — el widget real de ElevenLabs sólo
+  // abre su panel lateral cuando el usuario hace click en SU propio botón
+  // flotante (dentro del shadow DOM del custom element), no con scrollIntoView
+  // solo. Simulamos ese click además de bajar la vista hasta él.
+  const abrirVistaPreviaAgente = () => {
+    const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
+    if (!widget) return;
+    setVistaPreviaActiva(true);
+    widget.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const intentarClick = () => {
+      const boton = widget.shadowRoot?.querySelector('button');
+      boton?.click();
+    };
+    intentarClick();
+    setTimeout(intentarClick, 350);
+  };
+
+  // Se refresca sola cada 45s mientras el usuario está en cualquier página
+  // de agentes — sin botón "Actualizar" manual (pedido explícito de Javier).
   useEffect(() => {
-    if ((activeSection === 'agente-voz' || activeSection === 'agente-whatsapp' || activeSection === 'dashboard') && restaurantId) {
-      cargarDatosAgentes(sucursalSeleccionada);
-    }
+    if (activeSection !== 'agente-voz') setVistaPreviaActiva(false);
+  }, [activeSection]);
+
+  useEffect(() => {
+    const seccionesConAgentes = ['agente-voz', 'agente-whatsapp', 'agente-voz-dashboard', 'agente-whatsapp-dashboard', 'dashboard'];
+    if (!seccionesConAgentes.includes(activeSection) || !restaurantId) return;
+    cargarDatosAgentes(sucursalSeleccionada);
+    const intervalo = setInterval(() => cargarDatosAgentes(sucursalSeleccionada), 45000);
+    return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, restaurantId, sucursalSeleccionada]);
   const [pregunta, setPregunta] = useState("");
@@ -1478,7 +1526,78 @@ const AdminDashboard = () => {
                 {activeSection === 'help' && (<><HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Centro de Ayuda</>)}
                 {activeSection === 'agente-voz' && (<><Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de voz</>)}
                 {activeSection === 'agente-whatsapp' && (<><MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de WhatsApp</>)}
+                {activeSection === 'agente-voz-dashboard' && (<><LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Dashboard — Agente de voz</>)}
+                {activeSection === 'agente-whatsapp-dashboard' && (<><LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Dashboard — Agente de WhatsApp</>)}
               </h1>
+              {activeSection === 'agente-voz' && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Selector de sucursal — Global o una puntual, para ver las
+                      cifras acotadas a esa sucursal. Contenedor `relative`
+                      propio para que el menú cuelgue justo debajo de ESTE
+                      botón, no del extremo derecho de todo el renglón. */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setMostrarSelectorSucursal((v) => !v)}
+                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                    >
+                      {sucursalSeleccionada === 'global' ? <Globe className="w-3 h-3 text-muted-foreground" /> : <Store className="w-3 h-3 text-muted-foreground" />}
+                      {sucursalSeleccionada === 'global' ? 'Todas las sucursales' : (sucursalesAgente.find((s) => s.id === sucursalSeleccionada)?.name ?? 'Sucursal')}
+                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                    {mostrarSelectorSucursal && (
+                      <div className="absolute left-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
+                        <button
+                          onClick={() => { setSucursalSeleccionada('global'); setMostrarSelectorSucursal(false); }}
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === 'global' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                        >
+                          <Globe className="w-3.5 h-3.5 shrink-0" /> Todas las sucursales
+                        </button>
+                        <div className="my-1 border-t border-border" />
+                        {sucursalesAgente.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => { setSucursalSeleccionada(s.id); setMostrarSelectorSucursal(false); }}
+                            className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                          >
+                            <span className="flex items-center gap-2 min-w-0"><Store className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{s.name}</span></span>
+                            {!s.elevenlabs_agent_id && <span className="font-mono text-[9px] uppercase text-muted-foreground/60 shrink-0">Sin agente</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={abrirVistaPreviaAgente}
+                    disabled={!agentIdActivo}
+                    title={agentIdActivo ? 'El globo del agente ya está abajo a la derecha — abre la conversación de prueba real de ElevenLabs' : 'Esta sucursal todavía no tiene un agente de voz configurado'}
+                    className={`flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      vistaPreviaActiva
+                        ? 'bg-primary text-primary-foreground hover:opacity-90'
+                        : 'border border-border text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <PlayCircle className="w-3 h-3" /> Vista previa
+                  </button>
+                  <button
+                    onClick={() => setActiveSection('agente-voz-dashboard')}
+                    className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                  >
+                    <LayoutGrid className="w-3 h-3 text-muted-foreground" /> Dashboards
+                  </button>
+                  {cargandoAgentes && <RefreshCw className="w-3 h-3 text-muted-foreground animate-spin" />}
+                </div>
+              )}
+              {activeSection === 'agente-whatsapp' && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setActiveSection('agente-whatsapp-dashboard')}
+                    className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
+                  >
+                    <LayoutGrid className="w-3 h-3 text-muted-foreground" /> Dashboards
+                  </button>
+                  {cargandoAgentes && <RefreshCw className="w-3 h-3 text-muted-foreground animate-spin" />}
+                </div>
+              )}
               {activeSection === 'dashboard' && (
                 <div className="flex items-center gap-2">
                   <Button
@@ -2504,71 +2623,7 @@ const AdminDashboard = () => {
                   </div>
                 </PopoverContent>
               </Popover>
-              <div className="flex items-center gap-2 shrink-0 relative">
-                {/* Selector de sucursal — Global o una puntual, para ver las
-                    cifras acotadas a esa sucursal. */}
-                <button
-                  onClick={() => setMostrarSelectorSucursal((v) => !v)}
-                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
-                >
-                  {sucursalSeleccionada === 'global' ? <Globe className="w-3 h-3 text-muted-foreground" /> : <Store className="w-3 h-3 text-muted-foreground" />}
-                  {sucursalSeleccionada === 'global' ? 'Todas las sucursales' : (sucursalesAgente.find((s) => s.id === sucursalSeleccionada)?.name ?? 'Sucursal')}
-                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
-                </button>
-                {mostrarSelectorSucursal && (
-                  <div className="absolute right-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
-                    <button
-                      onClick={() => { setSucursalSeleccionada('global'); setMostrarSelectorSucursal(false); }}
-                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === 'global' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                    >
-                      <Globe className="w-3.5 h-3.5 shrink-0" /> Todas las sucursales
-                    </button>
-                    <div className="my-1 border-t border-border" />
-                    {sucursalesAgente.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => { setSucursalSeleccionada(s.id); setMostrarSelectorSucursal(false); }}
-                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalSeleccionada === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                      >
-                        <span className="flex items-center gap-2 min-w-0"><Store className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{s.name}</span></span>
-                        {!s.elevenlabs_agent_id && <span className="font-mono text-[9px] uppercase text-muted-foreground/60 shrink-0">Sin agente</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => document.querySelector('elevenlabs-convai')?.scrollIntoView({ behavior: 'smooth', block: 'end' })}
-                  disabled={!agentIdActivo}
-                  title={agentIdActivo ? 'El globo del agente ya está abajo a la derecha — abre la conversación de prueba real de ElevenLabs' : 'Esta sucursal todavía no tiene un agente de voz configurado'}
-                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <PlayCircle className="w-3 h-3" /> Vista previa
-                </button>
-                <button
-                  onClick={() => setMostrarDashboardVoz(true)}
-                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-foreground hover:bg-muted transition-colors"
-                >
-                  <LayoutGrid className="w-3 h-3 text-muted-foreground" /> Dashboards
-                </button>
-                <button
-                  onClick={() => cargarDatosAgentes(sucursalSeleccionada)}
-                  disabled={cargandoAgentes}
-                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
-                >
-                  <RefreshCw className={`w-3 h-3 ${cargandoAgentes ? 'animate-spin' : ''}`} />
-                  {cargandoAgentes ? 'Actualizando…' : 'Actualizar'}
-                </button>
-              </div>
             </div>
-
-            {mostrarDashboardVoz && (
-              <DashboardAgenteVoz
-                onCerrar={() => setMostrarDashboardVoz(false)}
-                nombreAgente={sucursalConAgente?.name ?? 'tu sucursal'}
-                statsAgentes={statsAgentes}
-                etiquetaRango={etiquetaRangoAgente}
-              />
-            )}
 
             {/* El widget REAL de ElevenLabs vive montado siempre en la
                 página (ver el useEffect de arriba) — trae su propio globo
@@ -2578,7 +2633,13 @@ const AdminDashboard = () => {
                 encabezado solo baja la vista hasta él. */}
             {agentIdActivo && (() => {
               const ConvaiWidget = 'elevenlabs-convai' as any;
-              return <ConvaiWidget agent-id={agentIdActivo} />;
+              return (
+                <ConvaiWidget
+                  agent-id={agentIdActivo}
+                  avatar-orb-color-1="#1d4ed8"
+                  avatar-orb-color-2="#0ea5e9"
+                />
+              );
             })()}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2662,16 +2723,8 @@ const AdminDashboard = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-[13px] text-muted-foreground">
-                Desempeño real del bot de WhatsApp — se llena solo con la actividad real, sin datos de ejemplo.
+                Desempeño real del bot de WhatsApp — se llena solo con la actividad real, sin datos de ejemplo. Se actualiza sola.
               </p>
-              <button
-                onClick={() => cargarDatosAgentes(sucursalSeleccionada)}
-                disabled={cargandoAgentes}
-                className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70 shrink-0"
-              >
-                <RefreshCw className={`w-3 h-3 ${cargandoAgentes ? 'animate-spin' : ''}`} />
-                {cargandoAgentes ? 'Actualizando…' : 'Actualizar'}
-              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2740,6 +2793,27 @@ const AdminDashboard = () => {
               )}
             </div>
           </div>
+        )}
+
+        {activeSection === 'agente-voz-dashboard' && (
+          <DashboardAgente
+            canal="voz"
+            onCerrar={() => setActiveSection('agente-voz')}
+            nombreAgente={sucursalConAgente?.name ?? 'tu sucursal'}
+            statsAgentes={statsAgentes}
+            etiquetaRango={etiquetaRangoAgente}
+          />
+        )}
+
+        {activeSection === 'agente-whatsapp-dashboard' && (
+          <DashboardAgente
+            canal="whatsapp"
+            onCerrar={() => setActiveSection('agente-whatsapp')}
+            nombreAgente={restaurantName ?? 'tu restaurante'}
+            statsAgentes={statsAgentes}
+            mensajesPromedioWhatsapp={conversacionesWhatsapp?.promedioMensajes ?? null}
+            etiquetaRango={etiquetaRangoAgente}
+          />
         )}
 
           </main>
