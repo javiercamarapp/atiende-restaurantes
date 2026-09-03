@@ -1,0 +1,152 @@
+// Proxy autenticado a la API real de ElevenLabs para leer/editar la
+// configuración del agente de voz (voz, idioma, velocidad, estabilidad,
+// primer mensaje, prompt) desde el panel del cliente — la ÚNICA forma de
+// que el editor en vivo funcione sin exponer la API key al navegador.
+//
+// La API key vive en Supabase Vault (vault.secrets, nombre
+// ELEVENLABS_API_KEY), no como variable de entorno de esta función,
+// porque así se guardó cuando Javier la pegó en el chat el 3-sep-2026.
+//
+// Acciones (POST, body { action, ... }):
+//   { action: "get", agent_id }              -> config actual, solo campos seguros para el cliente
+//   { action: "voices" }                      -> catálogo curado de voces en español latino/mexicano, con preview_url real
+//   { action: "update", agent_id, ... }       -> aplica cambios reales al agente
+//
+// Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
+// interna, no algo que el dueño del restaurante deba ver.
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+async function getApiKey(supabase: ReturnType<typeof createClient>): Promise<string> {
+  // vault.decrypted_secrets no está expuesto a PostgREST directamente —
+  // se lee vía la función public.get_secret (security definer, solo
+  // ejecutable por service_role), no el esquema vault crudo.
+  const { data, error } = await supabase.rpc("get_secret", { secret_name: "ELEVENLABS_API_KEY" });
+  if (error || !data) throw new Error("No se encontró la API key de ElevenLabs en Vault");
+  return data as string;
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const apiKey = await getApiKey(supabase);
+    const body = await req.json();
+    const { action } = body;
+
+    if (action === "get") {
+      const { agent_id } = body;
+      if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      const agent = data.conversation_config?.agent ?? {};
+      const tts = data.conversation_config?.tts ?? {};
+      return json({
+        name: data.name,
+        first_message: agent.first_message ?? "",
+        language: agent.language ?? "es",
+        prompt: agent.prompt?.prompt ?? "",
+        temperature: agent.prompt?.temperature ?? 0.4,
+        voice_id: tts.voice_id ?? null,
+        speed: tts.speed ?? 1.0,
+        stability: tts.stability ?? 0.5,
+        similarity_boost: tts.similarity_boost ?? 0.8,
+      });
+    }
+
+    if (action === "signed_url") {
+      const { agent_id } = body;
+      if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agent_id)}`,
+        { headers: { "xi-api-key": apiKey } },
+      );
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      return json({ signed_url: data.signed_url });
+    }
+
+    if (action === "voices") {
+      const res = await fetch(
+        "https://api.elevenlabs.io/v1/shared-voices?language=es&page_size=60",
+        { headers: { "xi-api-key": apiKey } },
+      );
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      const data = await res.json();
+      // deno-lint-ignore no-explicit-any
+      const voces = (data.voices ?? []).filter((v: any) => {
+        const acento = (v.accent ?? "").toLowerCase();
+        return acento.includes("latin") || acento.includes("mexic") || acento.includes("colomb")
+          || acento.includes("argentin") || acento.includes("neutral");
+      // deno-lint-ignore no-explicit-any
+      }).map((v: any) => ({
+        voice_id: v.voice_id,
+        name: v.name,
+        gender: v.gender,
+        accent: v.accent,
+        description: v.description,
+        preview_url: v.preview_url,
+      }));
+      return json({ voices: voces });
+    }
+
+    if (action === "update") {
+      const { agent_id, first_message, language, prompt, temperature, voice_id, speed, stability, similarity_boost } = body;
+      if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+
+      // deno-lint-ignore no-explicit-any
+      const agentPatch: Record<string, any> = {};
+      if (first_message !== undefined) agentPatch.first_message = first_message;
+      if (language !== undefined) agentPatch.language = language;
+      if (prompt !== undefined || temperature !== undefined) {
+        agentPatch.prompt = {};
+        if (prompt !== undefined) agentPatch.prompt.prompt = prompt;
+        if (temperature !== undefined) agentPatch.prompt.temperature = temperature;
+      }
+
+      // deno-lint-ignore no-explicit-any
+      const ttsPatch: Record<string, any> = {};
+      if (voice_id !== undefined) ttsPatch.voice_id = voice_id;
+      if (speed !== undefined) ttsPatch.speed = speed;
+      if (stability !== undefined) ttsPatch.stability = stability;
+      if (similarity_boost !== undefined) ttsPatch.similarity_boost = similarity_boost;
+
+      // deno-lint-ignore no-explicit-any
+      const conversation_config: Record<string, any> = {};
+      if (Object.keys(agentPatch).length) conversation_config.agent = agentPatch;
+      if (Object.keys(ttsPatch).length) conversation_config.tts = ttsPatch;
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        method: "PATCH",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_config }),
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json({ ok: true });
+    }
+
+    return json({ error: `Acción desconocida: ${action}` }, 400);
+  } catch (err) {
+    console.error("agent-config error:", err);
+    return json({ error: err instanceof Error ? err.message : "Error interno" }, 500);
+  }
+});
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}

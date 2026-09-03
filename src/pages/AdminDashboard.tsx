@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { Conversation } from "@elevenlabs/client";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -749,14 +750,18 @@ function VistaPreviaAgentePantallaCompleta({
   onCerrar,
   nombreAgente,
   nombreSucursal,
+  agentId,
 }: {
   onCerrar: () => void;
   nombreAgente: string;
   nombreSucursal: string;
+  agentId: string | null;
 }) {
   const [llamadaActiva, setLlamadaActiva] = useState(false);
-  const [mensajes, setMensajes] = useState<string[]>([]);
+  const [conectando, setConectando] = useState(false);
+  const [mensajes, setMensajes] = useState<{ texto: string; propio: boolean }[]>([]);
   const videoOrbeRef = useRef<HTMLVideoElement>(null);
+  const conversacionRef = useRef<Conversation | null>(null);
 
   // El video de 4s generado con Higgsfield no cierra en loop perfecto (se
   // nota el corte al reiniciar) — en vez de eso lo reproducimos como
@@ -783,68 +788,47 @@ function VistaPreviaAgentePantallaCompleta({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const alternarLlamadaReal = () => {
-    const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
-    const boton = widget?.shadowRoot?.querySelector('button') as HTMLElement | undefined;
-    boton?.click();
+  // Llamada real vía el SDK oficial (@elevenlabs/client), no el widget
+  // pre-armado — nos da control real de iniciar/terminar y transcripción
+  // real por callback (onMessage), en vez de simular un click sobre un
+  // botón que cambia de posición/función según el estado de la llamada
+  // (eso era lo que se "atontaba" al intentar terminar la llamada).
+  const alternarLlamadaReal = async () => {
+    if (conversacionRef.current) {
+      await conversacionRef.current.endSession();
+      conversacionRef.current = null;
+      setLlamadaActiva(false);
+      return;
+    }
+    if (!agentId || conectando) return;
+    setConectando(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('agent-config', {
+        body: { action: 'signed_url', agent_id: agentId },
+      });
+      if (error || !data?.signed_url) throw error ?? new Error('Sin signed_url');
+
+      const conversacion = await Conversation.startSession({
+        signedUrl: data.signed_url,
+        onConnect: () => setLlamadaActiva(true),
+        onDisconnect: () => { setLlamadaActiva(false); conversacionRef.current = null; },
+        onMessage: ({ message, role }) => {
+          setMensajes((prev) => [...prev, { texto: message, propio: role === 'user' }]);
+        },
+        onError: (msg) => console.error('Conversación ElevenLabs:', msg),
+      });
+      conversacionRef.current = conversacion;
+      setMensajes([]);
+    } catch (err) {
+      console.error('No se pudo iniciar la llamada real:', err);
+    } finally {
+      setConectando(false);
+    }
   };
 
-  // Estado real de la llamada — conversationStarted/conversationEnded son
-  // eventos DOM reales que expone el widget oficial. La transcripción es
-  // mejor esfuerzo: el widget no documenta eventos de mensaje, así que se
-  // lee su propio DOM interno (shadow root) cada vez que cambia, tomando
-  // el texto de los nodos hoja nuevos — mismo mecanismo ya usado para
-  // forzar el color de su botón. Filtrado contra ruido de UI real que se
-  // observó capturado (etiquetas de botones/estado, no habla) — lista
-  // hecha con lo que de verdad apareció, no una adivinanza.
+  // Cuelga la llamada real si el usuario cierra la vista previa a medias.
   useEffect(() => {
-    const RUIDO_UI = new Set([
-      'escuchando', '¿necesitas ayuda?', 'iniciar llamada', 'iniciar llamada de prueba',
-      'powered by', 'elevenagents', 'habla para interrumpir', 'enviar un mensaje',
-      'silenciar', 'desactivado', 'atrás', 'historial', 'finalizar llamada', 'colgar',
-    ]);
-    const pareceMensajeReal = (texto: string) => {
-      const limpio = texto.trim();
-      if (!limpio || RUIDO_UI.has(limpio.toLowerCase())) return false;
-      const palabras = limpio.split(/\s+/).length;
-      return palabras >= 3 && limpio.length >= 8 && limpio.length < 400;
-    };
-
-    const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
-    if (!widget) return;
-    const onStart = () => { setLlamadaActiva(true); setMensajes([]); };
-    const onEnd = () => setLlamadaActiva(false);
-    widget.addEventListener('conversationStarted', onStart);
-    widget.addEventListener('conversationEnded', onEnd);
-
-    let observer: MutationObserver | null = null;
-    const intentarObservar = (reintento = 0) => {
-      const root = widget.shadowRoot;
-      if (!root) {
-        if (reintento < 20) setTimeout(() => intentarObservar(reintento + 1), 300);
-        return;
-      }
-      observer = new MutationObserver(() => {
-        const vistos: string[] = [];
-        root.querySelectorAll('*').forEach((el) => {
-          if (el.children.length > 0 || el.tagName === 'BUTTON' || el.tagName === 'SVG') return;
-          const texto = el.textContent?.trim();
-          if (texto && pareceMensajeReal(texto)) vistos.push(texto);
-        });
-        setMensajes((prev) => {
-          const nuevos = vistos.filter((v, i) => v !== vistos[i - 1]);
-          return nuevos.length >= prev.length ? nuevos : prev;
-        });
-      });
-      observer.observe(root, { childList: true, subtree: true, characterData: true });
-    };
-    intentarObservar();
-
-    return () => {
-      widget.removeEventListener('conversationStarted', onStart);
-      widget.removeEventListener('conversationEnded', onEnd);
-      observer?.disconnect();
-    };
+    return () => { conversacionRef.current?.endSession(); };
   }, []);
 
   return (
@@ -908,16 +892,16 @@ function VistaPreviaAgentePantallaCompleta({
               </div>
             ) : (
               <div className="space-y-5">
-                {mensajes.map((texto, i) => (
+                {mensajes.map((m, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={`flex items-start gap-2.5 ${i % 2 === 1 ? 'justify-end' : ''}`}
+                    className={`flex items-start gap-2.5 ${m.propio ? 'justify-end' : ''}`}
                   >
-                    {i % 2 === 0 && <AtiendeMark className="w-5 h-5 shrink-0 mt-0.5" />}
-                    <p className={`text-[14px] leading-relaxed max-w-[85%] ${i % 2 === 1 ? 'text-right text-foreground' : 'text-foreground'}`}>
-                      {i === mensajes.length - 1 ? <TextoEscribiendose texto={texto} /> : texto}
+                    {!m.propio && <AtiendeMark className="w-5 h-5 shrink-0 mt-0.5" />}
+                    <p className={`text-[14px] leading-relaxed max-w-[85%] ${m.propio ? 'text-right text-foreground' : 'text-foreground'}`}>
+                      {i === mensajes.length - 1 ? <TextoEscribiendose texto={m.texto} /> : m.texto}
                     </p>
                   </motion.div>
                 ))}
@@ -927,12 +911,13 @@ function VistaPreviaAgentePantallaCompleta({
           <div className="p-4 border-t border-border">
             <button
               onClick={alternarLlamadaReal}
-              className={`w-full flex items-center justify-center gap-2 h-10 rounded-full text-[13px] font-medium transition-colors ${
+              disabled={conectando || !agentId}
+              className={`w-full flex items-center justify-center gap-2 h-10 rounded-full text-[13px] font-medium transition-colors disabled:opacity-50 ${
                 llamadaActiva ? 'bg-destructive text-destructive-foreground hover:opacity-90' : 'bg-primary text-primary-foreground hover:opacity-90'
               }`}
             >
               {llamadaActiva ? <XCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
-              {llamadaActiva ? 'Terminar llamada' : 'Iniciar llamada de prueba'}
+              {conectando ? 'Conectando…' : llamadaActiva ? 'Terminar llamada' : 'Iniciar llamada de prueba'}
             </button>
           </div>
         </div>
@@ -3443,6 +3428,7 @@ const AdminDashboard = () => {
               onCerrar={() => setVistaPreviaActiva(false)}
               nombreAgente="Agente de voz"
               nombreSucursal={sucursalConAgente?.name ?? 'Sucursal'}
+              agentId={agentIdActivo}
             />
           )}
         </div>
