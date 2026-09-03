@@ -2779,12 +2779,9 @@ const AdminDashboard = () => {
 
         {/* Products Section */}
         {activeSection === 'products' && (
-          <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Package className="w-5 h-5 text-primary" />
-                Lista de Productos ({products.length})
-              </h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Productos ({products.length})</p>
               <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
                 <DialogTrigger asChild>
                   <Button onClick={() => { setEditingProduct(null); resetProductForm(); }} className="bg-primary hover:bg-primary/90">
@@ -2839,58 +2836,53 @@ const AdminDashboard = () => {
             </div>
             
             {products.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Package className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">No hay productos registrados</p>
-                </CardContent>
-              </Card>
+              <div className="py-12 text-center">
+                <Package className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay productos registrados</p>
+              </div>
             ) : (
-              <Card className="overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 {products.map((product) => (
                   <div
                     key={product.id}
-                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
+                    className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
                       {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="w-12 h-12 rounded-lg object-cover" />
+                        <img src={product.image_url} alt={product.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
                       ) : (
-                        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <Package className="w-6 h-6 text-primary" />
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Package className="w-5 h-5 text-primary" strokeWidth={1.75} />
                         </div>
                       )}
-                      <div>
-                        <p className="font-semibold text-foreground">{product.name}</p>
-                        <p className="text-sm text-foreground">${product.price}</p>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{product.name}</p>
+                        <p className="font-display text-[13px] font-semibold tabular-nums text-foreground">${product.price}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${product.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${product.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {product.is_available ? 'Disponible' : 'No disponible'}
                       </span>
-                      <Button variant="ghost" size="icon" onClick={() => handleEditProduct(product)} className="hover:bg-blue-50">
-                        <Edit className="w-4 h-4 text-primary" />
+                      <Button variant="ghost" size="icon" onClick={() => handleEditProduct(product)} className="hover:bg-blue-50 h-7 w-7">
+                        <Edit className="w-3.5 h-3.5 text-primary" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)} className="hover:bg-red-50">
-                        <Trash2 className="w-4 h-4 stroke-red-500" />
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)} className="hover:bg-red-50 h-7 w-7">
+                        <Trash2 className="w-3.5 h-3.5 stroke-red-500" />
                       </Button>
                     </div>
                   </div>
                 ))}
-              </Card>
+              </div>
             )}
           </div>
         )}
 
         {/* Categories Section */}
         {activeSection === 'categories' && (
-          <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Tag className="w-5 h-5 text-primary" />
-                Lista de Categorías ({categories.length})
-              </h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Categorías ({categories.length})</p>
               <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
                 <DialogTrigger asChild>
                   <Button onClick={() => setCategoryForm({ name: "", slug: "" })} className="bg-primary hover:bg-primary/90">
@@ -2918,33 +2910,31 @@ const AdminDashboard = () => {
             </div>
             
             {categories.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Tag className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">No hay categorías registradas</p>
-                </CardContent>
-              </Card>
+              <div className="py-12 text-center">
+                <Tag className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay categorías registradas</p>
+              </div>
             ) : (
-              <Card className="overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 {categories.map((category, index) => {
                   const productosCategoria = products.filter((p) => p.category_id === category.id);
                   const expandida = categoriaExpandida === category.id;
                   return (
                     <div key={category.id} className="border-b border-dashed border-border last:border-0">
-                      <div className="p-4 flex items-center justify-between transition-colors hover:bg-muted/40">
+                      <div className="p-3 flex items-center justify-between transition-colors hover:bg-muted/40">
                         <button
                           onClick={() => setCategoriaExpandida(expandida ? null : category.id)}
-                          className="flex items-center gap-4 text-left flex-1 min-w-0"
+                          className="flex items-center gap-3 text-left flex-1 min-w-0"
                         >
-                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                            <Tag className="w-6 h-6 text-primary" />
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <Tag className="w-5 h-5 text-primary" strokeWidth={1.75} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-base font-semibold text-foreground truncate">{category.name}</p>
-                            <p className="text-sm text-muted-foreground truncate">{category.slug} · {productosCategoria.length} producto{productosCategoria.length === 1 ? '' : 's'}</p>
+                            <p className="text-[13px] font-medium text-foreground truncate">{category.name}</p>
+                            <p className="text-[12px] text-muted-foreground truncate">{category.slug} · {productosCategoria.length} producto{productosCategoria.length === 1 ? '' : 's'}</p>
                           </div>
                         </button>
-                        <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <div className="flex flex-col rounded-lg border border-border overflow-hidden shrink-0">
                             <button
                               onClick={() => moverCategoria(index, -1)}
@@ -2963,7 +2953,7 @@ const AdminDashboard = () => {
                               <ChevronDown className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                          <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-[11px] font-medium">
                             Activa
                           </span>
                           <button
@@ -2976,13 +2966,13 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                       {expandida && (
-                        <div className="px-4 pb-4 pl-[4.5rem]">
+                        <div className="px-3 pb-3 pl-[3.75rem]">
                           {productosCategoria.length === 0 ? (
-                            <p className="text-sm text-muted-foreground py-2">Esta categoría no tiene productos todavía.</p>
+                            <p className="text-[12px] text-muted-foreground py-2">Esta categoría no tiene productos todavía.</p>
                           ) : (
                             <div className="rounded-xl border border-border overflow-hidden">
                               {productosCategoria.map((p) => (
-                                <div key={p.id} className="flex items-center justify-between px-3 py-2 border-b border-dashed border-border last:border-0 text-sm">
+                                <div key={p.id} className="flex items-center justify-between px-3 py-2 border-b border-dashed border-border last:border-0 text-[12px]">
                                   <span className="text-foreground">{p.name}</span>
                                   <span className="font-mono tabular-nums text-muted-foreground">${Number(p.price).toLocaleString('es-MX')}</span>
                                 </div>
@@ -2994,49 +2984,42 @@ const AdminDashboard = () => {
                     </div>
                   );
                 })}
-              </Card>
+              </div>
             )}
           </div>
         )}
 
         {/* Orders Section */}
         {activeSection === 'orders' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-primary" />
-                Lista de Pedidos ({orders.length})
-              </h2>
-            </div>
-            
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Pedidos ({orders.length})</p>
+
             {orders.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">No hay pedidos registrados</p>
-                </CardContent>
-              </Card>
+              <div className="py-12 text-center">
+                <ShoppingCart className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay pedidos registrados</p>
+              </div>
             ) : (
-              <Card className="overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 {orders.map((order) => (
                   <div
                     key={order.id}
-                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
+                    className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <ShoppingCart className="w-6 h-6 text-primary" />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <ShoppingCart className="w-5 h-5 text-primary" strokeWidth={1.75} />
                       </div>
-                      <div>
-                        <p className="font-semibold text-foreground">{order.customer_name}</p>
-                        <p className="text-sm text-foreground">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{order.customer_name}</p>
+                        <p className="text-[12px] text-muted-foreground">
                           {format(new Date(order.created_at), "d MMM yyyy, HH:mm", { locale: es })}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <p className="font-bold text-foreground">${order.total.toLocaleString()}</p>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    <div className="flex items-center gap-3 shrink-0">
+                      <p className="font-display text-[13px] font-semibold tabular-nums text-foreground">${order.total.toLocaleString()}</p>
+                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${
                         order.status === 'completado' || order.status === 'entregado'
                           ? 'bg-green-100 text-green-700'
                           : order.status === 'en_camino'
@@ -3048,70 +3031,60 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 ))}
-              </Card>
+              </div>
             )}
           </div>
         )}
 
         {/* Users Section */}
         {activeSection === 'users' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Users className="w-5 h-5 text-primary" />
-                Lista de Usuarios ({profiles.length})
-              </h2>
-            </div>
-            
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Usuarios ({profiles.length})</p>
+
             {profiles.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Users className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">No hay usuarios registrados</p>
-                </CardContent>
-              </Card>
+              <div className="py-12 text-center">
+                <Users className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay usuarios registrados</p>
+              </div>
             ) : (
-              <Card className="overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 {profiles.map((profile) => (
                   <div
                     key={profile.id}
-                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
+                    className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="w-6 h-6 text-primary" />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Users className="w-5 h-5 text-primary" strokeWidth={1.75} />
                       </div>
-                      <div>
-                        <p className="font-semibold text-foreground">{profile.nombre || 'Sin nombre'}</p>
-                        <p className="text-sm text-foreground">{profile.email}</p>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{profile.nombre || 'Sin nombre'}</p>
+                        <p className="text-[12px] text-muted-foreground truncate">{profile.email}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 shrink-0">
                       {profile.telefono && (
-                        <div className="flex items-center gap-2 text-sm text-foreground">
-                          <Phone className="w-4 h-4" />
+                        <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                          <Phone className="w-3.5 h-3.5" strokeWidth={1.75} />
                           {profile.telefono}
                         </div>
                       )}
-                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                      <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-[11px] font-medium">
                         Activo
                       </span>
                     </div>
                   </div>
                 ))}
-              </Card>
+              </div>
             )}
           </div>
         )}
 
         {/* Promos Section */}
         {activeSection === 'promos' && (
-          <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Percent className="w-5 h-5 text-primary" />
-                Lista de Promociones ({promos.length})
-              </h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Promociones ({promos.length})</p>
               <Dialog open={promoDialogOpen} onOpenChange={setPromoDialogOpen}>
                 <DialogTrigger asChild>
                   <Button onClick={() => { setEditingPromo(null); setPromoForm({ title: '', description: '', image_url: '', discount_text: '', is_active: true }); }} className="bg-primary hover:bg-primary/90">
@@ -3153,38 +3126,36 @@ const AdminDashboard = () => {
             </div>
             
             {promos.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Percent className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">No hay promociones registradas</p>
-                </CardContent>
-              </Card>
+              <div className="py-12 text-center">
+                <Percent className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay promociones registradas</p>
+              </div>
             ) : (
-              <Card className="overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 {promos.map((promo) => (
                   <div
                     key={promo.id}
-                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
+                    className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
                       {promo.image_url ? (
-                        <img src={promo.image_url} alt={promo.title} className="w-12 h-12 rounded-lg object-cover" />
+                        <img src={promo.image_url} alt={promo.title} className="w-10 h-10 rounded-lg object-cover shrink-0" />
                       ) : (
-                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Percent className="w-6 h-6 text-primary" />
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Percent className="w-5 h-5 text-primary" strokeWidth={1.75} />
                         </div>
                       )}
-                      <div>
-                        <p className="font-semibold text-foreground">{promo.title}</p>
-                        {promo.discount_text && <p className="text-sm text-foreground">{promo.discount_text}</p>}
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{promo.title}</p>
+                        {promo.discount_text && <p className="text-[12px] text-muted-foreground">{promo.discount_text}</p>}
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${promo.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium shrink-0 ${promo.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {promo.is_active ? 'Activa' : 'Inactiva'}
                     </span>
                   </div>
                 ))}
-              </Card>
+              </div>
             )}
           </div>
         )}
@@ -3230,57 +3201,50 @@ const AdminDashboard = () => {
 
         {/* Repartidores Section */}
         {activeSection === 'repartidores' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Truck className="w-5 h-5 text-primary" />
-                Lista de Repartidores ({repartidores.length})
-              </h2>
-            </div>
-            
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Repartidores ({repartidores.length})</p>
+
             {repartidores.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Truck className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">No hay repartidores registrados</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Los usuarios pueden registrarse como repartidores desde la página de registro
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="py-12 text-center">
+                <Truck className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+                <p className="text-[13px] text-muted-foreground">No hay repartidores registrados</p>
+                <p className="text-[12px] text-muted-foreground mt-1">
+                  Los usuarios pueden registrarse como repartidores desde la página de registro
+                </p>
+              </div>
             ) : (
-              <Card className="overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 {repartidores.map((repartidor) => (
                   <div
                     key={repartidor.user_id}
-                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 cursor-pointer transition-all hover:bg-muted/40 hover:-translate-y-0.5"
+                    className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0 cursor-pointer transition-all hover:bg-muted/40 hover:-translate-y-0.5"
                     onClick={() => navigate(`/admin/repartidor/${repartidor.user_id}`)}
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Truck className="w-6 h-6 text-primary" />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Truck className="w-5 h-5 text-primary" strokeWidth={1.75} />
                       </div>
-                      <div>
-                        <p className="font-semibold text-foreground">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">
                           {repartidor.nombre || 'Sin nombre'}
                         </p>
-                        <p className="text-sm text-foreground">{repartidor.email}</p>
+                        <p className="text-[12px] text-muted-foreground truncate">{repartidor.email}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 shrink-0">
                       {repartidor.telefono && (
-                        <div className="flex items-center gap-2 text-sm text-foreground">
-                          <Phone className="w-4 h-4" />
+                        <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                          <Phone className="w-3.5 h-3.5" strokeWidth={1.75} />
                           {repartidor.telefono}
                         </div>
                       )}
-                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                      <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-[11px] font-medium">
                         Activo
                       </span>
                     </div>
                   </div>
                 ))}
-              </Card>
+              </div>
             )}
           </div>
         )}
