@@ -19,7 +19,7 @@
 //   OPENROUTER_MODEL_ESCALADO (opcional)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { lookupCustomer } from "../_shared/create-order-core.ts";
+import { lookupCustomer, redactSensitiveInfo } from "../_shared/create-order-core.ts";
 import { RESTAURANT_ID, runAgentTurn } from "../_shared/whatsapp-agent-core.ts";
 
 const corsHeaders = {
@@ -34,9 +34,20 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { session_id, message } = await req.json().catch(() => ({}));
-    if (!session_id || typeof session_id !== "string" || !message || typeof message !== "string" || !message.trim()) {
-      return new Response(JSON.stringify({ error: "session_id y message son requeridos" }), {
+    if (!session_id || typeof session_id !== "string") {
+      return new Response(JSON.stringify({ error: "session_id es requerido" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // Un mensaje vacío/solo espacios es un caso real que el widget puede
+    // mandar (doble tap, teclado que no registró texto) — antes devolvía
+    // {error} con status 400, una forma distinta a {reply, order_id} que
+    // el resto del contrato de esta función siempre devuelve, rompiendo al
+    // cliente que solo espera esa forma. Ahora responde con la MISMA forma,
+    // sin gastar una llamada real al LLM para algo que no dice nada.
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return new Response(JSON.stringify({ reply: "No recibí ningún mensaje — ¿me puedes escribir de nuevo?", order_id: null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -56,7 +67,12 @@ Deno.serve(async (req: Request) => {
 
     // deno-lint-ignore no-explicit-any
     const messages = (convo?.messages ?? []) as any[];
-    messages.push({ role: "user", content: message.trim() });
+    // Redacta número de tarjeta/CVV/vencimiento ANTES de persistir — el
+    // agente le dice al cliente que no guarda esos datos si los comparte
+    // por chat (LÍMITES del prompt); antes eso era falso, el mensaje crudo
+    // quedaba en texto plano en whatsapp_conversations.messages. Confirmado
+    // en la auditoría adversarial del 3-sep-2026.
+    messages.push({ role: "user", content: redactSensitiveInfo(message.trim()) });
 
     const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone);
     const { reply, updatedMessages, orderId, branchId } = await runAgentTurn(supabase, messages, phone, customer, RESTAURANT_ID);

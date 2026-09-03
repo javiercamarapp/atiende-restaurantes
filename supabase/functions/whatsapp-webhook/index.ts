@@ -23,7 +23,7 @@
 // de vuelta en hub.verify_token durante el handshake GET.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { lookupCustomer } from "../_shared/create-order-core.ts";
+import { lookupCustomer, redactSensitiveInfo } from "../_shared/create-order-core.ts";
 import { RESTAURANT_ID, runAgentTurn } from "../_shared/whatsapp-agent-core.ts";
 
 const GRAPH_API_VERSION = "v25.0"; // misma versión real que trae el panel de Meta de Javier
@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
 
     // deno-lint-ignore no-explicit-any
     const messages = (convo?.messages ?? []) as any[];
-    messages.push({ role: "user", content: body });
+    messages.push({ role: "user", content: redactSensitiveInfo(body) });
 
     const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone);
     const { reply, updatedMessages, orderId, branchId } = await runAgentTurn(supabase, messages, phone, customer, RESTAURANT_ID);

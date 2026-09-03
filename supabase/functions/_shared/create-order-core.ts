@@ -58,6 +58,25 @@ export function normalizePhone(phone: string): string {
   return phone.trim();
 }
 
+// Hallazgo real de la auditoría adversarial (3-sep-2026): el agente le dijo
+// a un cliente de prueba "no procesamos ni guardamos los datos que
+// compartiste por chat" al mandar un número de tarjeta completo — pero el
+// mensaje se guardaba tal cual, número/vencimiento/CVV incluidos, en texto
+// plano en whatsapp_conversations.messages. La afirmación del agente era
+// falsa. Este helper redacta patrones de tarjeta/CVV/vencimiento ANTES de
+// guardar cualquier mensaje real del cliente, para que esa afirmación sea
+// cierta de verdad — se llama desde whatsapp-webhook y whatsapp-widget-chat
+// justo antes de hacer push del mensaje del usuario al historial.
+export function redactSensitiveInfo(text: string): string {
+  return text
+    // Número de tarjeta: 13-19 dígitos, con o sin espacios/guiones entre grupos.
+    .replace(/\b(?:\d[ -]?){13,19}\b/g, "[tarjeta oculta]")
+    // CVV/CVC explícito con etiqueta.
+    .replace(/\b(?:cvv|cvc|c\.?v\.?v\.?)\s*:?\s*\d{3,4}\b/gi, "[cvv oculto]")
+    // Vencimiento tipo MM/YY o MM/YYYY, normalmente junto a "exp"/"vencimiento" en el mismo mensaje.
+    .replace(/\b\d{1,2}\/\d{2,4}\b/g, "[vencimiento oculto]");
+}
+
 export async function createOrderCore(supabase: any, payload: CreateOrderPayload) {
   if ((!payload.branch_slug && !payload.branch_name) || !payload.customer_name || !payload.customer_phone) {
     throw new OrderValidationError("branch_slug (o branch_name), customer_name y customer_phone son requeridos");
@@ -171,8 +190,43 @@ async function upsertCustomer(supabase: any, restaurantId: string, phone: string
       .insert({ restaurant_id: restaurantId, phone, name, order_count: 1, last_order_at: new Date().toISOString() })
       .select()
       .single();
-    if (error) throw error;
-    customer = created;
+    if (error) {
+      // Dos pedidos reales casi simultáneos del mismo cliente nuevo (ej.
+      // manda el mensaje dos veces seguidas por mala señal) pueden ambos
+      // ver "no existe" y ambos intentar el INSERT — el UNIQUE real
+      // (restaurant_id, phone) hace que el segundo truene con 23505 en vez
+      // de crear un duplicado silencioso (correcto), pero antes eso se
+      // propagaba como error genérico al cliente en vez de recuperarse.
+      // Verificado con pruebas de carga concurrente el 3-sep-2026.
+      if (error.code === "23505") {
+        const { data: existingRace } = await supabase
+          .from("customers")
+          .select("id, name, order_count")
+          .eq("restaurant_id", restaurantId)
+          .eq("phone", phone)
+          .single();
+        if (existingRace) {
+          const { data: updated, error: updateError } = await supabase
+            .from("customers")
+            .update({
+              name: existingRace.name ?? name,
+              order_count: existingRace.order_count + 1,
+              last_order_at: new Date().toISOString(),
+            })
+            .eq("id", existingRace.id)
+            .select()
+            .single();
+          if (updateError) throw updateError;
+          customer = updated;
+        } else {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    } else {
+      customer = created;
+    }
   }
 
   if (address) {
