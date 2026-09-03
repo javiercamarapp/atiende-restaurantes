@@ -492,6 +492,46 @@ const AdminDashboard = () => {
     document.body.appendChild(script);
   }, [activeSection, agentIdActivo]);
 
+  // El color del botón ("Iniciar llamada") del widget real sólo se puede
+  // fijar desde el dashboard de ElevenLabs (Agente → Widget) o su API —
+  // no hay atributo HTML para eso (verificado en su documentación).
+  // Mientras Javier no lo cambie ahí, lo forzamos aquí pintando directo el
+  // botón real dentro del shadow DOM del widget (no una recreación: es el
+  // mismo <button> que ellos renderizan). Un MutationObserver lo re-aplica
+  // cada vez que el widget re-renderiza su propio DOM interno.
+  useEffect(() => {
+    if (activeSection !== 'agente-voz' || !agentIdActivo) return;
+    let observer: MutationObserver | null = null;
+    let cancelado = false;
+    const pintarBotonNegro = (root: ShadowRoot) => {
+      root.querySelectorAll('button').forEach((btn) => {
+        const el = btn as HTMLElement;
+        const bg = getComputedStyle(el).backgroundColor;
+        const canal = bg.match(/\d+/g)?.map(Number);
+        if (canal && canal[0] < 40 && canal[1] < 40 && canal[2] < 40) {
+          el.style.setProperty('background-color', '#1d4ed8', 'important');
+        }
+      });
+    };
+    const intentar = (reintento = 0) => {
+      if (cancelado) return;
+      const widget = document.querySelector('elevenlabs-convai') as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
+      const root = widget?.shadowRoot;
+      if (!root) {
+        if (reintento < 20) setTimeout(() => intentar(reintento + 1), 300);
+        return;
+      }
+      pintarBotonNegro(root);
+      observer = new MutationObserver(() => pintarBotonNegro(root));
+      observer.observe(root, { childList: true, subtree: true });
+    };
+    intentar();
+    return () => {
+      cancelado = true;
+      observer?.disconnect();
+    };
+  }, [activeSection, agentIdActivo]);
+
   const cargarDatosAgentes = async (branchId?: string) => {
     if (!restaurantId) return;
     setCargandoAgentes(true);
