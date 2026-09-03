@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Package, 
-  Tag, 
-  Users, 
+import {
+  LayoutDashboard,
+  Package,
+  Tag,
+  Users,
   ShoppingCart,
   BarChart3,
   HelpCircle,
@@ -12,7 +12,11 @@ import {
   ChevronRight,
   Percent,
   Truck,
-  Bell
+  Bell,
+  MessageCircle,
+  UserRound,
+  CreditCard,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -32,6 +36,7 @@ const menuSections = [
     title: 'ANÁLISIS',
     items: [
       { id: 'dashboard', label: 'Estadísticas', icon: BarChart3 },
+      { id: 'pregunta', label: 'Pregunta a tus datos', icon: MessageCircle },
     ]
   },
   {
@@ -118,6 +123,19 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
               <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
               <span className="truncate">Notificaciones</span>
             </button>
+            {[
+              { label: 'Mi perfil', icon: UserRound },
+              { label: 'Plan y facturación', icon: CreditCard },
+              { label: 'Configuración', icon: Settings },
+            ].map((it) => (
+              <button
+                key={it.label}
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <span className="truncate">{it.label}</span>
+              </button>
+            ))}
             <div className="pt-1.5 pb-0.5 flex justify-center">
               <ThemeSelector />
             </div>
