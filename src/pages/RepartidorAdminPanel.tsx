@@ -7,6 +7,7 @@ import { ArrowLeft, Truck, Phone, Mail, Calendar, Package, Clock, CheckCircle, D
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { AtiendeMark } from "@/components/AtiendeLogo";
+import { StatCard } from "@/components/admin/ui/StatCard";
 
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 
@@ -148,34 +149,33 @@ const RepartidorAdminPanel = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-white/60 backdrop-blur-xl border-b border-white/20 px-4 py-3 flex items-center gap-4">
-        <Button 
-          variant="ghost" 
+      <header className="bg-card border-b border-border px-4 py-3 flex items-center gap-4">
+        <Button
+          variant="ghost"
           size="icon"
           onClick={() => navigate("/admin")}
-          className="hover:bg-white/40"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <AtiendeMark className="h-8 w-auto" />
-        <h1 className="font-semibold text-black">Panel del Repartidor</h1>
+        <h1 className="font-semibold text-foreground">Panel del Repartidor</h1>
       </header>
 
       <main className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
         {/* Repartidor Info Card */}
-        <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+        <Card>
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center gap-6">
-              <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <Truck className="w-10 h-10 text-blue-600" />
+              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <Truck className="w-10 h-10 text-primary" />
               </div>
               <div className="flex-1 space-y-2">
-                <h2 className="text-2xl font-bold text-black">
+                <h2 className="text-2xl font-bold text-foreground">
                   {repartidor.nombre || 'Sin nombre'}
                 </h2>
-                <div className="flex flex-wrap gap-4 text-sm text-black/70">
+                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Mail className="w-4 h-4" />
                     {repartidor.email}
@@ -192,7 +192,7 @@ const RepartidorAdminPanel = () => {
                   </div>
                 </div>
               </div>
-              <span className="px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium self-start md:self-center">
+              <span className="px-4 py-2 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400 rounded-full text-sm font-medium self-start md:self-center">
                 Activo
               </span>
             </div>
@@ -201,77 +201,53 @@ const RepartidorAdminPanel = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 text-center">
-              <Package className="w-8 h-8 mx-auto mb-2 text-blue-500" />
-              <p className="text-2xl font-bold text-black">{stats.totalDeliveries}</p>
-              <p className="text-xs text-black/60">Total Entregas</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 text-center">
-              <Clock className="w-8 h-8 mx-auto mb-2 text-yellow-500" />
-              <p className="text-2xl font-bold text-black">{stats.pendingDeliveries}</p>
-              <p className="text-xs text-black/60">Pendientes</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 text-center">
-              <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-500" />
-              <p className="text-2xl font-bold text-black">{stats.completedToday}</p>
-              <p className="text-xs text-black/60">Hoy</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 text-center">
-              <DollarSign className="w-8 h-8 mx-auto mb-2 text-green-600" />
-              <p className="text-2xl font-bold text-black">${stats.totalEarnings.toLocaleString()}</p>
-              <p className="text-xs text-black/60">Total Cobrado</p>
-            </CardContent>
-          </Card>
+          <StatCard icon={Package} label="Total Entregas" value={String(stats.totalDeliveries)} />
+          <StatCard icon={Clock} label="Pendientes" value={String(stats.pendingDeliveries)} />
+          <StatCard icon={CheckCircle} label="Hoy" value={String(stats.completedToday)} />
+          <StatCard icon={DollarSign} label="Total Cobrado" value={`$${stats.totalEarnings.toLocaleString()}`} />
         </div>
 
         {/* Recent Orders */}
-        <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+        <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Package className="w-5 h-5 text-blue-500" />
+              <Package className="w-5 h-5 text-primary" />
               Pedidos Recientes
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {orders.length === 0 ? (
-              <div className="p-8 text-center text-black/60">
+              <div className="p-8 text-center text-muted-foreground">
                 No hay pedidos registrados
               </div>
             ) : (
-              <div className="divide-y">
+              <div className="divide-y divide-border">
                 {orders.map((order) => (
-                  <div key={order.id} className="p-4 hover:bg-white/40 transition-colors">
+                  <div key={order.id} className="p-4 hover:bg-muted/50 transition-colors">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-semibold text-black truncate">
+                          <p className="font-semibold text-foreground truncate">
                             {order.customer_name}
                           </p>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                             {getStatusLabel(order.status)}
                           </span>
                         </div>
-                        <p className="text-sm text-black/70 flex items-center gap-1">
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
                           <Phone className="w-3 h-3" />
                           {order.customer_phone}
                         </p>
                         {order.customer_address && (
-                          <p className="text-sm text-black/70 flex items-center gap-1 mt-1">
+                          <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                             <MapPin className="w-3 h-3" />
                             {order.customer_address}
                           </p>
                         )}
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-bold text-black">${order.total.toLocaleString()}</p>
-                        <p className="text-xs text-black/60">
+                        <p className="font-bold text-foreground">${order.total.toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">
                           {format(new Date(order.created_at), "d MMM, HH:mm", { locale: es })}
                         </p>
                       </div>

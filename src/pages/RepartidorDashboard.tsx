@@ -151,15 +151,15 @@ const RepartidorDashboard = () => {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'pending':
-        return <Badge className="bg-yellow-500/20 backdrop-blur-xl text-yellow-700 border border-yellow-300/50">Pendiente</Badge>;
+        return <Badge className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">Pendiente</Badge>;
       case 'preparando':
-        return <Badge className="bg-orange-500/20 backdrop-blur-xl text-orange-700 border border-orange-300/50">Preparando</Badge>;
+        return <Badge className="bg-orange-500/15 text-orange-700 dark:text-orange-400 border border-orange-500/30">Preparando</Badge>;
       case 'en_camino':
-        return <Badge className="bg-blue-500/20 backdrop-blur-xl text-blue-700 border border-blue-300/50">En Camino</Badge>;
+        return <Badge className="bg-secondary/15 text-secondary-foreground dark:text-secondary border border-secondary/30">En Camino</Badge>;
       case 'entregado':
-        return <Badge className="bg-green-500/20 backdrop-blur-xl text-green-700 border border-green-300/50">Entregado</Badge>;
+        return <Badge className="bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30">Entregado</Badge>;
       default:
-        return <Badge className="bg-gray-500/20 backdrop-blur-xl text-gray-700 border border-gray-300/50">{status || 'Sin estado'}</Badge>;
+        return <Badge className="bg-muted text-muted-foreground border border-border">{status || 'Sin estado'}</Badge>;
     }
   };
 
@@ -168,15 +168,15 @@ const RepartidorDashboard = () => {
     const itemsList = Array.isArray(items) ? items : [];
 
     return (
-      <Card className="mb-4 bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+      <Card className="mb-4">
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-3">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <User className="w-4 h-4 text-black/60" />
-                <span className="font-semibold text-black">{order.customer_name}</span>
+                <User className="w-4 h-4 text-muted-foreground" />
+                <span className="font-semibold text-foreground">{order.customer_name}</span>
               </div>
-              <p className="text-xs text-black/60">
+              <p className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: es })}
               </p>
             </div>
@@ -184,16 +184,16 @@ const RepartidorDashboard = () => {
           </div>
 
           {/* Order Items */}
-          <div className="bg-white/40 backdrop-blur-sm rounded-lg p-3 mb-3">
-            <p className="text-xs font-medium text-black/60 mb-2">Productos:</p>
+          <div className="bg-muted rounded-lg p-3 mb-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Productos:</p>
             <div className="space-y-1">
               {itemsList.slice(0, 3).map((item: any, idx: number) => (
-                <p key={idx} className="text-sm text-black">
+                <p key={idx} className="text-sm text-foreground">
                   {item.quantity}x {item.name}
                 </p>
               ))}
               {itemsList.length > 3 && (
-                <p className="text-xs text-black/60">+{itemsList.length - 3} más...</p>
+                <p className="text-xs text-muted-foreground">+{itemsList.length - 3} más...</p>
               )}
             </div>
           </div>
@@ -201,8 +201,8 @@ const RepartidorDashboard = () => {
           {/* Address */}
           {order.customer_address && (
             <div className="flex items-start gap-2 mb-3">
-              <MapPin className="w-4 h-4 text-terracotta mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-black/70">{order.customer_address}</p>
+              <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground">{order.customer_address}</p>
             </div>
           )}
 
@@ -210,9 +210,9 @@ const RepartidorDashboard = () => {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-green-600" />
-              <span className="font-bold text-black">${Number(order.total).toFixed(2)}</span>
+              <span className="font-bold text-foreground">${Number(order.total).toFixed(2)}</span>
             </div>
-            <div className="flex items-center gap-2 text-black/60">
+            <div className="flex items-center gap-2 text-muted-foreground">
               <Timer className="w-4 h-4" />
               <span className="text-sm">{format(new Date(order.created_at), 'HH:mm', { locale: es })}</span>
             </div>
@@ -224,7 +224,7 @@ const RepartidorDashboard = () => {
               <Button
                 size="sm"
                 onClick={() => callCustomer(order.customer_phone)}
-                className="flex-1 bg-blue-500 text-black hover:bg-blue-600"
+                className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
               >
                 <Phone className="w-4 h-4 mr-1" />
                 Llamar
@@ -232,7 +232,7 @@ const RepartidorDashboard = () => {
               <Button
                 size="sm"
                 onClick={() => openGoogleMaps(order.customer_address)}
-                className="flex-1 bg-blue-500 text-black hover:bg-blue-600"
+                className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
               >
                 <MapPin className="w-4 h-4 mr-1" />
                 Mapa
@@ -246,7 +246,7 @@ const RepartidorDashboard = () => {
               {(order.status === 'pending' || order.status === 'preparando') && (
                 <Button
                   size="lg"
-                  className="w-full bg-red-600 hover:bg-red-700 text-black font-bold py-3"
+                  className="w-full bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-3"
                   onClick={() => updateOrderStatus(order.id, 'en_camino')}
                 >
                   <Truck className="w-5 h-5 mr-2" />
@@ -256,7 +256,7 @@ const RepartidorDashboard = () => {
               {order.status === 'en_camino' && (
                 <Button
                   size="lg"
-                  className="w-full bg-green-600 hover:bg-green-700 text-black font-bold py-3"
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-3"
                   onClick={() => updateOrderStatus(order.id, 'entregado')}
                 >
                   <CheckCircle className="w-5 h-5 mr-2" />
@@ -272,7 +272,7 @@ const RepartidorDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
@@ -283,63 +283,63 @@ const RepartidorDashboard = () => {
       case 'dashboard':
         return (
           <div className="space-y-4 md:space-y-6">
-            <h2 className="text-xl md:text-2xl font-bold text-black">Panel de Control</h2>
+            <h2 className="text-xl md:text-2xl font-bold text-foreground">Panel de Control</h2>
             
             {/* Stats - Clickable */}
             <div className="grid grid-cols-2 gap-3 md:gap-4">
               <Card 
-                className="cursor-pointer active:scale-95 transition-transform bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg hover:border-yellow-400"
+                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
                 onClick={() => setActiveSection('pending')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 bg-yellow-100 rounded-full">
-                    <Clock className="w-4 h-4 md:w-5 md:h-5 text-yellow-600" />
+                  <div className="p-2 md:p-3 bg-yellow-100 dark:bg-yellow-500/15 rounded-full">
+                    <Clock className="w-4 h-4 md:w-5 md:h-5 text-yellow-600 dark:text-yellow-400" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-black">{pendingOrders.length}</p>
-                    <p className="text-[10px] md:text-xs text-black/60">Pendientes</p>
+                    <p className="text-xl md:text-2xl font-bold text-foreground">{pendingOrders.length}</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground">Pendientes</p>
                   </div>
                 </CardContent>
               </Card>
               <Card 
-                className="cursor-pointer active:scale-95 transition-transform bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg hover:border-blue-400"
+                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
                 onClick={() => setActiveSection('active')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 bg-blue-100 rounded-full">
-                    <Truck className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+                  <div className="p-2 md:p-3 bg-blue-100 dark:bg-secondary/15 rounded-full">
+                    <Truck className="w-4 h-4 md:w-5 md:h-5 text-blue-600 dark:text-secondary" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-black">{activeOrders.length}</p>
-                    <p className="text-[10px] md:text-xs text-black/60">En Camino</p>
+                    <p className="text-xl md:text-2xl font-bold text-foreground">{activeOrders.length}</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground">En Camino</p>
                   </div>
                 </CardContent>
               </Card>
               <Card 
-                className="cursor-pointer active:scale-95 transition-transform bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg hover:border-green-400"
+                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
                 onClick={() => setActiveSection('today-delivered')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 bg-green-100 rounded-full">
-                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
+                  <div className="p-2 md:p-3 bg-green-100 dark:bg-green-500/15 rounded-full">
+                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-black">{todayDelivered}</p>
-                    <p className="text-[10px] md:text-xs text-black/60">Entregados</p>
+                    <p className="text-xl md:text-2xl font-bold text-foreground">{todayDelivered}</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground">Entregados</p>
                   </div>
                 </CardContent>
               </Card>
               <Card 
-                className="cursor-pointer active:scale-95 transition-transform bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-lg hover:border-emerald-400"
+                className="cursor-pointer active:scale-95 transition-transform hover:shadow-md"
                 onClick={() => setActiveSection('cash-received')}
               >
                 <CardContent className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 bg-emerald-100 rounded-full">
-                    <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" />
+                  <div className="p-2 md:p-3 bg-emerald-100 dark:bg-emerald-500/15 rounded-full">
+                    <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-xl md:text-2xl font-bold text-black">${todayEarnings.toFixed(0)}</p>
-                    <p className="text-[10px] md:text-xs text-black/60">Efectivo</p>
+                    <p className="text-xl md:text-2xl font-bold text-foreground">${todayEarnings.toFixed(0)}</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground">Efectivo</p>
                   </div>
                 </CardContent>
               </Card>
@@ -347,10 +347,10 @@ const RepartidorDashboard = () => {
 
             {/* Active Orders Preview */}
             {activeOrders.length > 0 && (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2 text-black">
-                    <Truck className="w-5 h-5 text-blue-500" />
+                  <CardTitle className="text-lg flex items-center gap-2 text-foreground">
+                    <Truck className="w-5 h-5 text-secondary" />
                     Entregas en Curso
                   </CardTitle>
                 </CardHeader>
@@ -361,7 +361,7 @@ const RepartidorDashboard = () => {
                   {activeOrders.length > 2 && (
                     <Button 
                       variant="link" 
-                      className="w-full text-black"
+                      className="w-full text-foreground"
                       onClick={() => setActiveSection('active')}
                     >
                       Ver todas ({activeOrders.length})
@@ -373,9 +373,9 @@ const RepartidorDashboard = () => {
 
             {/* Pending Orders Preview */}
             {pendingOrders.length > 0 && (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2 text-black">
+                  <CardTitle className="text-lg flex items-center gap-2 text-foreground">
                     <Clock className="w-5 h-5 text-yellow-500" />
                     Pedidos Pendientes
                   </CardTitle>
@@ -387,7 +387,7 @@ const RepartidorDashboard = () => {
                   {pendingOrders.length > 3 && (
                     <Button 
                       variant="link" 
-                      className="w-full text-black"
+                      className="w-full text-foreground"
                       onClick={() => setActiveSection('pending')}
                     >
                       Ver todos ({pendingOrders.length})
@@ -398,11 +398,11 @@ const RepartidorDashboard = () => {
             )}
 
             {pendingOrders.length === 0 && activeOrders.length === 0 && (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardContent className="py-12 text-center">
-                  <Package className="w-16 h-16 mx-auto mb-4 text-black/30" />
-                  <p className="text-black/70">No hay pedidos activos</p>
-                  <p className="text-sm text-black/60">Los nuevos pedidos aparecerán aquí</p>
+                  <Package className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No hay pedidos activos</p>
+                  <p className="text-sm text-muted-foreground">Los nuevos pedidos aparecerán aquí</p>
                 </CardContent>
               </Card>
             )}
@@ -413,33 +413,33 @@ const RepartidorDashboard = () => {
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
-              <Button size="icon" className="bg-green-500 text-black hover:bg-green-600" onClick={() => setActiveSection('dashboard')}>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h2 className="text-2xl font-bold text-black flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <Clock className="w-6 h-6 text-yellow-500" />
                 Pedidos Pendientes ({pendingOrders.length})
               </h2>
             </div>
             {pendingOrders.length === 0 ? (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardContent className="py-12 text-center">
                   <CheckCircle className="w-16 h-16 mx-auto mb-4 text-green-500/30" />
-                  <p className="text-black/70">No hay pedidos pendientes</p>
+                  <p className="text-muted-foreground">No hay pedidos pendientes</p>
                 </CardContent>
               </Card>
             ) : (
               <>
                 {pendingOrders.map(order => (
-                  <Card key={order.id} className="mb-4 bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+                  <Card key={order.id} className="mb-4">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <User className="w-4 h-4 text-black/60" />
-                            <span className="font-semibold text-black">{order.customer_name}</span>
+                            <User className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-semibold text-foreground">{order.customer_name}</span>
                           </div>
-                          <p className="text-xs text-black/60">
+                          <p className="text-xs text-muted-foreground">
                             {formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: es })}
                           </p>
                         </div>
@@ -449,15 +449,15 @@ const RepartidorDashboard = () => {
                       {/* Address */}
                       {order.customer_address && (
                         <div className="flex items-start gap-2 mb-3">
-                          <MapPin className="w-4 h-4 text-terracotta mt-0.5 flex-shrink-0" />
-                          <p className="text-sm text-black/70">{order.customer_address}</p>
+                          <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                          <p className="text-sm text-muted-foreground">{order.customer_address}</p>
                         </div>
                       )}
 
                       {/* Total */}
                       <div className="flex items-center gap-2 mb-4">
                         <DollarSign className="w-4 h-4 text-green-600" />
-                        <span className="font-bold text-black">${Number(order.total).toFixed(2)}</span>
+                        <span className="font-bold text-foreground">${Number(order.total).toFixed(2)}</span>
                       </div>
 
                       {/* Action Buttons */}
@@ -466,7 +466,7 @@ const RepartidorDashboard = () => {
                           <Button
                             size="sm"
                             onClick={() => callCustomer(order.customer_phone)}
-                            className="flex-1 bg-blue-500 text-black hover:bg-blue-600"
+                            className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
                           >
                             <Phone className="w-4 h-4 mr-1" />
                             Llamar
@@ -474,7 +474,7 @@ const RepartidorDashboard = () => {
                           <Button
                             size="sm"
                             onClick={() => openGoogleMaps(order.customer_address)}
-                            className="flex-1 bg-blue-500 text-black hover:bg-blue-600"
+                            className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
                           >
                             <MapPin className="w-4 h-4 mr-1" />
                             Mapa
@@ -482,7 +482,7 @@ const RepartidorDashboard = () => {
                         </div>
                         <Button
                           size="lg"
-                          className="w-full bg-red-600 hover:bg-red-700 text-black font-bold py-4 text-lg"
+                          className="w-full bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-4 text-lg"
                           onClick={() => updateOrderStatus(order.id, 'en_camino')}
                         >
                           <Truck className="w-6 h-6 mr-2" />
@@ -501,22 +501,22 @@ const RepartidorDashboard = () => {
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
-              <Button size="icon" className="bg-green-500 text-black hover:bg-green-600" onClick={() => setActiveSection('dashboard')}>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h2 className="text-2xl font-bold text-black flex items-center gap-2">
-                <Truck className="w-6 h-6 text-blue-500" />
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <Truck className="w-6 h-6 text-secondary" />
                 En Camino ({activeOrders.length})
               </h2>
             </div>
             {activeOrders.length === 0 ? (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardContent className="py-12 text-center">
-                  <Truck className="w-16 h-16 mx-auto mb-4 text-black/30" />
-                  <p className="text-black/70">No tienes entregas en curso</p>
+                  <Truck className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No tienes entregas en curso</p>
                   <Button 
                     variant="link"
-                    className="text-black"
+                    className="text-foreground"
                     onClick={() => setActiveSection('pending')}
                   >
                     Ver pedidos pendientes
@@ -530,20 +530,20 @@ const RepartidorDashboard = () => {
                 ))}
                 
                 {/* Prominent Action Buttons */}
-                <Card className="border-2 border-green-500 bg-green-50/60 backdrop-blur-xl">
+                <Card className="border-2 border-green-500 bg-green-50 dark:bg-green-500/10">
                   <CardContent className="p-6">
-                    <h3 className="text-lg font-bold text-center mb-4 text-black">Acciones de Entrega</h3>
+                    <h3 className="text-lg font-bold text-center mb-4 text-foreground">Acciones de Entrega</h3>
                     <div className="space-y-3">
                       {activeOrders.map(order => (
                         <div key={order.id} className="space-y-2">
-                          <p className="text-sm font-medium text-center text-black/70">
+                          <p className="text-sm font-medium text-center text-muted-foreground">
                             Pedido de {order.customer_name} - ${Number(order.total).toFixed(2)}
                           </p>
                           <div className="flex gap-2">
                             <Button
                               size="sm"
                               onClick={() => callCustomer(order.customer_phone)}
-                              className="flex-1 bg-blue-500 text-black hover:bg-blue-600"
+                              className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
                             >
                               <Phone className="w-4 h-4 mr-1" />
                               Llamar
@@ -551,7 +551,7 @@ const RepartidorDashboard = () => {
                             <Button
                               size="sm"
                               onClick={() => openGoogleMaps(order.customer_address)}
-                              className="flex-1 bg-blue-500 text-black hover:bg-blue-600"
+                              className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
                             >
                               <MapPin className="w-4 h-4 mr-1" />
                               Mapa
@@ -559,7 +559,7 @@ const RepartidorDashboard = () => {
                           </div>
                           <Button
                             size="lg"
-                            className="w-full bg-green-600 hover:bg-green-700 text-black font-bold py-4 text-lg"
+                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-4 text-lg"
                             onClick={() => updateOrderStatus(order.id, 'entregado')}
                           >
                             <CheckCircle className="w-6 h-6 mr-2" />
@@ -580,19 +580,19 @@ const RepartidorDashboard = () => {
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
-              <Button size="icon" className="bg-green-500 text-black hover:bg-green-600" onClick={() => setActiveSection('dashboard')}>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h2 className="text-2xl font-bold text-black flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <CheckCircle className="w-6 h-6 text-green-500" />
                 Entregados Hoy ({todayDeliveredOrders.length})
               </h2>
             </div>
             {todayDeliveredOrders.length === 0 ? (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardContent className="py-12 text-center">
-                  <CheckCircle className="w-16 h-16 mx-auto mb-4 text-black/30" />
-                  <p className="text-black/70">No hay entregas completadas hoy</p>
+                  <CheckCircle className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No hay entregas completadas hoy</p>
                 </CardContent>
               </Card>
             ) : (
@@ -609,28 +609,28 @@ const RepartidorDashboard = () => {
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
-              <Button size="icon" className="bg-green-500 text-black hover:bg-green-600" onClick={() => setActiveSection('dashboard')}>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h2 className="text-2xl font-bold text-black flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <DollarSign className="w-6 h-6 text-emerald-500" />
                 Recibido en Efectivo
               </h2>
             </div>
             {cashOrders.length === 0 ? (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardContent className="py-12 text-center">
-                  <DollarSign className="w-16 h-16 mx-auto mb-4 text-black/30" />
-                  <p className="text-black/70">No hay pedidos entregados en efectivo hoy</p>
+                  <DollarSign className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No hay pedidos entregados en efectivo hoy</p>
                 </CardContent>
               </Card>
             ) : (
               <>
-                <Card className="bg-emerald-50/60 backdrop-blur-xl border-emerald-200">
+                <Card className="bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30">
                   <CardContent className="p-4">
                     <div className="text-center">
                       <p className="text-3xl font-bold text-emerald-600">${cashTotal.toFixed(2)}</p>
-                      <p className="text-sm text-black/70">{cashOrders.length} pedidos en efectivo</p>
+                      <p className="text-sm text-muted-foreground">{cashOrders.length} pedidos en efectivo</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -646,19 +646,19 @@ const RepartidorDashboard = () => {
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
-              <Button size="icon" className="bg-green-500 text-black hover:bg-green-600" onClick={() => setActiveSection('dashboard')}>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h2 className="text-2xl font-bold text-black flex items-center gap-2">
-                <History className="w-6 h-6 text-black/60" />
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <History className="w-6 h-6 text-muted-foreground" />
                 Historial de Entregas
               </h2>
             </div>
             {completedOrders.length === 0 ? (
-              <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+              <Card>
                 <CardContent className="py-12 text-center">
-                  <History className="w-16 h-16 mx-auto mb-4 text-black/30" />
-                  <p className="text-black/70">No hay entregas completadas</p>
+                  <History className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No hay entregas completadas</p>
                 </CardContent>
               </Card>
             ) : (
@@ -673,36 +673,36 @@ const RepartidorDashboard = () => {
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
-              <Button size="icon" className="bg-green-500 text-black hover:bg-green-600" onClick={() => setActiveSection('dashboard')}>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h2 className="text-2xl font-bold text-black flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <HelpCircle className="w-6 h-6" />
                 Centro de Ayuda
               </h2>
             </div>
-            <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+            <Card>
               <CardContent className="p-6 space-y-4">
                 <div>
-                  <h3 className="font-semibold mb-2 text-black">¿Cómo tomar un pedido?</h3>
-                  <p className="text-sm text-black/70">
+                  <h3 className="font-semibold mb-2 text-foreground">¿Cómo tomar un pedido?</h3>
+                  <p className="text-sm text-muted-foreground">
                     Ve a "Pendientes", selecciona un pedido y presiona "Tomar" para comenzar la entrega.
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-semibold mb-2 text-black">¿Cómo marcar como entregado?</h3>
-                  <p className="text-sm text-black/70">
+                  <h3 className="font-semibold mb-2 text-foreground">¿Cómo marcar como entregado?</h3>
+                  <p className="text-sm text-muted-foreground">
                     Una vez que entregues el pedido, presiona "Entregado" en la tarjeta del pedido.
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-semibold mb-2 text-black">¿Problemas con un pedido?</h3>
-                  <p className="text-sm text-black/70">
+                  <h3 className="font-semibold mb-2 text-foreground">¿Problemas con un pedido?</h3>
+                  <p className="text-sm text-muted-foreground">
                     Contacta al cliente directamente usando el botón "Llamar" o comunícate con administración.
                   </p>
                 </div>
                 <div className="pt-4 border-t">
-                  <p className="text-sm text-black/70">
+                  <p className="text-sm text-muted-foreground">
                     <strong>Soporte:</strong> WhatsApp al administrador
                   </p>
                 </div>
@@ -717,7 +717,7 @@ const RepartidorDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex w-full">
+    <div className="min-h-screen bg-background flex w-full">
       {/* Desktop Sidebar */}
       <RepartidorSidebar
         user={user}
@@ -729,11 +729,11 @@ const RepartidorDashboard = () => {
       />
 
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/60 backdrop-blur-xl border-b border-white/20 z-50 safe-area-top">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-card border-b border-border z-50 safe-area-top">
         <div className="flex items-center justify-between px-4 py-3">
           <AtiendeWordmark />
           <button onClick={handleLogout} className="p-2">
-            <LogOut className="w-5 h-5 text-terracotta" />
+            <LogOut className="w-5 h-5 text-destructive" />
           </button>
         </div>
       </div>
@@ -746,12 +746,12 @@ const RepartidorDashboard = () => {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/60 backdrop-blur-xl border-t border-white/20 z-50 safe-area-bottom">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 safe-area-bottom">
         <nav className="flex justify-around items-center py-2">
           <button
             onClick={() => setActiveSection('dashboard')}
             className={`flex flex-col items-center p-2 min-w-[60px] ${
-              activeSection === 'dashboard' ? 'text-primary' : 'text-black/60'
+              activeSection === 'dashboard' ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
             <Package className="w-6 h-6" />
@@ -760,13 +760,13 @@ const RepartidorDashboard = () => {
           <button
             onClick={() => setActiveSection('pending')}
             className={`flex flex-col items-center p-2 min-w-[60px] relative ${
-              activeSection === 'pending' ? 'text-primary' : 'text-black/60'
+              activeSection === 'pending' ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
             <Clock className="w-6 h-6" />
             <span className="text-[10px] mt-1">Pendientes</span>
             {pendingOrders.length > 0 && (
-              <span className="absolute top-1 right-1 bg-red-500 text-black text-[10px] rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center">
                 {pendingOrders.length}
               </span>
             )}
@@ -774,13 +774,13 @@ const RepartidorDashboard = () => {
           <button
             onClick={() => setActiveSection('active')}
             className={`flex flex-col items-center p-2 min-w-[60px] relative ${
-              activeSection === 'active' ? 'text-primary' : 'text-black/60'
+              activeSection === 'active' ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
             <Truck className="w-6 h-6" />
             <span className="text-[10px] mt-1">En Camino</span>
             {activeOrders.length > 0 && (
-              <span className="absolute top-1 right-1 bg-blue-500 text-black text-[10px] rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="absolute top-1 right-1 bg-secondary text-secondary-foreground text-[10px] rounded-full w-5 h-5 flex items-center justify-center">
                 {activeOrders.length}
               </span>
             )}
@@ -788,7 +788,7 @@ const RepartidorDashboard = () => {
           <button
             onClick={() => setActiveSection('cash-received')}
             className={`flex flex-col items-center p-2 min-w-[60px] ${
-              activeSection === 'cash-received' ? 'text-primary' : 'text-black/60'
+              activeSection === 'cash-received' ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
             <DollarSign className="w-6 h-6" />
@@ -797,7 +797,7 @@ const RepartidorDashboard = () => {
           <button
             onClick={() => setActiveSection('history')}
             className={`flex flex-col items-center p-2 min-w-[60px] ${
-              activeSection === 'history' ? 'text-primary' : 'text-black/60'
+              activeSection === 'history' ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
             <History className="w-6 h-6" />

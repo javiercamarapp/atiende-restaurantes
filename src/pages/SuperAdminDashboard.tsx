@@ -4,9 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
+import { StatCard } from "@/components/admin/ui/StatCard";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
-  LifeBuoy, Bell, UserRound, CreditCard, Settings, Send,
+  LifeBuoy, Bell, UserRound, CreditCard, Settings, Send, Search, Paperclip,
+  History, X, ArrowUp,
 } from "lucide-react";
 
 interface Restaurant {
@@ -43,6 +45,9 @@ const SuperAdminDashboard = () => {
   const [section, setSection] = useState<"resumen" | "restaurantes" | "clientes" | "pregunta">("resumen");
   const [pregunta, setPregunta] = useState("");
   const [respuesta, setRespuesta] = useState<CustomerRow[] | OrderRow[] | null>(null);
+  const [historial, setHistorial] = useState<string[]>([]);
+  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -88,9 +93,16 @@ const SuperAdminDashboard = () => {
   // Búsqueda simple y determinista (no es un motor de lenguaje natural real
   // todavía — responde a las preguntas sugeridas y a nombre/teléfono).
   const responderPregunta = (q: string) => {
+    if (!q.trim()) return;
+    setHistorial((h) => [q, ...h.filter((x) => x !== q)].slice(0, 20));
+    setMostrarHistorial(false);
     const needle = q.toLowerCase();
     if (needle.includes("pendiente")) {
       setRespuesta(orders.filter((o) => o.status === "pending" || o.status === "preparando"));
+      return;
+    }
+    if (needle.includes("hoy") || needle.includes("vendido") || needle.includes("ingreso")) {
+      setRespuesta(orders.filter((o) => isToday(o.created_at)));
       return;
     }
     if (needle.includes("cliente") || needle.includes("recurrente")) {
@@ -102,7 +114,12 @@ const SuperAdminDashboard = () => {
     );
   };
 
-  const preguntasSugeridas = ["¿Cuántos pedidos están pendientes?", "¿Quiénes son mis clientes más recurrentes?"];
+  const preguntasSugeridas = [
+    "¿Cuántos pedidos están pendientes?",
+    "¿Quiénes son mis clientes más recurrentes?",
+    "¿Cuánto llevo vendido hoy?",
+    "¿Qué pedidos entraron hoy?",
+  ];
 
   const navItems = [
     { id: "resumen" as const, label: "Resumen", icon: LayoutGrid },
@@ -112,10 +129,13 @@ const SuperAdminDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-border bg-card h-screen sticky top-0">
-        <div className="h-16 flex items-center px-5 border-b border-border">
+    <div className="min-h-screen bg-muted/30 flex gap-3 p-3">
+      {/* Sidebar — panel flotante, separado del resto (no fundido con el
+          header ni con el contenido): mismo patrón que el sidebar real de
+          Likida. Logo suelto arriba, nav suelta, y todo lo de cuenta abajo
+          metido en su propio recuadro más gris. */}
+      <aside className="hidden md:flex flex-col w-60 shrink-0 rounded-2xl border border-border bg-card sticky top-3 h-[calc(100vh-1.5rem)] overflow-hidden">
+        <div className="h-16 flex items-center px-5 border-b border-border shrink-0">
           <AtiendeWordmark />
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
@@ -136,48 +156,51 @@ const SuperAdminDashboard = () => {
           ))}
         </nav>
 
-        {/* Bloque inferior — mismo patrón que Likida: pill de ayuda, links
-            de cuenta, selector de tema, chip de usuario con logout. */}
-        <div className="px-3 pb-3 space-y-0.5">
-          <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
-            <LifeBuoy className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
-            <span className="truncate">Centro de ayuda</span>
-          </button>
-          {[
-            { label: "Notificaciones", icon: Bell },
-            { label: "Mi perfil", icon: UserRound },
-            { label: "Plan y facturación", icon: CreditCard },
-            { label: "Configuración", icon: Settings },
-          ].map((it) => (
-            <button key={it.label} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-muted transition-colors">
-              <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-              <span className="truncate">{it.label}</span>
+        <div className="p-3 space-y-2 shrink-0">
+          {/* Recuadro de cuenta — bg-muted, visualmente separado de la nav */}
+          <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
+              <LifeBuoy className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
+              <span className="truncate">Centro de ayuda</span>
             </button>
-          ))}
-          <div className="pt-1.5 flex justify-center">
-            <ThemeSelector />
+            {[
+              { label: "Notificaciones", icon: Bell },
+              { label: "Mi perfil", icon: UserRound },
+              { label: "Plan y facturación", icon: CreditCard },
+              { label: "Configuración", icon: Settings },
+            ].map((it) => (
+              <button key={it.label} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-background transition-colors">
+                <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <span className="truncate">{it.label}</span>
+              </button>
+            ))}
+            <div className="pt-1 flex justify-center">
+              <ThemeSelector />
+            </div>
           </div>
-        </div>
 
-        <div className="p-3 border-t border-border">
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border bg-background">
-            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-medium shrink-0">
-              {userEmail.charAt(0).toUpperCase()}
+          {/* Chip de usuario — recuadro aparte, blanco */}
+          <div className="rounded-xl border border-border bg-card p-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-medium shrink-0">
+                {userEmail.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-foreground truncate">{userEmail.split("@")[0]}</p>
+                <p className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Superadmin</p>
+              </div>
+              <button onClick={handleLogout} className="text-destructive hover:opacity-70 shrink-0">
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground truncate">{userEmail.split("@")[0]}</p>
-              <p className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Superadmin</p>
-            </div>
-            <button onClick={handleLogout} className="text-destructive hover:opacity-70 shrink-0">
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 min-w-0">
-        <div className="h-16 border-b border-border flex items-center justify-between px-6 sticky top-0 bg-background/95 backdrop-blur z-10">
+      {/* Main — su propia columna, con el header como panel flotante aparte,
+          no fundido al sidebar ni al contenido de abajo. */}
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        <div className="rounded-2xl border border-border bg-card h-14 flex items-center justify-between px-6 shrink-0 sticky top-3 z-10">
           <div className="flex items-center gap-2 text-sm text-foreground">
             <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
             <span className="font-medium">
@@ -192,7 +215,7 @@ const SuperAdminDashboard = () => {
           </span>
         </div>
 
-        <div className="p-6 max-w-6xl">
+        <div className="max-w-6xl p-6 pt-4">
           {loading ? (
             <p className="text-sm text-muted-foreground">Cargando…</p>
           ) : section === "resumen" ? (
@@ -315,28 +338,10 @@ const SuperAdminDashboard = () => {
             </SectionCard>
           )}
         </div>
-      </main>
-    </div>
-  );
-};
-
-// Anatomía exacta de StatCard de Likida: caja interna --canvas con chip de
-// ícono sólido en --marca, cifra grande debajo del hairline punteado.
-function StatCard({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>; label: string; value: string }) {
-  return (
-    <div className="bg-card border border-border rounded-xl p-2">
-      <div className="rounded-lg px-3 py-2.5 bg-muted">
-        <div className="flex items-center gap-2.5 mb-1.5">
-          <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center shrink-0">
-            <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
-          </div>
-          <span className="text-[13px] text-muted-foreground">{label}</span>
-        </div>
-        <p className="font-display text-xl font-semibold tabular-nums text-foreground">{value}</p>
       </div>
     </div>
   );
-}
+};
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (

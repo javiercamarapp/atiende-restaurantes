@@ -65,9 +65,9 @@ const RepartidorSidebar = ({
   };
 
   return (
-    <aside 
+    <aside
       className={cn(
-        "hidden md:flex flex-col bg-white border-r border-border h-screen sticky top-0 transition-all duration-300",
+        "hidden md:flex flex-col bg-card border-r border-border h-screen sticky top-0 transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
@@ -80,7 +80,7 @@ const RepartidorSidebar = ({
           variant="ghost"
           size="icon"
           onClick={() => setCollapsed(!collapsed)}
-          className="ml-auto text-black hover:bg-primary hover:text-white"
+          className="ml-auto"
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </Button>
@@ -92,7 +92,7 @@ const RepartidorSidebar = ({
           {menuSections.map((section) => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="px-3 mb-2 text-xs font-semibold text-black/50 tracking-wider">
+                <p className="px-3 mb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
                   {section.title}
                 </p>
               )}
@@ -106,8 +106,8 @@ const RepartidorSidebar = ({
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative",
                         activeSection === item.id
-                          ? "bg-primary text-white"
-                          : "text-black hover:bg-primary hover:text-white"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted"
                       )}
                     >
                       <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -115,9 +115,9 @@ const RepartidorSidebar = ({
                       {badgeCount > 0 && (
                         <span className={cn(
                           "absolute right-2 min-w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold",
-                          activeSection === item.id 
-                            ? "bg-white text-primary" 
-                            : "bg-terracotta text-white"
+                          activeSection === item.id
+                            ? "bg-primary-foreground text-primary"
+                            : "bg-destructive text-destructive-foreground"
                         )}>
                           {badgeCount}
                         </span>
@@ -136,18 +136,18 @@ const RepartidorSidebar = ({
         {!collapsed ? (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-terracotta flex items-center justify-center text-white font-bold">
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold">
                 {user?.email?.charAt(0).toUpperCase() || 'R'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-black truncate">{user?.email}</p>
-                <p className="text-xs text-black/50">Repartidor</p>
+                <p className="text-sm font-medium text-foreground truncate">{user?.email}</p>
+                <p className="text-xs text-muted-foreground">Repartidor</p>
               </div>
             </div>
             <Button
               onClick={onLogout}
               variant="outline"
-              className="w-full justify-start text-terracotta border-terracotta hover:bg-terracotta hover:text-white"
+              className="w-full justify-start text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
             >
               <LogOut className="w-4 h-4 mr-2" />
               Cerrar Sesión
@@ -158,7 +158,7 @@ const RepartidorSidebar = ({
             onClick={onLogout}
             variant="ghost"
             size="icon"
-            className="w-full text-terracotta hover:bg-terracotta hover:text-white"
+            className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
           >
             <LogOut className="w-5 h-5" />
           </Button>

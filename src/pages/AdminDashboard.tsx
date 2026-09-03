@@ -18,6 +18,7 @@ import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import NotificacionesSection from "@/components/admin/NotificacionesSection";
+import { StatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark } from "@/components/AtiendeLogo";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
@@ -786,7 +787,7 @@ const AdminDashboard = () => {
         <div className="text-primary-foreground">Cargando...</div>
       </div>;
   }
-  return <div className="min-h-screen bg-white flex">
+  return <div className="min-h-screen bg-background flex">
       {/* Desktop Sidebar */}
       <AdminSidebar user={user} activeSection={activeSection} onSectionChange={setActiveSection} onLogout={handleLogout} />
 
@@ -796,16 +797,16 @@ const AdminDashboard = () => {
         <header className="md:hidden bg-primary text-primary-foreground p-4 shadow-lg">
           <div className="flex items-center justify-between">
             <AtiendeMark className="h-8 w-auto brightness-0 invert" />
-            <Button onClick={handleLogout} variant="ghost" size="icon" className="text-primary-foreground hover:bg-terracotta">
+            <Button onClick={handleLogout} variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10">
               <LogOut className="w-5 h-5" />
             </Button>
           </div>
         </header>
 
         {/* Desktop Header */}
-        <header className="hidden md:block bg-white p-4">
+        <header className="hidden md:block bg-background p-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-black">
+            <h1 className="text-2xl font-bold text-foreground">
               {activeSection === 'dashboard' && 'Estadísticas'}
               {activeSection === 'products' && 'Productos'}
               {activeSection === 'categories' && 'Categorías'}
@@ -816,7 +817,7 @@ const AdminDashboard = () => {
               {activeSection === 'notificaciones' && 'Notificaciones'}
               {activeSection === 'help' && 'Centro de Ayuda'}
             </h1>
-            <p className="text-sm text-black/50">
+            <p className="text-sm text-muted-foreground">
               {format(new Date(), "EEEE d 'de' MMMM, yyyy", {
               locale: es
             })}
@@ -835,7 +836,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        <main className="flex-1 p-4 md:p-6 space-y-6 overflow-auto bg-gray-50/50">
+        <main className="flex-1 p-4 md:p-6 space-y-6 overflow-auto bg-muted/30">
 
         {/* Dashboard Stats - Only show on dashboard section */}
         {activeSection === 'dashboard' && (
@@ -843,10 +844,10 @@ const AdminDashboard = () => {
             {/* Date Filter and Last Updated */}
             <div className="flex items-center justify-between">
               <Select value={dateFilter} onValueChange={(value: 'today' | '7' | '30' | '90') => setDateFilter(value)}>
-                <SelectTrigger className="w-[200px] bg-white border-border">
+                <SelectTrigger className="w-[200px]">
                   <div className="flex flex-col items-start">
-                    <span className="text-xs text-black/50">FECHA</span>
-                    <span className="text-sm font-medium text-black">
+                    <span className="text-xs text-muted-foreground">FECHA</span>
+                    <span className="text-sm font-medium text-foreground">
                       {dateFilter === 'today' ? 'Hoy' : 
                        dateFilter === '7' ? 'Últimos 7 días' : 
                        dateFilter === '30' ? 'Últimos 30 días' : 
@@ -854,14 +855,14 @@ const AdminDashboard = () => {
                     </span>
                   </div>
                 </SelectTrigger>
-                <SelectContent className="bg-white">
+                <SelectContent>
                   <SelectItem value="today">Hoy</SelectItem>
                   <SelectItem value="7">Últimos 7 días</SelectItem>
                   <SelectItem value="30">Últimos 30 días</SelectItem>
                   <SelectItem value="90">Últimos 90 días</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-sm text-black/50">
+              <p className="text-sm text-muted-foreground">
                 Actualizado {format(new Date(), "EEEE d 'de' MMMM, yyyy h:mm a", {
                   locale: es
                 })}
@@ -870,93 +871,93 @@ const AdminDashboard = () => {
 
             {/* Tus ventas Section */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-black">Tus ventas</h2>
+              <h2 className="text-lg font-semibold text-foreground">Tus ventas</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Ventas netas */}
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+                <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4 text-blue-600" />
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <DollarSign className="w-4 h-4 text-primary" />
                         </div>
-                        <span className="text-sm text-black/70">Ventas netas</span>
+                        <span className="text-sm text-muted-foreground">Ventas netas</span>
                       </div>
-                      <button onClick={() => openStatsDialog('revenue')} className="text-sm text-blue-600 hover:underline">
+                      <button onClick={() => openStatsDialog('revenue')} className="text-sm text-primary hover:underline">
                         Ver más
                       </button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <p className="text-3xl font-bold text-black">${filteredStats.revenue.toLocaleString()}</p>
-                    <div className={`${filteredStats.revenueChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} backdrop-blur-md border rounded-lg p-3`}>
+                    <p className="text-3xl font-bold text-foreground">${filteredStats.revenue.toLocaleString()}</p>
+                    <div className={`${filteredStats.revenueChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} border rounded-lg p-3`}>
                       <div className={`flex items-center gap-1 ${filteredStats.revenueChange >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                         {filteredStats.revenueChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                         <p className="text-sm font-medium">
                           {filteredStats.revenueChange >= 0 ? '+' : ''}{filteredStats.revenueChange.toFixed(1)}%
                         </p>
                       </div>
-                      <p className="text-xs text-black/40">{getPeriodLabel()}</p>
+                      <p className="text-xs text-muted-foreground">{getPeriodLabel()}</p>
                     </div>
                   </CardContent>
                 </Card>
 
                 {/* Número de órdenes */}
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+                <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-                          <ShoppingCart className="w-4 h-4 text-purple-600" />
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <ShoppingCart className="w-4 h-4 text-primary" />
                         </div>
-                        <span className="text-sm text-black/70">Número de órdenes</span>
+                        <span className="text-sm text-muted-foreground">Número de órdenes</span>
                       </div>
-                      <button onClick={() => openStatsDialog('orders')} className="text-sm text-blue-600 hover:underline">
+                      <button onClick={() => openStatsDialog('orders')} className="text-sm text-primary hover:underline">
                         Ver más
                       </button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <p className="text-3xl font-bold text-black">{filteredStats.orders}</p>
-                    <div className={`${filteredStats.ordersChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} backdrop-blur-md border rounded-lg p-3`}>
+                    <p className="text-3xl font-bold text-foreground">{filteredStats.orders}</p>
+                    <div className={`${filteredStats.ordersChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} border rounded-lg p-3`}>
                       <div className={`flex items-center gap-1 ${filteredStats.ordersChange >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                         {filteredStats.ordersChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                         <p className="text-sm font-medium">
                           {filteredStats.ordersChange >= 0 ? '+' : ''}{filteredStats.ordersChange.toFixed(1)}%
                         </p>
                       </div>
-                      <p className="text-xs text-black/40">{getPeriodLabel()}</p>
+                      <p className="text-xs text-muted-foreground">{getPeriodLabel()}</p>
                     </div>
                   </CardContent>
                 </Card>
 
                 {/* Valor promedio de la orden */}
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+                <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4 text-orange-600" />
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <DollarSign className="w-4 h-4 text-primary" />
                         </div>
-                        <span className="text-sm text-black/70">Valor promedio</span>
+                        <span className="text-sm text-muted-foreground">Valor promedio</span>
                       </div>
-                      <button onClick={() => openStatsDialog('customers')} className="text-sm text-blue-600 hover:underline">
+                      <button onClick={() => openStatsDialog('customers')} className="text-sm text-primary hover:underline">
                         Ver más
                       </button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <p className="text-3xl font-bold text-black">
+                    <p className="text-3xl font-bold text-foreground">
                       ${filteredStats.averageOrder.toFixed(2)}
                     </p>
-                    <div className={`${filteredStats.avgOrderChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} backdrop-blur-md border rounded-lg p-3`}>
+                    <div className={`${filteredStats.avgOrderChange >= 0 ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'} border rounded-lg p-3`}>
                       <div className={`flex items-center gap-1 ${filteredStats.avgOrderChange >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                         {filteredStats.avgOrderChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                         <p className="text-sm font-medium">
                           {filteredStats.avgOrderChange >= 0 ? '+' : ''}{filteredStats.avgOrderChange.toFixed(1)}%
                         </p>
                       </div>
-                      <p className="text-xs text-black/40">{getPeriodLabel()}</p>
+                      <p className="text-xs text-muted-foreground">{getPeriodLabel()}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -965,14 +966,14 @@ const AdminDashboard = () => {
 
             {/* Sales & Orders Trend Charts */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-black">Tendencias</h2>
+              <h2 className="text-lg font-semibold text-foreground">Tendencias</h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Ventas Chart */}
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+                <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span className="text-sm font-medium text-black">Ventas ($)</span>
+                      <div className="w-3 h-3 rounded-full bg-primary"></div>
+                      <span className="text-sm font-medium text-foreground">Ventas ($)</span>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -995,20 +996,20 @@ const AdminDashboard = () => {
                           />
                           <Tooltip 
                             contentStyle={{
-                              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                              backgroundColor: 'hsl(var(--popover))',
                               border: 'none',
                               borderRadius: '8px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
                             }}
                             formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ventas']}
                           />
                           <Line 
                             type="monotone" 
                             dataKey="ventas" 
-                            stroke="#3b82f6" 
+                            stroke="hsl(var(--primary))" 
                             strokeWidth={2}
-                            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
-                            activeDot={{ r: 5, fill: '#3b82f6' }}
+                            dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }}
+                            activeDot={{ r: 5, fill: 'hsl(var(--primary))' }}
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -1017,11 +1018,11 @@ const AdminDashboard = () => {
                 </Card>
 
                 {/* Órdenes Chart */}
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
+                <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                      <span className="text-sm font-medium text-black">Órdenes</span>
+                      <div className="w-3 h-3 rounded-full bg-secondary"></div>
+                      <span className="text-sm font-medium text-foreground">Órdenes</span>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -1043,20 +1044,20 @@ const AdminDashboard = () => {
                           />
                           <Tooltip 
                             contentStyle={{
-                              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                              backgroundColor: 'hsl(var(--popover))',
                               border: 'none',
                               borderRadius: '8px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
                             }}
                             formatter={(value: number) => [value, 'Órdenes']}
                           />
                           <Line 
                             type="monotone" 
                             dataKey="ordenes" 
-                            stroke="#8b5cf6" 
+                            stroke="hsl(var(--secondary))" 
                             strokeWidth={2}
-                            dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 3 }}
-                            activeDot={{ r: 5, fill: '#8b5cf6' }}
+                            dot={{ fill: 'hsl(var(--secondary))', strokeWidth: 2, r: 3 }}
+                            activeDot={{ r: 5, fill: 'hsl(var(--secondary))' }}
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -1068,43 +1069,18 @@ const AdminDashboard = () => {
 
             {/* Tu Operación Section */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-black">Tu Operación</h2>
+              <h2 className="text-lg font-semibold text-foreground">Tu Operación</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] cursor-pointer hover:scale-[1.02] transition-all" onClick={() => setActiveSection('products')}>
-                  <CardHeader className="pb-2">
-                    <span className="text-sm text-black/70">Total de productos</span>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-black">{stats.products}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] cursor-pointer hover:scale-[1.02] transition-all" onClick={() => setActiveSection('users')}>
-                  <CardHeader className="pb-2">
-                    <span className="text-sm text-black/70">Usuarios registrados</span>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-black">{stats.users}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
-                  <CardHeader className="pb-2">
-                    <span className="text-sm text-black/70">Clientes únicos</span>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-black">{filteredStats.customers}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white/60 backdrop-blur-xl border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] cursor-pointer hover:scale-[1.02] transition-all" onClick={() => setActiveSection('categories')}>
-                  <CardHeader className="pb-2">
-                    <span className="text-sm text-black/70">Categorías</span>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-black">{categories.length}</p>
-                  </CardContent>
-                </Card>
+                <button className="text-left" onClick={() => setActiveSection('products')}>
+                  <StatCard icon={Package} label="Total de productos" value={String(stats.products)} />
+                </button>
+                <button className="text-left" onClick={() => setActiveSection('users')}>
+                  <StatCard icon={Users} label="Usuarios registrados" value={String(stats.users)} />
+                </button>
+                <StatCard icon={Users} label="Clientes únicos" value={String(filteredStats.customers)} />
+                <button className="text-left" onClick={() => setActiveSection('categories')}>
+                  <StatCard icon={Tag} label="Categorías" value={String(categories.length)} />
+                </button>
               </div>
             </div>
           </>
@@ -1114,8 +1090,8 @@ const AdminDashboard = () => {
         {activeSection === 'products' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black flex items-center gap-2">
-                <Package className="w-5 h-5 text-blue-500" />
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Package className="w-5 h-5 text-primary" />
                 Lista de Productos ({products.length})
               </h2>
               <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
@@ -1131,7 +1107,7 @@ const AdminDashboard = () => {
               {products.map((product) => (
                 <Card 
                   key={product.id} 
-                  className="cursor-pointer transition-all duration-300 hover:scale-[1.01] border-white/20 bg-white/60 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.12)] hover:bg-white/80"
+                  className="cursor-pointer transition-shadow hover:shadow-md"
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -1139,13 +1115,13 @@ const AdminDashboard = () => {
                         {product.image_url ? (
                           <img src={product.image_url} alt={product.name} className="w-12 h-12 rounded-lg object-cover" />
                         ) : (
-                          <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <Package className="w-6 h-6 text-blue-600" />
+                          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Package className="w-6 h-6 text-primary" />
                           </div>
                         )}
                         <div>
-                          <p className="font-semibold text-black">{product.name}</p>
-                          <p className="text-sm text-black">${product.price}</p>
+                          <p className="font-semibold text-foreground">{product.name}</p>
+                          <p className="text-sm text-foreground">${product.price}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1153,7 +1129,7 @@ const AdminDashboard = () => {
                           {product.is_available ? 'Disponible' : 'No disponible'}
                         </span>
                         <Button variant="ghost" size="icon" onClick={() => handleEditProduct(product)} className="hover:bg-blue-50">
-                          <Edit className="w-4 h-4 text-blue-500" />
+                          <Edit className="w-4 h-4 text-primary" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)} className="hover:bg-red-50">
                           <Trash2 className="w-4 h-4 stroke-red-500" />
@@ -1171,8 +1147,8 @@ const AdminDashboard = () => {
         {activeSection === 'categories' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black flex items-center gap-2">
-                <Tag className="w-5 h-5 text-purple-500" />
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Tag className="w-5 h-5 text-primary" />
                 Lista de Categorías ({categories.length})
               </h2>
               <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
@@ -1188,17 +1164,17 @@ const AdminDashboard = () => {
               {categories.map((category) => (
                 <Card 
                   key={category.id} 
-                  className="transition-all duration-300 hover:scale-[1.01] border-white/20 bg-white/60 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.12)] hover:bg-white/80"
+                  className="transition-shadow hover:shadow-md"
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                          <Tag className="w-6 h-6 text-purple-600" />
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Tag className="w-6 h-6 text-primary" />
                         </div>
                         <div>
-                          <p className="font-semibold text-black">{category.name}</p>
-                          <p className="text-sm text-black">{category.slug}</p>
+                          <p className="font-semibold text-foreground">{category.name}</p>
+                          <p className="text-sm text-foreground">{category.slug}</p>
                         </div>
                       </div>
                       <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
@@ -1216,14 +1192,14 @@ const AdminDashboard = () => {
         {activeSection === 'orders' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-orange-500" />
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-primary" />
                 Lista de Pedidos ({orders.length})
               </h2>
             </div>
             
             {orders.length === 0 ? (
-              <Card className="border-white/20 bg-white/60 backdrop-blur-xl">
+              <Card>
                 <CardContent className="py-12 text-center">
                   <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
                   <p className="text-muted-foreground">No hay pedidos registrados</p>
@@ -1234,23 +1210,23 @@ const AdminDashboard = () => {
                 {orders.map((order) => (
                   <Card 
                     key={order.id} 
-                    className="transition-all duration-300 hover:scale-[1.01] border-white/20 bg-white/60 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.12)] hover:bg-white/80"
+                    className="transition-shadow hover:shadow-md"
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                            <ShoppingCart className="w-6 h-6 text-orange-600" />
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                            <ShoppingCart className="w-6 h-6 text-primary" />
                           </div>
                           <div>
-                            <p className="font-semibold text-black">{order.customer_name}</p>
-                            <p className="text-sm text-black">
+                            <p className="font-semibold text-foreground">{order.customer_name}</p>
+                            <p className="text-sm text-foreground">
                               {format(new Date(order.created_at), "d MMM yyyy, HH:mm", { locale: es })}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <p className="font-bold text-black">${order.total.toLocaleString()}</p>
+                          <p className="font-bold text-foreground">${order.total.toLocaleString()}</p>
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                             order.status === 'completado' || order.status === 'entregado' 
                               ? 'bg-green-100 text-green-700' 
@@ -1274,14 +1250,14 @@ const AdminDashboard = () => {
         {activeSection === 'users' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black flex items-center gap-2">
-                <Users className="w-5 h-5 text-green-500" />
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
                 Lista de Usuarios ({profiles.length})
               </h2>
             </div>
             
             {profiles.length === 0 ? (
-              <Card className="border-white/20 bg-white/60 backdrop-blur-xl">
+              <Card>
                 <CardContent className="py-12 text-center">
                   <Users className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
                   <p className="text-muted-foreground">No hay usuarios registrados</p>
@@ -1292,22 +1268,22 @@ const AdminDashboard = () => {
                 {profiles.map((profile) => (
                   <Card 
                     key={profile.id} 
-                    className="transition-all duration-300 hover:scale-[1.01] border-white/20 bg-white/60 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.12)] hover:bg-white/80"
+                    className="transition-shadow hover:shadow-md"
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                            <Users className="w-6 h-6 text-green-600" />
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Users className="w-6 h-6 text-primary" />
                           </div>
                           <div>
-                            <p className="font-semibold text-black">{profile.nombre || 'Sin nombre'}</p>
-                            <p className="text-sm text-black">{profile.email}</p>
+                            <p className="font-semibold text-foreground">{profile.nombre || 'Sin nombre'}</p>
+                            <p className="text-sm text-foreground">{profile.email}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           {profile.telefono && (
-                            <div className="flex items-center gap-2 text-sm text-black">
+                            <div className="flex items-center gap-2 text-sm text-foreground">
                               <Phone className="w-4 h-4" />
                               {profile.telefono}
                             </div>
@@ -1329,8 +1305,8 @@ const AdminDashboard = () => {
         {activeSection === 'promos' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black flex items-center gap-2">
-                <Percent className="w-5 h-5 text-pink-500" />
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Percent className="w-5 h-5 text-primary" />
                 Lista de Promociones ({promos.length})
               </h2>
               <Dialog open={promoDialogOpen} onOpenChange={setPromoDialogOpen}>
@@ -1343,7 +1319,7 @@ const AdminDashboard = () => {
             </div>
             
             {promos.length === 0 ? (
-              <Card className="border-white/20 bg-white/60 backdrop-blur-xl">
+              <Card>
                 <CardContent className="py-12 text-center">
                   <Percent className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
                   <p className="text-muted-foreground">No hay promociones registradas</p>
@@ -1354,7 +1330,7 @@ const AdminDashboard = () => {
                 {promos.map((promo) => (
                   <Card 
                     key={promo.id} 
-                    className="transition-all duration-300 hover:scale-[1.01] border-white/20 bg-white/60 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.12)] hover:bg-white/80"
+                    className="transition-shadow hover:shadow-md"
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
@@ -1362,13 +1338,13 @@ const AdminDashboard = () => {
                           {promo.image_url ? (
                             <img src={promo.image_url} alt={promo.title} className="w-12 h-12 rounded-lg object-cover" />
                           ) : (
-                            <div className="w-12 h-12 rounded-full bg-pink-100 flex items-center justify-center">
-                              <Percent className="w-6 h-6 text-pink-600" />
+                            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Percent className="w-6 h-6 text-primary" />
                             </div>
                           )}
                           <div>
-                            <p className="font-semibold text-black">{promo.title}</p>
-                            {promo.discount_text && <p className="text-sm text-black">{promo.discount_text}</p>}
+                            <p className="font-semibold text-foreground">{promo.title}</p>
+                            {promo.discount_text && <p className="text-sm text-foreground">{promo.discount_text}</p>}
                           </div>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${promo.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -1411,7 +1387,7 @@ const AdminDashboard = () => {
                         fontSize: 12
                       }} />
                         <Tooltip formatter={(value: number) => [selectedStat === 'revenue' ? `$${value.toLocaleString()}` : value, getStatTitle()]} />
-                        <Bar dataKey="value" fill={selectedStat === 'revenue' ? '#22c55e' : selectedStat === 'customers' ? '#3b82f6' : selectedStat === 'orders' ? '#f97316' : '#ec4899'} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="value" fill={selectedStat === 'revenue' ? '#22c55e' : selectedStat === 'customers' ? 'hsl(var(--primary))' : selectedStat === 'orders' ? 'hsl(var(--secondary))' : '#22c55e'} radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>}
                 </div>
@@ -1424,8 +1400,8 @@ const AdminDashboard = () => {
         {activeSection === 'repartidores' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black flex items-center gap-2">
-                <Truck className="w-5 h-5 text-blue-500" />
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Truck className="w-5 h-5 text-primary" />
                 Lista de Repartidores ({repartidores.length})
               </h2>
             </div>
@@ -1445,25 +1421,25 @@ const AdminDashboard = () => {
                 {repartidores.map((repartidor) => (
                   <Card 
                     key={repartidor.user_id} 
-                    className="cursor-pointer transition-all duration-300 hover:scale-[1.02] border-white/20 bg-white/60 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.12)] hover:bg-white/80"
+                    className="cursor-pointer transition-shadow hover:shadow-md"
                     onClick={() => navigate(`/admin/repartidor/${repartidor.user_id}`)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                            <Truck className="w-6 h-6 text-blue-600" />
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Truck className="w-6 h-6 text-primary" />
                           </div>
                           <div>
-                            <p className="font-semibold text-black">
+                            <p className="font-semibold text-foreground">
                               {repartidor.nombre || 'Sin nombre'}
                             </p>
-                            <p className="text-sm text-black">{repartidor.email}</p>
+                            <p className="text-sm text-foreground">{repartidor.email}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           {repartidor.telefono && (
-                            <div className="flex items-center gap-2 text-sm text-black">
+                            <div className="flex items-center gap-2 text-sm text-foreground">
                               <Phone className="w-4 h-4" />
                               {repartidor.telefono}
                             </div>
