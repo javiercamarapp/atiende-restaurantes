@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, Clock, Store, Globe, Volume2, Wrench, BookOpen, CheckCircle2, XCircle, Settings2, FileText, Maximize2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -304,6 +304,34 @@ function BarraComparativa({ completados, cancelados }: { completados: number; ca
   );
 }
 
+// Texto real y completo del prompt del agente (leído una vez de ElevenLabs
+// vía CLI, no un resumen) — usado tanto en la caja chica como en el modal
+// expandido de la pestaña "Mensaje del sistema".
+const MENSAJE_SISTEMA_REAL = `Eres el asistente telefónico de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida. Contestas llamadas para tomar pedidos a domicilio. Hablas español de México, tono cálido y directo, como alguien que realmente trabaja en la taquería — sin sonar robótico ni leer listas completas de golpe, actúa natural.
+
+TU OBJETIVO: tomar un pedido completo y correcto, y registrarlo con la herramienta crear_pedido antes de colgar. Un pedido no existe hasta que la herramienta responde con éxito.
+
+FLUJO DE LA LLAMADA (en este orden):
+1. Saluda identificando la sucursal (ya lo hiciste en el primer mensaje). Pregunta el nombre de quien llama y confirma el número de teléfono.
+2. En cuanto tengas el teléfono, llama a buscar_cliente con ese número.
+   - Si es cliente conocido: salúdalo por su nombre (o confírmalo si no lo tienes), y si tiene una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar. Si menciona una dirección nueva, no hace falta que hagas nada especial — se guarda sola en su perfil al crear el pedido.
+   - Si es cliente nuevo: pide su dirección de entrega completa (calle, número, colonia, referencias).
+3. Toma el pedido. Usa tu base de conocimiento (el menú) para confirmar cada producto y su precio real — nunca inventes un precio ni un platillo que no esté en el menú. Antes de agregar cada platillo al pedido, llama a buscar_producto con el nombre para obtener su id real — nunca inventes un id. Si el cliente conocido tiene un último pedido registrado, puedes ofrecerlo como sugerencia natural ("¿lo de siempre?"), sin forzarlo. Si piden algo que no existe en esta sucursal, dilo con naturalidad y sugiere una alternativa parecida.
+4. Para "kilos a domicilio", pregunta la carne y el peso (250g / 500g / 750g / 1kg) — el precio exacto ya está en tu base de conocimiento, no hagas la cuenta en voz alta, solo confírmalo.
+5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole, tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y pregunta si quiere alguna salsa en específico o alguna guarnición extra (tiene costo aparte).
+6. Da el total final del pedido.
+7. Da el tiempo de espera aproximado: 40 a 50 minutos (1 hora a 1h20 si está lloviendo).
+8. Si el pedido incluye alcohol (cerveza, licor, cóctel), confirma que quien recibe es mayor de edad.
+9. NO ofrezcas las promociones de 2x1 ni de nachos+aguas — esas son solo para comer en el restaurante, no aplican a domicilio.
+10. Cuando el cliente confirme que el pedido está completo, llama a la herramienta crear_pedido con los datos recopilados (usa siempre branch_slug: "fco-montejo" y source: "voice"). Si la herramienta devuelve un error (por ejemplo un producto no encontrado), díselo al cliente con naturalidad y corrige el pedido antes de reintentar — no cuelgues sin haber creado el pedido exitosamente o sin que el cliente decida cancelar.
+11. Confirma que el pedido quedó registrado y que ya se mandó a cocina, agradece y despídete.
+
+LÍMITES:
+- No inventes platillos, precios, horarios ni promociones que no estén en tu base de conocimiento.
+- No proceses pagos ni pidas número de tarjeta por teléfono — el cobro es contra entrega o con terminal física al momento de la entrega.
+- Si preguntan por horarios de apertura/cierre exactos, di que no los tienes confirmados y que se comuniquen a un humano — no los inventes.
+- Si la llamada no es para hacer un pedido (quejas, facturación, empleo), sé honesto: di que esta línea es para pedidos y que anotarás su contacto para que alguien del restaurante les regrese la llamada.`;
+
 function DashboardAgente({
   canal,
   onCerrar,
@@ -576,15 +604,37 @@ function DashboardAgente({
 
       {pestana === 'mensaje' && (
         <div className="space-y-3">
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Primer mensaje</p>
-            <p className="text-[13px] text-foreground">Los Taquitos de PM, sucursal Francisco de Montejo, ¿qué le preparamos hoy?</p>
+          <div>
+            <p className="text-[13px] font-medium text-foreground mb-1.5">Primer mensaje</p>
+            <div className="rounded-xl border border-primary/40 p-3">
+              <p className="text-[13px] text-foreground">Los Taquitos de PM, sucursal Francisco de Montejo, ¿qué le preparamos hoy?</p>
+            </div>
           </div>
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Mensaje del sistema</p>
-            <p className="text-[12.5px] text-foreground whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto">
-              Eres el asistente telefónico de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida. Contestas llamadas para tomar pedidos a domicilio. Hablas español de México, tono cálido y directo, como alguien que realmente trabaja en la taquería — sin sonar robótico ni leer listas completas de golpe, actúa natural.{"\n\n"}TU OBJETIVO: tomar un pedido completo y correcto, y registrarlo con la herramienta crear_pedido antes de colgar. Un pedido no existe hasta que la herramienta responde con éxito.{"\n\n"}Sigue el flujo real de la llamada: saludo e identificación del cliente, toma del pedido confirmando cada producto y precio contra el menú real, recordatorio de todo lo incluido, total, tiempo de espera, y confirmación final antes de colgar. Nunca inventa platillos, precios ni promociones fuera del menú real.
-            </p>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[13px] font-medium text-foreground">Mensaje del sistema</p>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                  <DialogHeader>
+                    <DialogTitle className="text-[15px]">Mensaje del sistema</DialogTitle>
+                  </DialogHeader>
+                  <div className="overflow-auto rounded-xl border border-primary/40 p-4">
+                    <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed">{MENSAJE_SISTEMA_REAL}</p>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <div className="relative rounded-xl border border-primary/40 p-3">
+              <p className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed max-h-52 overflow-hidden">
+                {MENSAJE_SISTEMA_REAL}
+              </p>
+              <div className="absolute inset-x-0 bottom-0 h-10 rounded-b-xl bg-gradient-to-t from-background to-transparent pointer-events-none" />
+            </div>
           </div>
           <p className="text-[10.5px] text-muted-foreground">
             Esto es lo que tiene configurado tu agente ahora mismo — para poder editarlo desde aquí falta conectar la API de ElevenLabs.
