@@ -144,16 +144,23 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
+  // Ventana compartida por "Recibidas" y "Enviadas": ninguna de las dos es
+  // un histórico, son colas de "esto necesita atención AHORA" — un pedido
+  // "pending" (sin repartidor) o "en_camino" (sin marcar entregado) que
+  // lleva más de esto sin actualizarse casi seguro ya se resolvió en la
+  // vida real y nadie tocó su estado; sale de la vista activa (sigue en la
+  // base) para no acumularse para siempre.
+  const VENTANA_MAX_EN_TRAYECTO_MIN = 90;
   const recibidas = useMemo(
-    () => orders.filter((o) => o.status === "pending" && !esProgramada(o, ahora)),
+    () =>
+      orders.filter(
+        (o) =>
+          o.status === "pending" &&
+          !esProgramada(o, ahora) &&
+          (ahora - new Date(o.created_at).getTime()) / 60000 <= VENTANA_MAX_EN_TRAYECTO_MIN,
+      ),
     [orders, ahora],
   );
-  // "Enviadas" es la entrega EN CURSO, no un historial — un pedido que
-  // sigue en "en_camino" mucho después de su ventana real de entrega
-  // (40-50 min, 1h-1h20 con lluvia) casi seguro ya se entregó y nadie le dio
-  // clic a "Marcar entregado"; se saca de esta vista activa (sigue existiendo
-  // en la base, solo deja de contar como "en trayecto ahora mismo").
-  const VENTANA_MAX_EN_TRAYECTO_MIN = 90;
   const enviadas = useMemo(
     () =>
       orders.filter(
@@ -388,7 +395,7 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
                               onClick={(e) => { e.stopPropagation(); setAsignando(order.id); }}
                             >
                               <Bike className="w-3 h-3" strokeWidth={1.75} />
-                              Paquete entregado a repartidor
+                              Asignar repartidor
                             </Button>
                           )}
                         </div>
