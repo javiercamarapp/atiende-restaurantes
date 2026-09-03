@@ -34,12 +34,30 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (!branch_slug) {
+      return new Response(JSON.stringify({ error: "branch_slug es requerido — confirma la sucursal antes de buscar productos" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
+    // Antes, si branch_slug faltaba o no existía, caía en silencio a
+    // "fco-montejo" — el agente podía terminar buscando (y cotizando) el
+    // menú de una sucursal completamente distinta a la que el cliente
+    // confirmó, sin ningún error visible. Mismo bug de clase que el
+    // hardcode ya corregido en el tool schema de crear_pedido. Ahora
+    // valida explícito, igual que ya hacía la versión de WhatsApp.
     const { data: branch } = await supabase
       .from("branches")
       .select("id, restaurant_id")
-      .eq("slug", branch_slug ?? "fco-montejo")
-      .single();
+      .eq("slug", branch_slug)
+      .maybeSingle();
+    if (!branch) {
+      return new Response(JSON.stringify({ error: `Sucursal '${branch_slug}' no encontrada` }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Antes esto era un solo ILIKE de la query completa como substring
     // literal — un cliente real dice "pastor individual" o "taco de bistec"

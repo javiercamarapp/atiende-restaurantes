@@ -24,10 +24,32 @@ export interface CreateOrderPayload {
 
 export class OrderValidationError extends Error {}
 
+// El mismo cliente real llega con el teléfono en formatos distintos según el
+// canal: ElevenLabs transcribe lo que dice en voz (con o sin espacios/guiones,
+// a veces sin el "52" de México), Meta manda el wa_id de WhatsApp sin "+" y a
+// veces con un "1" extra después del "52" (quirk real y documentado de la
+// Cloud API para números mexicanos migrados de la app clásica de WhatsApp), y
+// el checkout web puede mandar cualquier formato que el cliente haya tecleado.
+// Un match exacto (`.eq("phone", phone)`) sin normalizar hacía que el MISMO
+// cliente real apareciera como "nuevo" cada vez que el formato variaba
+// levemente — perdiendo en silencio su tier VIP, direcciones guardadas e
+// historial, y creando un customer_id duplicado en vez de reconocerlo.
+// Confirmado en vivo el 3-sep-2026 (auditoría multi-agente): dos filas reales
+// de `customers` para la misma persona, cada una con order_count=1.
+//
+// Normaliza a los últimos 10 dígitos (número nacional significativo
+// mexicano) — absorbe "+", espacios, guiones, "52"/"521" de país, y es
+// estable sin importar cuál de los formatos reales llegue primero.
+export function normalizePhone(phone: string): string {
+  const soloDigitos = phone.replace(/\D/g, "");
+  return soloDigitos.slice(-10) || soloDigitos;
+}
+
 export async function createOrderCore(supabase: any, payload: CreateOrderPayload) {
   if ((!payload.branch_slug && !payload.branch_name) || !payload.customer_name || !payload.customer_phone) {
     throw new OrderValidationError("branch_slug (o branch_name), customer_name y customer_phone son requeridos");
   }
+  payload = { ...payload, customer_phone: normalizePhone(payload.customer_phone) };
   if (!payload.items || payload.items.length === 0) {
     throw new OrderValidationError("El pedido no tiene productos");
   }
@@ -191,7 +213,7 @@ export async function lookupCustomer(supabase: any, restaurantId: string, phone:
     .from("customers")
     .select("id, name, order_count")
     .eq("restaurant_id", restaurantId)
-    .eq("phone", phone)
+    .eq("phone", normalizePhone(phone))
     .maybeSingle();
 
   if (!customer) {

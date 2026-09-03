@@ -337,7 +337,7 @@ export async function runAgentTurn(
               for (const token of tokensAUsar) {
                 builder = builder.ilike("products.name", `%${token}%`);
               }
-              const { data: rows } = await builder.limit(6);
+              const { data: rows } = await builder.limit(8); // mismo límite que buscar-producto/index.ts (voz) — antes era 6 aquí, sin razón documentada para la diferencia
               result = (rows ?? []).map((r: any) => ({ id: r.products.id, name: r.products.name, price: r.price }));
             }
           } else if (call.function.name === "crear_pedido") {
