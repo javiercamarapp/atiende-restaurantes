@@ -3,12 +3,20 @@
 // messages (each WhatsApp message is a separate HTTP request, so conversation
 // history is persisted in `whatsapp_conversations` between turns).
 //
+// El LLM corre por OpenRouter (API compatible con OpenAI), no directo contra
+// Anthropic — mismo patrón que ya usan en producción real tanto atiende.ai
+// (src/lib/sales/llm-router.ts: DeepSeek V3.2 por default, vía OpenRouter)
+// como Likida (src/lib/llm/models.ts: modelo barato para el chat de alto
+// volumen, el caro solo para lo que de verdad lo amerita). DeepSeek V3.2 le
+// gana a Claude Haiku en costo por ~4-6x sin perder nada en los benchmarks
+// de tool-calling que importan aquí (buscar_producto / crear_pedido).
+//
 // Setup needed (Supabase project secrets):
-//   ANTHROPIC_API_KEY        - for the Claude Messages API
+//   OPENROUTER_API_KEY       - de openrouter.ai (una sola key para cualquier modelo/proveedor)
 //   TWILIO_ACCOUNT_SID       - from the Twilio console
 //   TWILIO_AUTH_TOKEN        - from the Twilio console
 //   TWILIO_WHATSAPP_FROM     - e.g. "whatsapp:+14155238886" for the sandbox number
-//   CLAUDE_MODEL (optional)  - defaults to claude-haiku-4-5-20251001 (cheap, fast, plenty for order-taking)
+//   OPENROUTER_MODEL (opcional) - default: deepseek/deepseek-v3.2
 //
 // Twilio webhook URL to configure (Sandbox settings -> "When a message comes in"):
 //   https://<project-ref>.supabase.co/functions/v1/whatsapp-webhook
@@ -16,7 +24,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createOrderCore, lookupCustomer, OrderValidationError } from "../_shared/create-order-core.ts";
 
-const MODEL = Deno.env.get("CLAUDE_MODEL") ?? "claude-haiku-4-5-20251001";
+const MODEL = Deno.env.get("OPENROUTER_MODEL") ?? "deepseek/deepseek-v3.2";
 const PILOT_BRANCH_SLUG = "fco-montejo";
 
 const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, sucursal Francisco de Montejo, en Mérida.
@@ -43,37 +51,45 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 8. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige.
 9. Cuando el pedido quede creado, confirma que ya se mandó a cocina.`;
 
+// Formato OpenAI/OpenRouter: los tools van bajo function.parameters, no
+// input_schema directo como en la API de Anthropic.
 const TOOLS = [
   {
-    name: "buscar_producto",
-    description: "Busca productos del menú real por nombre o palabra clave. Devuelve id, nombre y precio.",
-    input_schema: {
-      type: "object",
-      properties: { query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" } },
-      required: ["query"],
+    type: "function",
+    function: {
+      name: "buscar_producto",
+      description: "Busca productos del menú real por nombre o palabra clave. Devuelve id, nombre y precio.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" } },
+        required: ["query"],
+      },
     },
   },
   {
-    name: "crear_pedido",
-    description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo.",
-    input_schema: {
-      type: "object",
-      properties: {
-        customer_name: { type: "string" },
-        customer_address: { type: "string" },
-        items: {
-          type: "array",
+    type: "function",
+    function: {
+      name: "crear_pedido",
+      description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo.",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_name: { type: "string" },
+          customer_address: { type: "string" },
           items: {
-            type: "object",
-            properties: {
-              product_id: { type: "string" },
-              quantity: { type: "integer" },
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                product_id: { type: "string" },
+                quantity: { type: "integer" },
+              },
+              required: ["product_id", "quantity"],
             },
-            required: ["product_id", "quantity"],
           },
         },
+        required: ["customer_name", "customer_address", "items"],
       },
-      required: ["customer_name", "customer_address", "items"],
     },
   },
 ];
@@ -106,7 +122,8 @@ Deno.serve(async (req: Request) => {
       .eq("slug", PILOT_BRANCH_SLUG)
       .single();
 
-    const messages = (convo?.messages ?? []) as { role: string; content: unknown }[];
+    // deno-lint-ignore no-explicit-any
+    const messages = (convo?.messages ?? []) as any[];
     messages.push({ role: "user", content: body });
 
     const customer = await lookupCustomer(supabase, branch!.restaurant_id, phone);
@@ -139,7 +156,8 @@ Deno.serve(async (req: Request) => {
 async function runAgentTurn(
   // deno-lint-ignore no-explicit-any
   supabase: any,
-  messages: { role: string; content: unknown }[],
+  // deno-lint-ignore no-explicit-any
+  messages: any[],
   phone: string,
   // deno-lint-ignore no-explicit-any
   customer: any,
@@ -149,70 +167,79 @@ async function runAgentTurn(
   const systemPrompt = `${BASE_SYSTEM_PROMPT}\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
 
   for (let turn = 0; turn < 4; turn++) {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
-        "anthropic-version": "2023-06-01",
+        authorization: `Bearer ${Deno.env.get("OPENROUTER_API_KEY")!}`,
+        "HTTP-Referer": "https://atiende-restaurantes.vercel.app",
+        "X-Title": "atiende.ai — Los Taquitos de PM",
       },
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1024,
-        system: systemPrompt,
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools: TOOLS,
-        messages,
       }),
     });
 
     if (!res.ok) {
-      console.error("Anthropic API error:", await res.text());
+      console.error("OpenRouter API error:", await res.text());
       return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId };
     }
 
     const data = await res.json();
-    messages.push({ role: "assistant", content: data.content });
+    const msg = data.choices?.[0]?.message;
+    if (!msg) {
+      console.error("OpenRouter respuesta sin choices:", JSON.stringify(data));
+      return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId };
+    }
+    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: msg.tool_calls });
 
-    const toolUses = (data.content as Array<{ type: string }>).filter((b) => b.type === "tool_use");
-    if (toolUses.length === 0) {
-      const text = (data.content as Array<{ type: string; text?: string }>)
-        .filter((b) => b.type === "text").map((b) => b.text).join("\n");
-      return { reply: text || "¿Me puedes repetir tu pedido?", updatedMessages: messages, orderId };
+    const toolCalls = msg.tool_calls as Array<{ id: string; function: { name: string; arguments: string } }> | undefined;
+    if (!toolCalls || toolCalls.length === 0) {
+      return { reply: msg.content || "¿Me puedes repetir tu pedido?", updatedMessages: messages, orderId };
     }
 
-    const toolResults = [];
-    for (const toolUse of toolUses as Array<{ id: string; name: string; input: Record<string, unknown> }>) {
+    for (const call of toolCalls) {
       let result: unknown;
+      let input: Record<string, unknown> = {};
       try {
-        if (toolUse.name === "buscar_producto") {
-          const { data: products } = await supabase
-            .from("products")
-            .select("id, name, price")
-            .eq("restaurant_id", restaurantId)
-            .eq("is_available", true)
-            .ilike("name", `%${toolUse.input.query}%`)
-            .limit(6);
-          result = products ?? [];
-        } else if (toolUse.name === "crear_pedido") {
-          const order = await createOrderCore(supabase, {
-            branch_slug: PILOT_BRANCH_SLUG,
-            customer_name: toolUse.input.customer_name as string,
-            customer_phone: phone,
-            customer_address: toolUse.input.customer_address as string,
-            items: toolUse.input.items as { product_id: string; quantity: number }[],
-            source: "whatsapp",
-          });
-          orderId = order.id;
-          result = { order };
-        } else {
-          result = { error: `Herramienta desconocida: ${toolUse.name}` };
-        }
-      } catch (err) {
-        result = { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" };
+        input = JSON.parse(call.function.arguments || "{}");
+      } catch {
+        result = { error: "No entendí bien los datos, ¿puedes repetir el pedido?" };
       }
-      toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: JSON.stringify(result) });
+      if (result === undefined) {
+        try {
+          if (call.function.name === "buscar_producto") {
+            const { data: products } = await supabase
+              .from("products")
+              .select("id, name, price")
+              .eq("restaurant_id", restaurantId)
+              .eq("is_available", true)
+              .ilike("name", `%${input.query}%`)
+              .limit(6);
+            result = products ?? [];
+          } else if (call.function.name === "crear_pedido") {
+            const order = await createOrderCore(supabase, {
+              branch_slug: PILOT_BRANCH_SLUG,
+              customer_name: input.customer_name as string,
+              customer_phone: phone,
+              customer_address: input.customer_address as string,
+              items: input.items as { product_id: string; quantity: number }[],
+              source: "whatsapp",
+            });
+            orderId = order.id;
+            result = { order };
+          } else {
+            result = { error: `Herramienta desconocida: ${call.function.name}` };
+          }
+        } catch (err) {
+          result = { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" };
+        }
+      }
+      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
     }
-    messages.push({ role: "user", content: toolResults });
   }
 
   return { reply: "Se me complicó procesar tu pedido, un momento por favor.", updatedMessages: messages, orderId };

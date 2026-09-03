@@ -16,3 +16,7 @@ verify_jwt = false
 [functions.send-order-notification]
 # Called by the notificar_cambio_pedido() DB trigger via pg_net, no Supabase user JWT.
 verify_jwt = false
+
+[functions.buscar-producto]
+# Called by the ElevenLabs voice agent's Server Tool, no Supabase user JWT.
+verify_jwt = false
