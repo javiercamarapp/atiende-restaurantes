@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -746,6 +746,23 @@ const AdminDashboard = () => {
     });
     await fetchData(restaurantId);
   };
+  // Reordena categorías con las flechas y persiste el nuevo orden completo
+  // (normaliza display_order a la posición del arreglo en cada movimiento,
+  // así no depende de que los valores previos ya estuvieran bien seteados).
+  const moverCategoria = async (index: number, direccion: -1 | 1) => {
+    const destino = index + direccion;
+    if (destino < 0 || destino >= categories.length) return;
+    const reordenadas = [...categories];
+    [reordenadas[index], reordenadas[destino]] = [reordenadas[destino], reordenadas[index]];
+    setCategories(reordenadas);
+    const { error } = await (await Promise.all(
+      reordenadas.map((cat, i) => supabase.from("categories").update({ display_order: i }).eq("id", cat.id))
+    )).find((r) => r.error) ?? { error: null };
+    if (error) {
+      toast({ title: "No se pudo guardar el orden", description: error.message, variant: "destructive" });
+      await fetchData(restaurantId);
+    }
+  };
   const resetProductForm = () => {
     setProductForm({
       name: "",
@@ -1311,7 +1328,7 @@ const AdminDashboard = () => {
               </Card>
             ) : (
               <Card className="overflow-hidden">
-                {categories.map((category) => (
+                {categories.map((category, index) => (
                   <div
                     key={category.id}
                     className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
@@ -1325,9 +1342,29 @@ const AdminDashboard = () => {
                         <p className="text-sm text-foreground">{category.slug}</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                      Activa
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col rounded-lg border border-border overflow-hidden shrink-0">
+                        <button
+                          onClick={() => moverCategoria(index, -1)}
+                          disabled={index === 0}
+                          className="p-1 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none border-b border-border"
+                          aria-label="Subir categoría"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => moverCategoria(index, 1)}
+                          disabled={index === categories.length - 1}
+                          className="p-1 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          aria-label="Bajar categoría"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                        Activa
+                      </span>
+                    </div>
                   </div>
                 ))}
               </Card>
