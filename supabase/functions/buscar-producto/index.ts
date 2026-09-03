@@ -8,6 +8,14 @@
 // real POR sucursal — verificado contra fotos reales del menú de cada una,
 // distinto entre sucursales de verdad) en vez del precio plano de
 // `products`, que hoy solo sirve de catálogo maestro de nombres/categorías.
+//
+// IMPORTANTE, bug real encontrado en llamada real (3-sep-2026): este function
+// SIEMPRE debe desplegarse con verify_jwt=false. ElevenLabs (Server Tool) no
+// manda ningún header Authorization en sus llamadas — con verify_jwt=true el
+// gateway de Supabase rechaza la petición con 401 ANTES de que este código
+// corra, y la llamada de voz se atora sin ningún log útil de este archivo. El
+// default de deploy_edge_function es true, así que hay que pasar
+// verify_jwt: false explícito en cada redeploy.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { tokenizeForProductSearch } from "../_shared/create-order-core.ts";

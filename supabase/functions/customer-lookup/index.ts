@@ -2,6 +2,12 @@
 // start of a call with the caller's phone number so the agent can greet a
 // returning customer by name and offer their saved address, mirroring the
 // deterministic lookup the WhatsApp webhook does in-process.
+//
+// IMPORTANTE, bug real encontrado en llamada real (3-sep-2026): este function
+// SIEMPRE debe desplegarse con verify_jwt=false. ElevenLabs (Server Tool) no
+// manda ningún header Authorization — con verify_jwt=true el gateway de
+// Supabase rechaza con 401 antes de que este código corra. El default de
+// deploy_edge_function es true, hay que pasar verify_jwt: false explícito.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { lookupCustomer, vipNote } from "../_shared/create-order-core.ts";

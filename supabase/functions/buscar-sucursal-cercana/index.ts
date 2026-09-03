@@ -13,6 +13,16 @@
 // Si la colonia no se reconoce, la función devuelve cero filas — el agente
 // debe pedir más detalle (otra referencia, colonia cercana) en vez de
 // adivinar, igual que ya hacía antes cuando la colonia no era clara.
+//
+// IMPORTANTE, bug real encontrado en llamada real (3-sep-2026, el mismo día
+// que se creó este archivo): este function SIEMPRE debe desplegarse con
+// verify_jwt=false. ElevenLabs (Server Tool) no manda ningún header
+// Authorization — con verify_jwt=true (el default real de este proyecto al
+// crear el function) el gateway de Supabase rechazó con 401 ANTES de que
+// este código llegara a correr, así que el fix de la colonia/acentos nunca
+// se había probado de verdad por voz hasta corregir esto. El default de
+// deploy_edge_function es true, hay que pasar verify_jwt: false explícito
+// en cada redeploy — igual que buscar-producto/create-order/customer-lookup.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
