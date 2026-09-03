@@ -1004,86 +1004,79 @@ const AdminDashboard = () => {
               </button>
             </div>
           )}
-          <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card">
-            <h1 className="text-sm font-semibold text-foreground">
-              {activeSection === 'dashboard' && 'Estadísticas'}
-              {activeSection === 'products' && 'Productos'}
-              {activeSection === 'categories' && 'Categorías'}
-              {activeSection === 'promos' && 'Promociones'}
-              {activeSection === 'orders' && 'Pedidos'}
-              {activeSection === 'users' && 'Usuarios'}
-              {activeSection === 'repartidores' && 'Repartidores'}
-              {activeSection === 'notificaciones' && 'Notificaciones'}
-              {activeSection === 'pregunta' && 'Pregunta a tus datos'}
-              {activeSection === 'help' && 'Centro de Ayuda'}
-            </h1>
-            {activeSection === 'dashboard' && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActiveSection('pregunta')}
-                  className="h-8 rounded-full text-[13px] shrink-0"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  Chatea con tus datos
-                </Button>
-                <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0">
-                  <Bell className="w-4 h-4" strokeWidth={1.75} />
-                </button>
-                <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
-                  {format(new Date(), "d MMM yyyy", { locale: es })}
-                </span>
-              </div>
-            )}
-          </header>
+          {activeSection !== 'pregunta' && (
+            <header className="flex items-center justify-between h-12 px-4 shrink-0 border-b border-border bg-card">
+              <h1 className="text-sm font-semibold text-foreground">
+                {activeSection === 'dashboard' && 'Estadísticas'}
+                {activeSection === 'products' && 'Productos'}
+                {activeSection === 'categories' && 'Categorías'}
+                {activeSection === 'promos' && 'Promociones'}
+                {activeSection === 'orders' && 'Pedidos'}
+                {activeSection === 'users' && 'Usuarios'}
+                {activeSection === 'repartidores' && 'Repartidores'}
+                {activeSection === 'notificaciones' && 'Notificaciones'}
+                {activeSection === 'help' && 'Centro de Ayuda'}
+              </h1>
+              {activeSection === 'dashboard' && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveSection('pregunta')}
+                    className="h-8 rounded-full text-[13px] shrink-0"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    Chatea con tus datos
+                  </Button>
+                  <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0">
+                    <Bell className="w-4 h-4" strokeWidth={1.75} />
+                  </button>
+                  <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
+                    {format(new Date(), "d MMM yyyy", { locale: es })}
+                  </span>
+                </div>
+              )}
+            </header>
+          )}
 
           <main className="flex-1 p-4 space-y-6 overflow-auto bg-muted/30">
 
         {/* Dashboard Stats - Only show on dashboard section */}
         {activeSection === 'dashboard' && (
           <>
-            {/* Saludo — horario real + nombre del admin (nombre y primer apellido) */}
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">
-                {saludoHorario()}, {nombreSaludo || 'de vuelta'} 👋
-              </h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Todo listo para que sigas administrando tu restaurante.
-              </p>
-            </div>
-
-            {/* Date Filter and Last Updated */}
-            <div className="flex items-center justify-between">
-              <Select value={dateFilter} onValueChange={(value: 'today' | '7' | '30' | '90') => setDateFilter(value)}>
-                <SelectTrigger className="w-auto min-w-[140px] h-auto rounded-full border-border bg-card px-3.5 py-1.5 gap-2 focus:ring-0 focus:ring-offset-0 data-[state=open]:ring-0">
-                  <div className="flex flex-col items-start">
-                    <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">Fecha</span>
+            {/* Saludo (izquierda) + filtro de fecha y actualizar (derecha),
+                un solo renglón nivelado, sin altura extra. */}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl font-semibold text-foreground">
+                  {saludoHorario()}, {nombreSaludo || 'de vuelta'} 👋
+                </h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Todo listo para que sigas administrando tu restaurante.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Select value={dateFilter} onValueChange={(value: 'today' | '7' | '30' | '90') => setDateFilter(value)}>
+                  <SelectTrigger className="w-auto h-7 rounded-full border-border bg-card px-3 gap-1.5 focus:ring-0 focus:ring-offset-0 data-[state=open]:ring-0">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Fecha</span>
                     <span className="text-xs font-semibold text-primary">
                       {dateFilter === 'today' ? 'Hoy' :
-                       dateFilter === '7' ? 'Últimos 7 días' :
-                       dateFilter === '30' ? 'Últimos 30 días' :
-                       'Últimos 90 días'}
+                       dateFilter === '7' ? '7 días' :
+                       dateFilter === '30' ? '30 días' :
+                       '90 días'}
                     </span>
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Hoy</SelectItem>
-                  <SelectItem value="7">Últimos 7 días</SelectItem>
-                  <SelectItem value="30">Últimos 30 días</SelectItem>
-                  <SelectItem value="90">Últimos 90 días</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex flex-col items-end gap-1">
-                <p className="text-sm text-muted-foreground">
-                  Actualizado {format(ultimaActualizacion, "EEEE d 'de' MMMM, yyyy h:mm a", {
-                    locale: es
-                  })}
-                </p>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Hoy</SelectItem>
+                    <SelectItem value="7">Últimos 7 días</SelectItem>
+                    <SelectItem value="30">Últimos 30 días</SelectItem>
+                    <SelectItem value="90">Últimos 90 días</SelectItem>
+                  </SelectContent>
+                </Select>
                 <button
                   onClick={refrescarDatos}
                   disabled={refrescando}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-70"
+                  className="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
                 >
                   <RefreshCw className={`w-3 h-3 ${refrescando ? 'animate-spin' : ''}`} />
                   {refrescando ? 'Actualizando…' : 'Actualizar'}
@@ -1639,11 +1632,10 @@ const AdminDashboard = () => {
 
         {activeSection === 'pregunta' && (
           <div
-            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4"
+            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 fondo-puntos-animado"
             style={{
               backgroundImage: "radial-gradient(hsl(var(--primary) / 0.22) 1px, transparent 1px)",
               backgroundSize: "18px 18px",
-              backgroundPosition: "-9px -9px",
             }}
           >
             <div className="flex justify-end mb-6">
@@ -1710,7 +1702,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            <div className="flex flex-col items-center pt-4 pb-16">
+            <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-4'}`}>
               {mensajesChat.length === 0 && (
                 <>
                   <AtiendeWordmark className="mb-6" markClassName="h-9 w-auto" animado />
@@ -1804,7 +1796,7 @@ const AdminDashboard = () => {
                   if (!pregunta.trim()) { setMostrarSugerencias((v) => !v); return; }
                   responderPreguntaLocal(pregunta);
                 }}
-                className={`w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 ${mensajesChat.length > 0 ? 'sticky bottom-4 z-10' : ''}`}
+                className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0"
               >
                 <input
                   value={pregunta}

@@ -309,3 +309,16 @@
 @media (prefers-reduced-motion: reduce) {
   .atiende-glifo-animado .atiende-linea { animation: none; }
 }
+
+/* Fondo de puntos de "Pregunta a tus datos": deriva lento en diagonal, como
+   el fondo animado de Likida — en azul (--primary) en vez de negro. */
+@keyframes fondo-puntos-deriva {
+  0%   { background-position: -9px -9px; }
+  100% { background-position: 9px 9px; }
+}
+.fondo-puntos-animado {
+  animation: fondo-puntos-deriva 6s linear infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fondo-puntos-animado { animation: none; background-position: -9px -9px; }
+}
