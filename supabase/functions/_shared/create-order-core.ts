@@ -81,7 +81,19 @@ export function redactSensitiveInfo(text: string): string {
     .replace(/\b\d{1,2}\/\d{2,4}\b/g, "[vencimiento oculto]");
 }
 
-const STOPWORDS_BUSQUEDA = new Set(["de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al"]);
+// Bug real confirmado el 3-sep-2026 (auditoría de voz, 9 agentes): "cerveza
+// Sol" y "coctel Margarita" devolvían CERO resultados pese a que "Sol" y
+// "Margarita" sí están disponibles — el match es AND de todos los tokens
+// contra products.name, y "cerveza"/"coctel" nunca aparecen literalmente en
+// el nombre real (los productos se llaman "Sol", "Indio", "Margarita", no
+// "Cerveza Sol"). El agente terminó diciéndole al cliente que no había
+// cervezas ni cócteles disponibles, siendo falso — se sumaron estas palabras
+// de categoría a las stopwords, igual que ya se hace con conectores, para
+// que solo el nombre real de la bebida entre al match.
+const STOPWORDS_BUSQUEDA = new Set([
+  "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y", "con", "para", "al",
+  "cerveza", "cervezas", "coctel", "cocteles", "cóctel", "cócteles",
+]);
 
 // Tokenizador compartido de buscar_producto (voz vía buscar-producto/index.ts
 // y WhatsApp vía whatsapp-agent-core.ts) — antes cada canal tenía su propia
