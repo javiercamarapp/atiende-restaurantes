@@ -364,7 +364,7 @@ const SuperAdminDashboard = () => {
 
               {/* Panel de historial — mismo patrón flotante que el de tenant. */}
               {mostrarHistorial && (
-                <div className="absolute right-3 top-3 bottom-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
+                <div className="fixed right-3 top-3 bottom-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
                   <div className="p-3 flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => { setMensajesChat([]); setMostrarHistorial(false); setMostrarSugerencias(false); }}
