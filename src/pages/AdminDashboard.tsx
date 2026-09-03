@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose, LayoutGrid, HelpCircle, Info, ChevronRight, Mic, PlayCircle, ExternalLink } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
@@ -48,6 +48,9 @@ interface Order {
   total: number;
   status: string | null;
   created_at: string;
+  source?: string | null;
+  call_transcript?: string | null;
+  call_recording_url?: string | null;
 }
 interface Profile {
   id: string;
@@ -73,6 +76,82 @@ interface Repartidor {
   telefono: string | null;
   created_at: string;
 }
+// Estilo compartido del tooltip de recharts — compacto y con tipografía
+// fina (mono para la hora/etiqueta, como el resto de las cifras del panel)
+// en vez del tooltip genérico grande de recharts.
+const tooltipEstiloCompartido = {
+  contentStyle: {
+    backgroundColor: 'hsl(var(--popover))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: '10px',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+    padding: '6px 10px',
+    color: 'hsl(var(--popover-foreground))',
+  },
+  labelStyle: {
+    fontFamily: 'IBM Plex Mono, ui-monospace, monospace',
+    fontSize: 11,
+    color: 'hsl(var(--muted-foreground))',
+    marginBottom: 2,
+  },
+  itemStyle: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: 0,
+  },
+} as const;
+
+// Tarjeta de KPI de agente — misma anatomía que "Tu Operación" de Rappi:
+// etiqueta + ícono de info + "Ver más", cifra grande, meta chica debajo.
+// `valor: null` = la métrica no se puede calcular todavía con el esquema
+// real (falta instrumentación, no es solo "sin actividad") — se marca N/D
+// con el porqué, en vez de fingir un cero medido. `valor: número` (0+) es
+// una cifra real, calculada de Supabase, aunque hoy sea 0 por falta de uso.
+function TileKpiAgente({
+  label,
+  valor,
+  meta,
+  notaGap,
+  sufijo = '%',
+  indice,
+}: {
+  label: string;
+  valor: number | null;
+  meta: string;
+  notaGap?: string;
+  sufijo?: string;
+  indice: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.35, delay: indice * 0.06, ease: 'easeOut' }}
+      className="rounded-2xl border border-border bg-card p-4"
+    >
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-sm font-semibold text-foreground truncate">{label}</span>
+          {notaGap && (
+            <span title={notaGap} className="shrink-0 text-muted-foreground/60">
+              <Info className="w-3.5 h-3.5" strokeWidth={1.75} />
+            </span>
+          )}
+        </div>
+        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground shrink-0">
+          Ver más <ChevronRight className="w-3 h-3" />
+        </span>
+      </div>
+      <p className="font-display text-3xl font-semibold tabular-nums text-foreground mb-1">
+        {notaGap ? 'N/D' : valor === null ? '—' : `${valor.toFixed(1)}${sufijo}`}
+      </p>
+      <p className="text-[11px] text-muted-foreground">
+        {notaGap ? notaGap : `Tu meta es de: ${meta}`}
+      </p>
+    </motion.div>
+  );
+}
+
 const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -121,9 +200,84 @@ const AdminDashboard = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [dateFilter, setDateFilter] = useState<'today' | '7' | '30' | '90'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | '7' | '30' | '90' | '180' | '365' | 'historico'>('today');
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
+
+  // Datos reales de los agentes (voz/WhatsApp) — se cargan aparte de
+  // fetchData() porque necesitan conteos exactos (no el límite de 50 filas
+  // que usa el `orders` del dashboard) y, para WhatsApp, la tabla
+  // `whatsapp_conversations`, que no tiene restaurant_id directo (se
+  // resuelve vía las sucursales del restaurante).
+  const [cargandoAgentes, setCargandoAgentes] = useState(false);
+  const [statsAgentes, setStatsAgentes] = useState<{
+    totalOrdenes: number;
+    voz: { total: number; completados: number; cancelados: number };
+    whatsapp: { total: number; completados: number; cancelados: number };
+  } | null>(null);
+  const [ordenesVoz, setOrdenesVoz] = useState<Order[]>([]);
+  const [ordenesWhatsapp, setOrdenesWhatsapp] = useState<Order[]>([]);
+  const [conversacionesWhatsapp, setConversacionesWhatsapp] = useState<{
+    total: number;
+    conPedido: number;
+    promedioMensajes: number;
+  } | null>(null);
+
+  const cargarDatosAgentes = async () => {
+    if (!restaurantId) return;
+    setCargandoAgentes(true);
+    const sb: any = supabase;
+
+    const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
+      { count: waTotal }, { count: waCompletados }, { count: waCancelados },
+      { data: vozRecientes }, { data: waRecientes }, { data: sucursales }] = await Promise.all([
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId),
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice"),
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"]),
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado"),
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp"),
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"]),
+      sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado"),
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8),
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8),
+      sb.from("branches").select("id").eq("restaurant_id", restaurantId),
+    ]);
+
+    setStatsAgentes({
+      totalOrdenes: totalOrdenes ?? 0,
+      voz: { total: vozTotal ?? 0, completados: vozCompletados ?? 0, cancelados: vozCancelados ?? 0 },
+      whatsapp: { total: waTotal ?? 0, completados: waCompletados ?? 0, cancelados: waCancelados ?? 0 },
+    });
+    setOrdenesVoz(vozRecientes ?? []);
+    setOrdenesWhatsapp(waRecientes ?? []);
+
+    const idsSucursales = (sucursales ?? []).map((s: { id: string }) => s.id);
+    if (idsSucursales.length > 0) {
+      const { data: conversaciones } = await sb
+        .from("whatsapp_conversations")
+        .select("id, messages, order_id")
+        .in("branch_id", idsSucursales);
+      const lista = conversaciones ?? [];
+      const conPedido = lista.filter((c: { order_id: string | null }) => c.order_id).length;
+      const totalMensajes = lista.reduce((suma: number, c: { messages: unknown }) => suma + (Array.isArray(c.messages) ? c.messages.length : 0), 0);
+      setConversacionesWhatsapp({
+        total: lista.length,
+        conPedido,
+        promedioMensajes: lista.length > 0 ? totalMensajes / lista.length : 0,
+      });
+    } else {
+      setConversacionesWhatsapp({ total: 0, conPedido: 0, promedioMensajes: 0 });
+    }
+
+    setCargandoAgentes(false);
+  };
+
+  useEffect(() => {
+    if ((activeSection === 'agente-voz' || activeSection === 'agente-whatsapp') && restaurantId && !statsAgentes) {
+      cargarDatosAgentes();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, restaurantId]);
   const [pregunta, setPregunta] = useState("");
   const [nombreAdmin, setNombreAdmin] = useState('');
   const [refrescando, setRefrescando] = useState(false);
@@ -378,7 +532,7 @@ const AdminDashboard = () => {
     let startDate: Date;
     let prevStartDate: Date;
     let prevEndDate: Date;
-    
+
     switch (dateFilter) {
       case 'today':
         startDate = startOfDay(now);
@@ -400,37 +554,54 @@ const AdminDashboard = () => {
         prevEndDate = subDays(now, 90);
         prevStartDate = subDays(now, 180);
         break;
+      case '180':
+        startDate = subDays(now, 180);
+        prevEndDate = subDays(now, 180);
+        prevStartDate = subDays(now, 360);
+        break;
+      case '365':
+        startDate = subDays(now, 365);
+        prevEndDate = subDays(now, 365);
+        prevStartDate = subDays(now, 730);
+        break;
+      case 'historico':
+        // Sin límite inferior real y sin periodo anterior con el que
+        // comparar — "histórico" es un total, no una ventana con antes/después.
+        startDate = new Date(0);
+        prevEndDate = new Date(0);
+        prevStartDate = new Date(0);
+        break;
       default:
         startDate = startOfDay(now);
         prevEndDate = startOfDay(now);
         prevStartDate = subDays(prevEndDate, 1);
     }
-    
+
     // Current period
-    const filteredOrders = orders.filter(order => 
+    const filteredOrders = orders.filter(order =>
       isAfter(new Date(order.created_at), startDate)
     );
-    
+
     // Previous period
-    const prevOrders = orders.filter(order => {
+    const prevOrders = dateFilter === 'historico' ? [] : orders.filter(order => {
       const orderDate = new Date(order.created_at);
       return isAfter(orderDate, prevStartDate) && !isAfter(orderDate, prevEndDate);
     });
-    
+
     const totalRevenue = filteredOrders.reduce((sum, order) => sum + Number(order.total), 0);
     const uniqueCustomers = new Set(filteredOrders.map(o => o.customer_name)).size;
     const avgOrder = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
-    
+
     const prevRevenue = prevOrders.reduce((sum, order) => sum + Number(order.total), 0);
     const prevUniqueCustomers = new Set(prevOrders.map(o => o.customer_name)).size;
     const prevAvgOrder = prevOrders.length > 0 ? prevRevenue / prevOrders.length : 0;
-    
+
     // Calculate percentage changes
     const calcChange = (current: number, prev: number) => {
       if (prev === 0) return current > 0 ? 100 : 0;
       return ((current - prev) / prev) * 100;
     };
-    
+
     return {
       revenue: totalRevenue,
       orders: filteredOrders.length,
@@ -450,135 +621,95 @@ const AdminDashboard = () => {
       case '7': return 'vs 7 días anteriores';
       case '30': return 'vs 30 días anteriores';
       case '90': return 'vs 90 días anteriores';
+      case '180': return 'vs 180 días anteriores';
+      case '365': return 'vs el año anterior';
+      case 'historico': return 'todo el tiempo registrado';
       default: return 'vs período anterior';
     }
   };
 
-  // Sales trend chart data based on date filter
-  // Rango propio de la gráfica de Tendencias — independiente del filtro
-  // FECHA general de arriba (ese controla las tarjetas de "Tus ventas").
-  const [trendRange, setTrendRange] = useState<'dia' | '7' | 'mes' | 'año' | 'historico'>('7');
-
-  const chartTrendData = useMemo(() => {
+  // Sales trend chart data — un solo control de fecha (dateFilter) maneja
+  // "Tus ventas" (filteredStats, arriba) y "Tendencias" (esta gráfica).
+  const salesTrendData = useMemo(() => {
     const now = new Date();
     let intervals: Date[] = [];
     let groupFormat: string;
     let esHora = false;
     let esMes = false;
+    let esSemanal90 = false;
 
-    if (trendRange === 'dia') {
-      for (let i = 23; i >= 0; i--) intervals.push(new Date(now.getTime() - i * 60 * 60 * 1000));
-      groupFormat = 'HH:00';
-      esHora = true;
-    } else if (trendRange === '7') {
-      for (let i = 6; i >= 0; i--) intervals.push(subDays(now, i));
-      groupFormat = 'EEE';
-    } else if (trendRange === 'mes') {
-      for (let i = 29; i >= 0; i--) intervals.push(subDays(now, i));
-      groupFormat = 'dd MMM';
-    } else if (trendRange === 'año') {
-      for (let i = 11; i >= 0; i--) intervals.push(subMonths(now, i));
-      groupFormat = 'MMM yy';
-      esMes = true;
-    } else {
-      // histórico: un punto por mes desde el pedido más antiguo (tope de
-      // 36 meses para no dibujar de más si hay datos muy viejos).
-      const fechas = orders.map((o) => new Date(o.created_at).getTime());
-      const inicio = fechas.length > 0 ? new Date(Math.min(...fechas)) : now;
-      const mesesDesdeInicio = Math.min(
-        36,
-        Math.max(0, (now.getFullYear() - inicio.getFullYear()) * 12 + (now.getMonth() - inicio.getMonth()))
-      );
-      for (let i = mesesDesdeInicio; i >= 0; i--) intervals.push(subMonths(now, i));
-      groupFormat = 'MMM yy';
-      esMes = true;
-    }
-
-    return intervals.map((date) => {
-      const label = format(date, groupFormat, { locale: es });
-      let revenue = 0;
-      let orderCount = 0;
-      orders.forEach((order) => {
-        const orderDate = new Date(order.created_at);
-        let matches = false;
-        if (esHora) {
-          matches = format(orderDate, 'yyyy-MM-dd HH') === format(date, 'yyyy-MM-dd HH');
-        } else if (esMes) {
-          matches = format(orderDate, 'yyyy-MM') === format(date, 'yyyy-MM');
-        } else {
-          matches = format(orderDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
-        }
-        if (matches) {
-          revenue += Number(order.total);
-          orderCount += 1;
-        }
-      });
-      return { name: label, ventas: revenue, ordenes: orderCount };
-    });
-  }, [orders, trendRange]);
-
-  const salesTrendData = useMemo(() => {
-    const now = new Date();
-    let intervals: Date[] = [];
-    let groupFormat: string;
-    
     switch (dateFilter) {
       case 'today':
-        for (let i = 23; i >= 0; i--) {
-          intervals.push(new Date(now.getTime() - i * 60 * 60 * 1000));
-        }
+        for (let i = 23; i >= 0; i--) intervals.push(new Date(now.getTime() - i * 60 * 60 * 1000));
         groupFormat = 'HH:00';
+        esHora = true;
         break;
       case '7':
-        for (let i = 6; i >= 0; i--) {
-          intervals.push(subDays(now, i));
-        }
+        for (let i = 6; i >= 0; i--) intervals.push(subDays(now, i));
         groupFormat = 'EEE';
         break;
       case '30':
-        for (let i = 29; i >= 0; i--) {
-          intervals.push(subDays(now, i));
-        }
+        for (let i = 29; i >= 0; i--) intervals.push(subDays(now, i));
         groupFormat = 'dd MMM';
         break;
       case '90':
-        for (let i = 89; i >= 0; i -= 7) {
-          intervals.push(subDays(now, i));
-        }
+        for (let i = 89; i >= 0; i -= 7) intervals.push(subDays(now, i));
         groupFormat = 'dd MMM';
+        esSemanal90 = true;
         break;
-      default:
-        for (let i = 6; i >= 0; i--) {
-          intervals.push(subDays(now, i));
-        }
-        groupFormat = 'EEE';
+      case '180':
+        for (let i = 25; i >= 0; i--) intervals.push(subDays(now, i * 7));
+        groupFormat = 'dd MMM';
+        esSemanal90 = true;
+        break;
+      case '365':
+        for (let i = 11; i >= 0; i--) intervals.push(subMonths(now, i));
+        groupFormat = 'MMM yy';
+        esMes = true;
+        break;
+      case 'historico':
+      default: {
+        // Histórico: un punto por mes desde el pedido más antiguo (tope de
+        // 36 meses para no dibujar de más si hay años de datos).
+        const fechas = orders.map((o) => new Date(o.created_at).getTime());
+        const inicio = fechas.length > 0 ? new Date(Math.min(...fechas)) : now;
+        const mesesDesdeInicio = Math.min(
+          36,
+          Math.max(0, (now.getFullYear() - inicio.getFullYear()) * 12 + (now.getMonth() - inicio.getMonth()))
+        );
+        for (let i = mesesDesdeInicio; i >= 0; i--) intervals.push(subMonths(now, i));
+        groupFormat = 'MMM yy';
+        esMes = true;
+      }
     }
-    
+
     return intervals.map(date => {
       const label = format(date, groupFormat, { locale: es });
       let revenue = 0;
       let orderCount = 0;
-      
+
       orders.forEach(order => {
         const orderDate = new Date(order.created_at);
         let matches = false;
-        
-        if (dateFilter === 'today') {
+
+        if (esHora) {
           matches = format(orderDate, 'yyyy-MM-dd HH') === format(date, 'yyyy-MM-dd HH');
-        } else if (dateFilter === '90') {
+        } else if (esMes) {
+          matches = format(orderDate, 'yyyy-MM') === format(date, 'yyyy-MM');
+        } else if (esSemanal90) {
           const weekStart = startOfDay(date);
           const weekEnd = subDays(weekStart, -7);
           matches = isAfter(orderDate, weekStart) && !isAfter(orderDate, weekEnd);
         } else {
           matches = format(orderDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
         }
-        
+
         if (matches) {
           revenue += Number(order.total);
           orderCount += 1;
         }
       });
-      
+
       return { name: label, ventas: revenue, ordenes: orderCount };
     });
   }, [orders, dateFilter]);
@@ -938,6 +1069,7 @@ const AdminDashboard = () => {
     if (!q || pensando) return;
     setHistorialPreguntas((h) => [q, ...h.filter((x) => x !== q)].slice(0, 20));
     setMostrarHistorial(false);
+    setMostrarSugerencias(false);
     setMensajesChat((m) => [...m, { rol: 'usuario', texto: q }]);
     setPregunta('');
     setPensando(true);
@@ -1081,6 +1213,8 @@ const AdminDashboard = () => {
                 {activeSection === 'repartidores' && (<><Truck className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
                 {activeSection === 'notificaciones' && (<><Bell className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Notificaciones</>)}
                 {activeSection === 'help' && (<><HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Centro de Ayuda</>)}
+                {activeSection === 'agente-voz' && (<><Mic className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de voz</>)}
+                {activeSection === 'agente-whatsapp' && (<><MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Agente de WhatsApp</>)}
               </h1>
               {activeSection === 'dashboard' && (
                 <div className="flex items-center gap-2">
@@ -1120,24 +1254,30 @@ const AdminDashboard = () => {
                   Todo listo para que sigas administrando tu restaurante.
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Select value={dateFilter} onValueChange={(value: 'today' | '7' | '30' | '90') => setDateFilter(value)}>
-                  <SelectTrigger className="w-auto h-7 rounded-full border-border bg-card px-3 gap-1.5 focus:ring-0 focus:ring-offset-0 data-[state=open]:ring-0">
-                    <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Fecha</span>
-                    <span className="text-xs font-semibold text-primary">
-                      {dateFilter === 'today' ? 'Hoy' :
-                       dateFilter === '7' ? '7 días' :
-                       dateFilter === '30' ? '30 días' :
-                       '90 días'}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="today">Hoy</SelectItem>
-                    <SelectItem value="7">Últimos 7 días</SelectItem>
-                    <SelectItem value="30">Últimos 30 días</SelectItem>
-                    <SelectItem value="90">Últimos 90 días</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 p-0.5">
+                  {([
+                    ['today', 'Hoy'],
+                    ['7', '7 días'],
+                    ['30', '1 mes'],
+                    ['90', '3 meses'],
+                    ['180', '6 meses'],
+                    ['365', '1 año'],
+                    ['historico', 'Histórico'],
+                  ] as const).map(([valor, etiqueta]) => (
+                    <button
+                      key={valor}
+                      onClick={() => setDateFilter(valor)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                        dateFilter === valor
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {etiqueta}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={refrescarDatos}
                   disabled={refrescando}
@@ -1163,7 +1303,7 @@ const AdminDashboard = () => {
                     icon={DollarSign}
                     label="Ventas netas"
                     value={`$${filteredStats.revenue.toLocaleString()}`}
-                    nota={`${filteredStats.revenueChange >= 0 ? '+' : ''}${filteredStats.revenueChange.toFixed(1)}% ${getPeriodLabel()}`}
+                    nota={dateFilter === 'historico' ? getPeriodLabel() : `${filteredStats.revenueChange >= 0 ? '+' : ''}${filteredStats.revenueChange.toFixed(1)}% ${getPeriodLabel()}`}
                   />
                 </button>
                 <button onClick={() => openStatsDialog('orders')} className="w-full text-left">
@@ -1171,7 +1311,7 @@ const AdminDashboard = () => {
                     icon={ShoppingCart}
                     label="Número de órdenes"
                     value={String(filteredStats.orders)}
-                    nota={`${filteredStats.ordersChange >= 0 ? '+' : ''}${filteredStats.ordersChange.toFixed(1)}% ${getPeriodLabel()}`}
+                    nota={dateFilter === 'historico' ? getPeriodLabel() : `${filteredStats.ordersChange >= 0 ? '+' : ''}${filteredStats.ordersChange.toFixed(1)}% ${getPeriodLabel()}`}
                   />
                 </button>
                 <button onClick={() => openStatsDialog('customers')} className="w-full text-left">
@@ -1179,38 +1319,15 @@ const AdminDashboard = () => {
                     icon={DollarSign}
                     label="Valor promedio"
                     value={`$${filteredStats.averageOrder.toFixed(2)}`}
-                    nota={`${filteredStats.avgOrderChange >= 0 ? '+' : ''}${filteredStats.avgOrderChange.toFixed(1)}% ${getPeriodLabel()}`}
+                    nota={dateFilter === 'historico' ? getPeriodLabel() : `${filteredStats.avgOrderChange >= 0 ? '+' : ''}${filteredStats.avgOrderChange.toFixed(1)}% ${getPeriodLabel()}`}
                   />
                 </button>
               </div>
             </div>
 
-            {/* Sales & Orders Trend Charts */}
+            {/* Sales & Orders Trend Charts — sigue el mismo FECHA de arriba */}
             <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tendencias</p>
-                <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 p-0.5">
-                  {([
-                    ['dia', 'Día'],
-                    ['7', '7 días'],
-                    ['mes', 'Mes'],
-                    ['año', 'Año'],
-                    ['historico', 'Histórico'],
-                  ] as const).map(([valor, etiqueta]) => (
-                    <button
-                      key={valor}
-                      onClick={() => setTrendRange(valor)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                        trendRange === valor
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {etiqueta}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tendencias</p>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Ventas Chart */}
                 <Card>
@@ -1223,7 +1340,7 @@ const AdminDashboard = () => {
                   <CardContent>
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartTrendData} key={`ventas-${trendRange}`}>
+                        <LineChart data={salesTrendData}>
                           <XAxis
                             dataKey="name"
                             tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
@@ -1237,12 +1354,7 @@ const AdminDashboard = () => {
                             tickFormatter={(value) => `$${value}`}
                           />
                           <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'hsl(var(--popover))',
-                              border: '1px solid hsl(var(--border))',
-                              borderRadius: '8px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))'
-                            }}
+                            {...tooltipEstiloCompartido}
                             formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ventas']}
                           />
                           <Line
@@ -1273,7 +1385,7 @@ const AdminDashboard = () => {
                   <CardContent>
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartTrendData} key={`ordenes-${trendRange}`}>
+                        <LineChart data={salesTrendData}>
                           <XAxis
                             dataKey="name"
                             tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }}
@@ -1820,7 +1932,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-4'}`}>
+            <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-16 md:pt-24'}`}>
               {mensajesChat.length === 0 && (
                 <>
                   <AtiendeWordmark className="mb-6" markClassName="h-9 w-auto" animado />
@@ -1994,12 +2106,12 @@ const AdminDashboard = () => {
               {/* Sugerencias sueltas — sólo en reposo, DEBAJO del input,
                   como el estado inicial real de Likida. */}
               {mensajesChat.length === 0 && !mostrarSugerencias && (
-                <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
+                <div className="flex flex-wrap gap-1.5 justify-center mt-4 max-w-xl">
                   {preguntasSugeridasPlano.map((p) => (
                     <button
                       key={p}
                       onClick={() => responderPreguntaLocal(p)}
-                      className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
+                      className="text-xs rounded-full px-3 py-1 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
                     >
                       {p}
                     </button>
@@ -2021,6 +2133,199 @@ const AdminDashboard = () => {
         {activeSection === 'notificaciones' && (
           <div className="max-w-xl">
             <NotificacionesSection userId={user?.id} />
+          </div>
+        )}
+
+        {activeSection === 'agente-voz' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Agente de voz</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Desempeño real del agente de ElevenLabs — se llena solo con la actividad real, sin datos de ejemplo.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://elevenlabs.io/app/conversational-ai"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Abrir en ElevenLabs
+                </a>
+                <button
+                  onClick={cargarDatosAgentes}
+                  disabled={cargandoAgentes}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${cargandoAgentes ? 'animate-spin' : ''}`} />
+                  {cargandoAgentes ? 'Actualizando…' : 'Actualizar'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <TileKpiAgente
+                indice={0}
+                label="Pedidos completados por voz"
+                valor={statsAgentes && statsAgentes.voz.total > 0 ? (statsAgentes.voz.completados / statsAgentes.voz.total) * 100 : null}
+                meta="90%"
+              />
+              <TileKpiAgente
+                indice={1}
+                label="Participación del canal de voz"
+                valor={statsAgentes && statsAgentes.totalOrdenes > 0 ? (statsAgentes.voz.total / statsAgentes.totalOrdenes) * 100 : null}
+                meta="25%"
+              />
+              <TileKpiAgente
+                indice={2}
+                label="Tasa de cancelación (voz)"
+                valor={statsAgentes && statsAgentes.voz.total > 0 ? (statsAgentes.voz.cancelados / statsAgentes.voz.total) * 100 : null}
+                meta="menos de 5%"
+              />
+              <TileKpiAgente
+                indice={3}
+                label="Llamadas contestadas"
+                valor={null}
+                meta=""
+                notaGap="Falta bitácora de llamadas — el agente de voz aún no manda ese evento a Supabase, solo los pedidos que sí se completaron."
+              />
+              <TileKpiAgente
+                indice={4}
+                label="Escalación a humano"
+                valor={null}
+                meta=""
+                notaGap="El esquema no tiene una bandera de escalación todavía."
+              />
+              <TileKpiAgente
+                indice={5}
+                label="Uso de concurrencia"
+                valor={null}
+                meta=""
+                notaGap="ElevenLabs no manda esto por webhook — se revisa directo en su panel."
+              />
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Llamadas recientes</p>
+              {cargandoAgentes ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Cargando…</p>
+              ) : ordenesVoz.length === 0 ? (
+                <div className="py-10 text-center">
+                  <Mic className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">Sin llamadas todavía — en cuanto el agente reciba la primera, aparece aquí.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {ordenesVoz.map((o) => (
+                    <div key={o.id} className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{o.customer_name}</p>
+                        <p className="text-xs text-muted-foreground">{format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es })}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="font-mono tabular-nums text-sm text-foreground">${Number(o.total).toLocaleString('es-MX')}</span>
+                        {o.call_recording_url ? (
+                          <a href={o.call_recording_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline underline-offset-2">
+                            <PlayCircle className="w-3.5 h-3.5" /> Grabación
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60">Sin grabación</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'agente-whatsapp' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Agente de WhatsApp</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Desempeño real del bot de WhatsApp — se llena solo con la actividad real, sin datos de ejemplo.
+                </p>
+              </div>
+              <button
+                onClick={cargarDatosAgentes}
+                disabled={cargandoAgentes}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${cargandoAgentes ? 'animate-spin' : ''}`} />
+                {cargandoAgentes ? 'Actualizando…' : 'Actualizar'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <TileKpiAgente
+                indice={0}
+                label="Conversaciones que llegaron a pedido"
+                valor={conversacionesWhatsapp && conversacionesWhatsapp.total > 0 ? (conversacionesWhatsapp.conPedido / conversacionesWhatsapp.total) * 100 : null}
+                meta="40%"
+              />
+              <TileKpiAgente
+                indice={1}
+                label="Participación del canal de WhatsApp"
+                valor={statsAgentes && statsAgentes.totalOrdenes > 0 ? (statsAgentes.whatsapp.total / statsAgentes.totalOrdenes) * 100 : null}
+                meta="35%"
+              />
+              <TileKpiAgente
+                indice={2}
+                label="Tasa de cancelación (WhatsApp)"
+                valor={statsAgentes && statsAgentes.whatsapp.total > 0 ? (statsAgentes.whatsapp.cancelados / statsAgentes.whatsapp.total) * 100 : null}
+                meta="menos de 5%"
+              />
+              <TileKpiAgente
+                indice={3}
+                label="Mensajes promedio por conversación"
+                valor={conversacionesWhatsapp && conversacionesWhatsapp.total > 0 ? conversacionesWhatsapp.promedioMensajes : null}
+                meta="8 mensajes"
+                sufijo=""
+              />
+              <TileKpiAgente
+                indice={4}
+                label="Tiempo de primera respuesta"
+                valor={null}
+                meta=""
+                notaGap="El esquema guarda el arreglo de mensajes, no cuándo respondió el bot a cada uno."
+              />
+              <TileKpiAgente
+                indice={5}
+                label="Escalación a humano"
+                valor={null}
+                meta=""
+                notaGap="El esquema no tiene una bandera de escalación todavía."
+              />
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Pedidos recientes por WhatsApp</p>
+              {cargandoAgentes ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Cargando…</p>
+              ) : ordenesWhatsapp.length === 0 ? (
+                <div className="py-10 text-center">
+                  <MessageCircle className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">Sin pedidos por WhatsApp todavía — en cuanto entre el primero, aparece aquí.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {ordenesWhatsapp.map((o) => (
+                    <div key={o.id} className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{o.customer_name}</p>
+                        <p className="text-xs text-muted-foreground">{format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es })}</p>
+                      </div>
+                      <span className="font-mono tabular-nums text-sm text-foreground shrink-0">${Number(o.total).toLocaleString('es-MX')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

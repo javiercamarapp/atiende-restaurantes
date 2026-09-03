@@ -27,6 +27,7 @@ import {
   IdCard,
   GraduationCap,
   ChevronDown,
+  Mic,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeSelector } from '@/components/ThemeSelector';
@@ -62,6 +63,13 @@ const menuSections = [
       { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History, disabled: true },
       { id: 'pagos', label: 'Pagos', icon: CreditCard, disabled: true },
       { id: 'estados-solicitudes', label: 'Estados de solicitudes', icon: Clock, disabled: true },
+    ],
+  },
+  {
+    title: 'AGENTES',
+    items: [
+      { id: 'agente-voz', label: 'Agente de voz', icon: Mic },
+      { id: 'agente-whatsapp', label: 'Agente de WhatsApp', icon: MessageCircle },
     ],
   },
   {
