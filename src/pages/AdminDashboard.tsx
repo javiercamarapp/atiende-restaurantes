@@ -158,6 +158,26 @@ function TileKpiAgente({
 // Cifra chica del "Dashboards" del agente de voz — misma anatomía que
 // TileKpiAgente (motion + N/D honesto) pero sin el "Ver más" ni la meta,
 // porque aquí no hay una meta declarada, sólo la cifra cruda.
+// Cuenta regresiva/ascendente animada — mismas cifras reales de siempre,
+// solo que suben de 0 hasta el valor real al entrar a la pestaña en vez de
+// aparecer estáticas.
+function CifraAnimada({ valor, formato = (n: number) => String(Math.round(n)), duracionMs = 900 }: { valor: number; formato?: (n: number) => string; duracionMs?: number }) {
+  const [mostrado, setMostrado] = useState(0);
+  useEffect(() => {
+    let inicio: number | null = null;
+    let frame: number;
+    const tick = (t: number) => {
+      if (inicio === null) inicio = t;
+      const avance = Math.min(1, (t - inicio) / duracionMs);
+      setMostrado(valor * (1 - Math.pow(1 - avance, 3)));
+      if (avance < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [valor, duracionMs]);
+  return <>{formato(mostrado)}</>;
+}
+
 function TileDashboardVoz({
   icon: Icon,
   label,
@@ -167,25 +187,34 @@ function TileDashboardVoz({
 }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
   label: string;
-  valor: string;
+  valor: React.ReactNode;
   nota?: string;
   indice: number;
 }) {
+  // Misma anatomía que StatCard de "Estadísticas" (caja --canvas interna,
+  // chip de ícono sólido, pie con hairline punteado) — sólo agrega el
+  // stagger de entrada y acepta un `valor` animado (CifraAnimada).
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: indice * 0.04, ease: 'easeOut' }}
-      className="rounded-xl border border-border bg-muted/40 p-3"
+      className="bg-card border border-border rounded-xl p-2"
     >
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <div className="w-5 h-5 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          <Icon className="w-3 h-3" strokeWidth={1.75} />
+      <div className="rounded-lg px-3 py-2.5 bg-muted">
+        <div className="flex items-center gap-2.5 min-w-0 mb-1.5">
+          <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center shrink-0">
+            <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
+          </div>
+          <span className="text-[13px] text-muted-foreground truncate">{label}</span>
         </div>
-        <span className="text-[11px] text-muted-foreground truncate">{label}</span>
+        <p className="font-display text-xl font-semibold tabular-nums text-foreground">{valor}</p>
       </div>
-      <p className="font-display text-lg font-semibold tabular-nums text-foreground">{valor}</p>
-      {nota && <p className="text-[10px] text-muted-foreground/80 mt-0.5">{nota}</p>}
+      {nota && (
+        <div className="mx-1.5 mt-1.5 pt-1.5 border-t border-dashed border-border">
+          <p className="text-[11px] text-muted-foreground">{nota}</p>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -285,6 +314,9 @@ function DashboardAgente({
   sucursalesAgente = [],
   sucursalSeleccionada = 'global',
   onCambiarSucursal,
+  presets = [],
+  presetActivo,
+  onCambiarPreset,
 }: {
   canal: 'voz' | 'whatsapp';
   onCerrar: () => void;
@@ -300,6 +332,9 @@ function DashboardAgente({
   sucursalesAgente?: { id: string; name: string; elevenlabs_agent_id: string | null }[];
   sucursalSeleccionada?: string;
   onCambiarSucursal?: (id: string) => void;
+  presets?: readonly { id: string; etiqueta: string }[];
+  presetActivo?: string;
+  onCambiarPreset?: (id: string) => void;
 }) {
   const [mostrarSelectorEnDashboard, setMostrarSelectorEnDashboard] = useState(false);
   const PESTANAS_VOZ = [
@@ -341,7 +376,6 @@ function DashboardAgente({
             {nombreAgente}
             {canal === 'voz' && sucursalesAgente.length > 0 && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
           </button>
-          <p className="text-[10.5px] text-muted-foreground mt-0.5">{etiquetaRango}</p>
           {mostrarSelectorEnDashboard && (
             <div className="absolute left-0 top-9 z-30 w-52 rounded-xl border border-border bg-card shadow-lg p-1">
               <button
@@ -364,12 +398,29 @@ function DashboardAgente({
             </div>
           )}
         </div>
-        <button
-          onClick={onCerrar}
-          className="h-8 px-3.5 rounded-full bg-primary text-primary-foreground text-[12px] font-medium hover:opacity-90 transition-opacity shrink-0"
-        >
-          Regresar a Agente de {canal === 'voz' ? 'voz' : 'WhatsApp'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {presets.length > 0 && (
+            <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 p-0.5">
+              {presets.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onCambiarPreset?.(p.id)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                    presetActivo === p.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {p.etiqueta}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={onCerrar}
+            className="h-8 px-3.5 rounded-full bg-primary text-primary-foreground text-[12px] font-medium hover:opacity-90 transition-opacity shrink-0"
+          >
+            Regresar a Agente de {canal === 'voz' ? 'voz' : 'WhatsApp'}
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 overflow-x-auto">
@@ -389,20 +440,20 @@ function DashboardAgente({
       {pestana === 'general' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-            <TileDashboardVoz icon={Phone} label="Conversaciones" valor={datos ? String(datos.total) : '—'} indice={0} />
+            <TileDashboardVoz icon={Phone} label="Conversaciones" valor={datos ? <CifraAnimada valor={datos.total} /> : '—'} indice={0} />
             <TileDashboardVoz
               icon={CheckCircle2}
               label="Tasa de éxito"
-              valor={tasaExito === null ? 'N/D' : `${tasaExito.toFixed(1)}%`}
+              valor={tasaExito === null ? 'N/D' : <CifraAnimada valor={tasaExito} formato={(n) => `${n.toFixed(1)}%`} />}
               nota={tasaExito === null ? 'Aún sin conversaciones para calcularla' : undefined}
               indice={1}
             />
-            <TileDashboardVoz icon={XCircle} label="Canceladas" valor={datos ? String(datos.cancelados) : '—'} indice={2} />
-            <TileDashboardVoz icon={ShoppingCart} label="Pedidos completados" valor={datos ? String(datos.completados) : '—'} indice={3} />
+            <TileDashboardVoz icon={XCircle} label="Canceladas" valor={datos ? <CifraAnimada valor={datos.cancelados} /> : '—'} indice={2} />
+            <TileDashboardVoz icon={ShoppingCart} label="Pedidos completados" valor={datos ? <CifraAnimada valor={datos.completados} /> : '—'} indice={3} />
             <TileDashboardVoz
               icon={DollarSign}
               label="Ingresos generados"
-              valor={datos ? `$${datos.ingreso.toLocaleString('es-MX')}` : '—'}
+              valor={datos ? <CifraAnimada valor={datos.ingreso} formato={(n) => `$${Math.round(n).toLocaleString('es-MX')}`} /> : '—'}
               indice={4}
             />
             {canal === 'voz' ? (
@@ -3152,6 +3203,9 @@ const AdminDashboard = () => {
             sucursalesAgente={sucursalesAgente}
             sucursalSeleccionada={sucursalSeleccionada}
             onCambiarSucursal={setSucursalSeleccionada}
+            presets={PRESETS_RANGO_AGENTE}
+            presetActivo={presetRangoAgente}
+            onCambiarPreset={(id) => { setPresetRangoAgente(id); setRangoAgenteAplicado(undefined); }}
           />
         )}
 
@@ -3163,6 +3217,9 @@ const AdminDashboard = () => {
             statsAgentes={statsAgentes}
             mensajesPromedioWhatsapp={conversacionesWhatsapp?.promedioMensajes ?? null}
             etiquetaRango={etiquetaRangoAgente}
+            presets={PRESETS_RANGO_AGENTE}
+            presetActivo={presetRangoAgente}
+            onCambiarPreset={(id) => { setPresetRangoAgente(id); setRangoAgenteAplicado(undefined); }}
           />
         )}
 
