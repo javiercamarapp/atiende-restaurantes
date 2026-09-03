@@ -263,9 +263,10 @@ Deno.serve(async (req: Request) => {
         { data: topClientes },
         { data: ordenesResumen },
         { data: itemsRecientes },
+        { data: colonias },
       ] = await Promise.all([
         supabase.from("restaurants").select("name").eq("id", restaurantId).maybeSingle(),
-        supabase.from("branches").select("id, name, address, phone, hours, is_active, voice_agent_active, whatsapp_agent_active").eq("restaurant_id", restaurantId).order("display_order"),
+        supabase.from("branches").select("id, name, address, phone, hours, is_active, voice_agent_active, whatsapp_agent_active, lat, lng").eq("restaurant_id", restaurantId).order("display_order"),
         supabase.from("categories").select("id, name, display_order").eq("restaurant_id", restaurantId).order("display_order"),
         supabase.from("products").select("id, name, description, price, category_id, is_available, is_popular").eq("restaurant_id", restaurantId).order("display_order"),
         // Sin filtro por restaurante (branch_products no tiene restaurant_id
@@ -288,6 +289,7 @@ Deno.serve(async (req: Request) => {
         // recientes (no los 90,000 históricos completos) — un aggregate
         // real y representativo, no cada fila cruda del histórico completo.
         supabase.from("orders").select("items").eq("restaurant_id", restaurantId).gte("created_at", desde90).order("created_at", { ascending: false }).limit(10000),
+        supabase.from("merida_colonias").select("nombre, lat, lng").order("nombre"),
       ]);
 
       const nombreRestaurante = restauranteRow?.name ?? "el restaurante";
@@ -447,6 +449,41 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // --- Documento 5: colonias y su sucursal más cercana ----------------
+      // Bug real encontrado el 3-sep-2026 (llamada real de prueba de
+      // Javier): la propia colonia "altabrisa" tenía coordenadas viejas en
+      // merida_colonias y se coloneaba a la sucursal equivocada (Prol.
+      // Montejo en vez de Altabrisa) — un error así es invisible mientras
+      // vive solo dentro de la llamada a la herramienta en vivo. Este
+      // documento hace el mismo cálculo real que sucursal_mas_cercana
+      // (misma fórmula de distancia great-circle) para las ~200+ colonias
+      // reales, como referencia de auditoría para el equipo — no reemplaza
+      // la herramienta en vivo (los datos pueden cambiar entre sync), pero
+      // deja a la vista cualquier asignación que no cuadre a simple vista.
+      const distanciaKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+        const rad = Math.PI / 180;
+        const cosVal =
+          Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos(lng2 * rad - lng1 * rad) +
+          Math.sin(lat1 * rad) * Math.sin(lat2 * rad);
+        const clamped = Math.min(1, Math.max(-1, cosVal));
+        return Math.round(6371 * Math.acos(clamped) * 10) / 10;
+      };
+      // deno-lint-ignore no-explicit-any
+      const sucursalesConCoords = ((sucursales ?? []) as any[]).filter((s) => s.is_active && s.lat != null && s.lng != null);
+      let textoColonias = `# Colonias y su sucursal más cercana — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      textoColonias += `Calculado con las coordenadas reales de cada colonia y cada sucursal — mismo cálculo real que usa la herramienta buscar_sucursal_cercana en cada llamada/chat real. Referencia de auditoría; si una colonia real falta aquí, agrégala primero a la base de datos, no la inventes en este documento.\n\n`;
+      // deno-lint-ignore no-explicit-any
+      for (const c of (colonias ?? []) as any[]) {
+        if (c.lat == null || c.lng == null) continue;
+        const distancias = sucursalesConCoords
+          .map((s) => ({ nombre: s.name, km: distanciaKm(Number(c.lat), Number(c.lng), Number(s.lat), Number(s.lng)) }))
+          .sort((a, b) => a.km - b.km);
+        const [primera, segunda] = distancias;
+        if (!primera) continue;
+        const aviso = segunda && segunda.km - primera.km < 1 ? "  ⚠️ muy cerca de la 2ª opción, revisar coordenadas si algo se ve raro" : "";
+        textoColonias += `- ${c.nombre} → **${primera.nombre}** (${primera.km} km)${segunda ? `, 2ª más cercana: ${segunda.nombre} (${segunda.km} km)` : ""}${aviso}\n`;
+      }
+
       // --- Subir y reemplazar solo los documentos [Auto] ------------------
       const PREFIJO_AUTO = "[Auto] ";
       const documentosGenerados = [
@@ -454,6 +491,7 @@ Deno.serve(async (req: Request) => {
         { name: `${PREFIJO_AUTO}Sucursales, horarios y contacto`, text: textoSucursales },
         { name: `${PREFIJO_AUTO}Estadísticas de ventas y pedidos`, text: textoEstadisticas },
         { name: `${PREFIJO_AUTO}Personal y equipo`, text: textoPersonal },
+        { name: `${PREFIJO_AUTO}Colonias y sucursal más cercana`, text: textoColonias },
       ];
 
       const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
