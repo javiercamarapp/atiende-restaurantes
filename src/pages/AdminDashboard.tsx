@@ -274,28 +274,26 @@ function BotonZonaHoraria({ compacto = false }: { compacto?: boolean }) {
 
 function GraficaFantasma({ titulo }: { titulo: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3 flex flex-col">
-      <p className="text-[12px] text-muted-foreground mb-1">{titulo}</p>
-      <p className="font-display text-lg font-semibold text-muted-foreground/50 mb-2">—</p>
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-20">
-        <line x1="0" y1="0" x2="0" y2="40" stroke="hsl(var(--border))" strokeWidth="0.5" />
-        <line x1="0" y1="39.5" x2="100" y2="39.5" stroke="hsl(var(--border))" strokeWidth="0.5" />
-        <line x1="0" y1="14" x2="100" y2="14" stroke="hsl(var(--border))" strokeWidth="0.4" strokeDasharray="1 2" />
-        <line x1="0" y1="27" x2="100" y2="27" stroke="hsl(var(--border))" strokeWidth="0.4" strokeDasharray="1 2" />
+    <div className="rounded-xl border border-border/60 bg-card p-3.5 flex flex-col">
+      <p className="text-[11.5px] text-muted-foreground mb-2.5">{titulo}</p>
+      <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="w-full h-16">
+        <line x1="0" y1="31.5" x2="100" y2="31.5" stroke="hsl(var(--border))" strokeWidth="0.3" />
+        <line x1="0" y1="16" x2="100" y2="16" stroke="hsl(var(--border))" strokeWidth="0.3" strokeDasharray="0.5 2" />
         <motion.line
           x1="0"
-          y1="22"
+          y1="20"
           x2="100"
-          y2="22"
+          y2="20"
           stroke="hsl(var(--primary))"
-          strokeWidth="1.2"
+          strokeWidth="0.75"
           strokeLinecap="round"
-          strokeDasharray="3 3"
-          animate={{ strokeDashoffset: [0, -12] }}
-          transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
-          opacity="0.5"
+          strokeDasharray="2 2.5"
+          animate={{ strokeDashoffset: [0, -9] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+          opacity="0.3"
         />
       </svg>
+      <p className="text-[10.5px] text-muted-foreground/60 mt-2">Sin datos aún</p>
     </div>
   );
 }
@@ -428,8 +426,9 @@ function DashboardAgente({
   const [config, setConfig] = useState<ConfigAgente | null>(null);
   const [borrador, setBorrador] = useState<ConfigAgente | null>(null);
   const [voces, setVoces] = useState<VozDisponible[]>([]);
+  const [misVoces, setMisVoces] = useState<VozDisponible[]>([]);
   const [busquedaVoz, setBusquedaVoz] = useState('');
-  const [filtroGenero, setFiltroGenero] = useState<'todos' | 'male' | 'female'>('todos');
+  const [filtroGenero, setFiltroGenero] = useState<'todos' | 'male' | 'female' | 'mias'>('todos');
   const [cargandoConfig, setCargandoConfig] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorConfig, setErrorConfig] = useState<string | null>(null);
@@ -444,14 +443,29 @@ function DashboardAgente({
   const [modalClonarVozAbierto, setModalClonarVozAbierto] = useState(false);
   const onVozClonada = (voiceId: string, nombre: string) => {
     const nuevaVoz: VozDisponible = { voice_id: voiceId, public_owner_id: '', name: nombre, gender: '—', accent: 'clonada', description: '', preview_url: '' };
-    setVoces((prev) => [nuevaVoz, ...prev]);
+    setMisVoces((prev) => [nuevaVoz, ...prev]);
     if (borrador) setBorrador({ ...borrador, voice_id: voiceId, voice_public_owner_id: undefined });
   };
-  const vocesFiltradas = voces.filter((v) => {
+  // "Mis voces" primero, y sin repetir una que ya esté ahí (por si alguna
+  // vez se añadió una voz del catálogo compartido a la cuenta).
+  const todasLasVoces = [...misVoces, ...voces.filter((v) => !misVoces.some((m) => m.voice_id === v.voice_id))];
+  const vocesFiltradas = todasLasVoces.filter((v) => {
+    if (filtroGenero === 'mias') return misVoces.some((m) => m.voice_id === v.voice_id);
     if (filtroGenero !== 'todos' && v.gender !== filtroGenero) return false;
     if (busquedaVoz && !v.name.toLowerCase().includes(busquedaVoz.toLowerCase()) && !v.accent.toLowerCase().includes(busquedaVoz.toLowerCase())) return false;
     return true;
   });
+  const traducirGenero = (g: string) => (g === 'male' ? 'Hombre' : g === 'female' ? 'Mujer' : g);
+  const traducirAcento = (a: string) => {
+    const t = a.toLowerCase();
+    if (t.includes('mexic')) return 'mexicano';
+    if (t.includes('colomb')) return 'colombiano';
+    if (t.includes('argentin')) return 'argentino';
+    if (t.includes('latin')) return 'latinoamericano';
+    if (t.includes('neutral')) return 'neutral';
+    if (t === 'clonada') return 'clonada';
+    return a;
+  };
 
   useEffect(() => {
     if (canal !== 'voz' || !agentId) return;
@@ -460,12 +474,14 @@ function DashboardAgente({
     Promise.all([
       supabase.functions.invoke('agent-config', { body: { action: 'get', agent_id: agentId } }),
       supabase.functions.invoke('agent-config', { body: { action: 'voices' } }),
-    ]).then(([getRes, vocesRes]) => {
+      supabase.functions.invoke('agent-config', { body: { action: 'mis_voces' } }),
+    ]).then(([getRes, vocesRes, misVocesRes]) => {
       if (getRes.error || getRes.data?.error) throw getRes.error ?? new Error(getRes.data.error);
       const c: ConfigAgente = getRes.data;
       setConfig(c);
       setBorrador(c);
       if (!vocesRes.error && !vocesRes.data?.error) setVoces(vocesRes.data.voices ?? []);
+      if (!misVocesRes.error && !misVocesRes.data?.error) setMisVoces(misVocesRes.data.voices ?? []);
     }).catch((err) => {
       console.error('No se pudo cargar la configuración real del agente:', err);
       setErrorConfig('No se pudo conectar con ElevenLabs para leer la configuración real.');
@@ -825,7 +841,7 @@ function DashboardAgente({
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-[13px] font-medium text-foreground">Voz — {vocesFiltradas.length}/{voces.length || '…'} voces en español latino/mexicano</p>
+                    <p className="text-[13px] font-medium text-foreground">Voz — {vocesFiltradas.length}/{todasLasVoces.length || '…'} voces{misVoces.length > 0 ? `, ${misVoces.length} tuyas` : ''}</p>
                     <button
                       onClick={() => setModalClonarVozAbierto(true)}
                       className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-primary/40 text-primary hover:bg-primary/5 text-[11px] font-medium transition-colors"
@@ -843,13 +859,13 @@ function DashboardAgente({
                         className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground"
                       />
                     </div>
-                    {(['todos', 'female', 'male'] as const).map((g) => (
+                    {(['todos', 'mias', 'female', 'male'] as const).map((g) => (
                       <button
                         key={g}
                         onClick={() => setFiltroGenero(g)}
                         className={`h-8 px-2.5 rounded-lg text-[11px] font-medium border transition-colors shrink-0 ${filtroGenero === g ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
                       >
-                        {g === 'todos' ? 'Todas' : g === 'female' ? 'Mujer' : 'Hombre'}
+                        {g === 'todos' ? 'Todas' : g === 'mias' ? `Mis voces (${misVoces.length})` : g === 'female' ? 'Mujer' : 'Hombre'}
                       </button>
                     ))}
                   </div>
@@ -877,14 +893,14 @@ function DashboardAgente({
                         </button>
                         <div className="min-w-0 flex-1">
                           <p className="text-[13px] text-foreground truncate">{v.name}</p>
-                          <p className="text-[10.5px] text-muted-foreground truncate">{v.gender} · {v.accent}</p>
+                          <p className="text-[10.5px] text-muted-foreground truncate">{traducirGenero(v.gender)} · {traducirAcento(v.accent)}</p>
                         </div>
                         {borrador.voice_id === v.voice_id && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
                       </div>
                     ))}
                     {vocesFiltradas.length === 0 && (
                       <p className="text-[12px] text-muted-foreground p-3">
-                        {voces.length === 0 ? 'No se pudo cargar el catálogo de voces.' : 'Sin resultados para ese filtro.'}
+                        {todasLasVoces.length === 0 ? 'No se pudo cargar el catálogo de voces.' : 'Sin resultados para ese filtro.'}
                       </p>
                     )}
                   </div>
@@ -2731,11 +2747,11 @@ const AdminDashboard = () => {
         {activeSection === 'products' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Productos ({products.length})</p>
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{products.length} en total</p>
               <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button onClick={() => { setEditingProduct(null); resetProductForm(); }} className="bg-primary hover:bg-primary/90">
-                    <Plus className="w-4 h-4 mr-2" /> Agregar
+                  <Button onClick={() => { setEditingProduct(null); resetProductForm(); }} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                    <Plus className="w-3.5 h-3.5" /> Agregar
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
@@ -2832,11 +2848,11 @@ const AdminDashboard = () => {
         {activeSection === 'categories' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Categorías ({categories.length})</p>
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{categories.length} en total</p>
               <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button onClick={() => setCategoryForm({ name: "", slug: "" })} className="bg-primary hover:bg-primary/90">
-                    <Plus className="w-4 h-4 mr-2" /> Agregar
+                  <Button onClick={() => setCategoryForm({ name: "", slug: "" })} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                    <Plus className="w-3.5 h-3.5" /> Agregar
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-md">
@@ -2942,7 +2958,7 @@ const AdminDashboard = () => {
         {/* Orders Section */}
         {activeSection === 'orders' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Pedidos ({orders.length})</p>
+            <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{orders.length} en total</p>
 
             {orders.length === 0 ? (
               <div className="py-12 text-center">
@@ -2989,7 +3005,7 @@ const AdminDashboard = () => {
         {/* Users Section */}
         {activeSection === 'users' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Usuarios ({profiles.length})</p>
+            <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{profiles.length} en total</p>
 
             {profiles.length === 0 ? (
               <div className="py-12 text-center">
@@ -3034,11 +3050,11 @@ const AdminDashboard = () => {
         {activeSection === 'promos' && (
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Promociones ({promos.length})</p>
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{promos.length} en total</p>
               <Dialog open={promoDialogOpen} onOpenChange={setPromoDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button onClick={() => { setEditingPromo(null); setPromoForm({ title: '', description: '', image_url: '', discount_text: '', is_active: true }); }} className="bg-primary hover:bg-primary/90">
-                    <Plus className="w-4 h-4 mr-2" /> Agregar
+                  <Button onClick={() => { setEditingPromo(null); setPromoForm({ title: '', description: '', image_url: '', discount_text: '', is_active: true }); }} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                    <Plus className="w-3.5 h-3.5" /> Agregar
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-md">
