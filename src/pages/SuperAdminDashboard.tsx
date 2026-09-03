@@ -8,8 +8,13 @@ import { StatCard } from "@/components/admin/ui/StatCard";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
   LifeBuoy, Bell, UserRound, CreditCard, Settings, Send, Search, Paperclip,
-  History, X, ArrowUp, PanelLeftClose, PanelLeftOpen,
+  History, X, ArrowUp, PanelLeftClose, PanelLeftOpen, Edit, PanelRightClose,
+  FileDown,
 } from "lucide-react";
+import { CampoPixeles } from "@/components/CampoPixeles";
+import { motion, AnimatePresence } from "framer-motion";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Restaurant {
   id: string;
@@ -47,9 +52,13 @@ const SuperAdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState<"resumen" | "restaurantes" | "clientes" | "pregunta">("resumen");
   const [pregunta, setPregunta] = useState("");
-  const [respuesta, setRespuesta] = useState<CustomerRow[] | OrderRow[] | null>(null);
+  const [mensajesChat, setMensajesChat] = useState<{ rol: 'usuario' | 'asistente'; texto: string; filas?: (CustomerRow | OrderRow)[] }[]>([]);
+  const [pensando, setPensando] = useState(false);
+  const [fasePensando, setFasePensando] = useState('');
   const [historial, setHistorial] = useState<string[]>([]);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+  const [busquedaHistorial, setBusquedaHistorial] = useState('');
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
 
   useEffect(() => {
@@ -104,36 +113,102 @@ const SuperAdminDashboard = () => {
     };
   };
 
-  // Búsqueda simple y determinista (no es un motor de lenguaje natural real
-  // todavía — responde a las preguntas sugeridas y a nombre/teléfono).
-  const responderPregunta = (q: string) => {
-    if (!q.trim()) return;
+  // Búsqueda simple y determinista sobre los datos ya cargados de TODA la
+  // plataforma (no es un motor de lenguaje natural real todavía — mismo
+  // criterio honesto que el panel de tenant). Las fases de "pensando" son
+  // solo estado de carga, la búsqueda es instantánea.
+  const FASES_PENSANDO_SA = ['Leyendo la plataforma…', 'Calculando cifras…', 'Preparando la respuesta…'];
+
+  const responderPregunta = async (qInput: string) => {
+    const q = qInput.trim();
+    if (!q || pensando) return;
     setHistorial((h) => [q, ...h.filter((x) => x !== q)].slice(0, 20));
     setMostrarHistorial(false);
+    setMensajesChat((m) => [...m, { rol: 'usuario', texto: q }]);
+    setPregunta('');
+    setPensando(true);
+    for (const fase of FASES_PENSANDO_SA) {
+      setFasePensando(fase);
+      await new Promise((r) => setTimeout(r, 260));
+    }
+
     const needle = q.toLowerCase();
-    if (needle.includes("pendiente")) {
-      setRespuesta(orders.filter((o) => o.status === "pending" || o.status === "preparando"));
-      return;
+    let filas: (CustomerRow | OrderRow)[] | undefined;
+    let texto: string;
+
+    if (needle.includes('mrr') || needle.includes('ingreso mensual') || needle.includes('gasto') || needle.includes('costo de ia') || needle.includes('costos')) {
+      texto = 'Todavía no rastreamos MRR, gastos ni costo de IA en este panel — sólo pedidos, restaurantes y clientes. En cuanto haya una fuente real (facturación, uso de LLM), se agrega aquí.';
+    } else if (needle.includes('pendiente')) {
+      filas = orders.filter((o) => o.status === 'pending' || o.status === 'preparando');
+      const total = filas.reduce((s, o) => s + Number((o as OrderRow).total), 0);
+      texto = filas.length > 0
+        ? `Hay ${filas.length} pedido${filas.length === 1 ? '' : 's'} pendiente${filas.length === 1 ? '' : 's'} en toda la plataforma, por $${total.toLocaleString('es-MX')}.`
+        : 'No hay pedidos pendientes en ningún restaurante en este momento.';
+    } else if (needle.includes('hoy') || needle.includes('vendido') || needle.includes('ingreso')) {
+      filas = orders.filter((o) => isToday(o.created_at));
+      const total = filas.reduce((s, o) => s + Number((o as OrderRow).total), 0);
+      texto = `Hoy entraron ${filas.length} pedido${filas.length === 1 ? '' : 's'} en toda la plataforma, por $${total.toLocaleString('es-MX')}.`;
+    } else if (needle.includes('restaurante') || needle.includes('activo')) {
+      const activos = restaurants.filter((r) => r.is_active).length;
+      texto = `Tienes ${restaurants.length} restaurante${restaurants.length === 1 ? '' : 's'} dado${restaurants.length === 1 ? '' : 's'} de alta, ${activos} activo${activos === 1 ? '' : 's'}.`;
+    } else if (needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas'))) {
+      filas = [...customers].sort((a, b) => b.order_count - a.order_count).slice(0, 10);
+      texto = `Estos son tus clientes con más pedidos en toda la plataforma.`;
+    } else {
+      filas = customers.filter((c) => (c.name ?? '').toLowerCase().includes(needle) || c.phone.includes(needle));
+      texto = filas.length > 0
+        ? `Encontré ${filas.length} cliente${filas.length === 1 ? '' : 's'} que coincide${filas.length === 1 ? '' : 'n'} con "${q}".`
+        : `No encontré clientes que coincidan con "${q}". Pregúntame por pendientes, lo de hoy, restaurantes activos, tus clientes más recurrentes, o un nombre/teléfono.`;
     }
-    if (needle.includes("hoy") || needle.includes("vendido") || needle.includes("ingreso")) {
-      setRespuesta(orders.filter((o) => isToday(o.created_at)));
-      return;
-    }
-    if (needle.includes("cliente") || needle.includes("recurrente")) {
-      setRespuesta([...customers].sort((a, b) => b.order_count - a.order_count).slice(0, 10));
-      return;
-    }
-    setRespuesta(
-      customers.filter((c) => (c.name ?? "").toLowerCase().includes(needle) || c.phone.includes(needle)),
-    );
+
+    setMensajesChat((m) => [...m, { rol: 'asistente', texto, filas }]);
+    setPensando(false);
   };
 
-  const preguntasSugeridas = [
-    "¿Cuántos pedidos están pendientes?",
-    "¿Quiénes son mis clientes más recurrentes?",
-    "¿Cuánto llevo vendido hoy?",
-    "¿Qué pedidos entraron hoy?",
+  const descargarPdfRespuestaSA = (preguntaTexto: string, texto: string, filas?: (CustomerRow | OrderRow)[]) => {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text('Atiende — Reporte de plataforma', 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(120);
+    doc.text(new Date().toLocaleString('es-MX'), 14, 25);
+    doc.setTextColor(0);
+    doc.setFontSize(11);
+    doc.text(`Pregunta: ${preguntaTexto}`, 14, 35);
+    const textoLineas = doc.splitTextToSize(texto, 180);
+    doc.text(textoLineas, 14, 43);
+    if (filas && filas.length > 0) {
+      const esCliente = 'phone' in filas[0];
+      autoTable(doc, {
+        startY: 43 + textoLineas.length * 6 + 6,
+        head: esCliente ? [['Nombre', 'Teléfono', 'Pedidos']] : [['Fecha', 'Total']],
+        body: filas.map((r) =>
+          esCliente
+            ? [(r as CustomerRow).name || 'Sin nombre', (r as CustomerRow).phone, String((r as CustomerRow).order_count)]
+            : [new Date((r as OrderRow).created_at).toLocaleString('es-MX'), `$${Number((r as OrderRow).total).toLocaleString('es-MX')}`]
+        ),
+        headStyles: { fillColor: [37, 99, 235] },
+      });
+    }
+    doc.save(`atiende-plataforma-${Date.now()}.pdf`);
+  };
+
+  const categoriasPreguntasSA = [
+    {
+      titulo: 'PLATAFORMA Y VENTAS',
+      preguntas: ['¿Qué pedidos entraron hoy?', '¿Cuánto llevo vendido hoy?', '¿Cuántos pedidos están pendientes?'],
+    },
+    {
+      titulo: 'RESTAURANTES',
+      preguntas: ['¿Cuántos restaurantes activos tengo?'],
+    },
+    {
+      titulo: 'CLIENTES',
+      preguntas: ['¿Quiénes son mis clientes más recurrentes?', 'Busca un cliente por nombre o teléfono'],
+    },
   ];
+  const preguntasSugeridasSAPlano = categoriasPreguntasSA.flatMap((c) => c.preguntas);
+  const historialFiltradoSA = historial.filter((h) => h.toLowerCase().includes(busquedaHistorial.toLowerCase()));
 
   const navItems = [
     { id: "resumen" as const, label: "Resumen", icon: LayoutGrid },
@@ -228,28 +303,28 @@ const SuperAdminDashboard = () => {
           blanco arriba, cuerpo gris abajo con las tarjetas encima, todo dentro
           del mismo recuadro redondeado. */}
       <div className="flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
-        <div className="h-12 flex items-center justify-between px-4 shrink-0 border-b border-border bg-card sticky top-0 z-10">
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            {section === "resumen" && <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-            {section === "pregunta" && <MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-            {section === "restaurantes" && <Store className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-            {section === "clientes" && <Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-            <span className="font-medium">
-              {section === "resumen" && "Consola de Atiende Restaurantes"}
-              {section === "pregunta" && "Pregunta a tus datos"}
-              {section === "restaurantes" && "Restaurantes"}
-              {section === "clientes" && "Clientes"}
-            </span>
+        {section !== "pregunta" && (
+          <div className="h-12 flex items-center justify-between px-4 shrink-0 border-b border-border bg-card sticky top-0 z-10">
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              {section === "resumen" && <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+              {section === "restaurantes" && <Store className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+              {section === "clientes" && <Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+              <span className="font-medium">
+                {section === "resumen" && "Consola de Atiende Restaurantes"}
+                {section === "restaurantes" && "Restaurantes"}
+                {section === "clientes" && "Clientes"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Bell className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+              <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
+                {new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
-              <Bell className="w-4 h-4" strokeWidth={1.75} />
-            </button>
-            <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
-              {new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
-            </span>
-          </div>
-        </div>
+        )}
 
         <div className="w-full flex-1 overflow-auto bg-muted/30 p-6">
           {loading ? (
@@ -273,15 +348,9 @@ const SuperAdminDashboard = () => {
               </SectionCard>
             </>
           ) : section === "pregunta" ? (
-            <div
-              className="relative min-h-[calc(100vh-6.5rem)] -m-6 pt-4 px-6"
-              style={{
-                backgroundImage: "radial-gradient(hsl(var(--border)) 1px, transparent 1px)",
-                backgroundSize: "18px 18px",
-                backgroundPosition: "-9px -9px",
-              }}
-            >
-              <div className="flex justify-end mb-8">
+            <div className="relative min-h-[calc(100vh-6.5rem)] -m-6 pt-4 px-6 overflow-hidden">
+              <CampoPixeles />
+              <div className="flex justify-end mb-6">
                 <button
                   onClick={() => setMostrarHistorial((v) => !v)}
                   className="relative flex items-center gap-1.5 text-xs border border-border rounded-full pl-3 pr-2.5 py-1.5 bg-card text-muted-foreground hover:bg-muted transition-colors"
@@ -292,34 +361,171 @@ const SuperAdminDashboard = () => {
                 </button>
               </div>
 
+              {/* Panel de historial — mismo patrón flotante que el de tenant. */}
               {mostrarHistorial && (
-                <div className="absolute right-6 top-16 z-20 w-72 max-h-80 overflow-y-auto rounded-xl border border-border bg-card shadow-lg p-2">
-                  {historial.length === 0 ? (
-                    <p className="text-xs text-muted-foreground p-3">Todavía no has hecho preguntas.</p>
-                  ) : (
-                    historial.map((h, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { setPregunta(h); responderPregunta(h); }}
-                        className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate"
-                      >
-                        {h}
-                      </button>
-                    ))
-                  )}
+                <div className="absolute right-3 top-3 bottom-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
+                  <div className="p-3 flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => { setMensajesChat([]); setMostrarHistorial(false); setMostrarSugerencias(false); }}
+                      className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      Nuevo chat
+                    </button>
+                    <button
+                      onClick={() => setMostrarHistorial(false)}
+                      className="w-8 h-8 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                    >
+                      <PanelRightClose className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="px-3 pb-3 shrink-0">
+                    <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-2">
+                      <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <input
+                        value={busquedaHistorial}
+                        onChange={(e) => setBusquedaHistorial(e.target.value)}
+                        placeholder="Buscar chats"
+                        className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                      />
+                    </div>
+                  </div>
+                  <p className="px-4 pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground shrink-0">
+                    Recientes
+                  </p>
+                  <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-0.5">
+                    {historialFiltradoSA.length === 0 ? (
+                      <p className="text-sm text-muted-foreground px-2 py-2">
+                        {historial.length === 0 ? 'Sin chats recientes.' : 'Sin resultados.'}
+                      </p>
+                    ) : (
+                      historialFiltradoSA.map((h, i) => (
+                        <button
+                          key={i}
+                          onClick={() => { setMostrarHistorial(false); responderPregunta(h); }}
+                          className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate text-foreground"
+                        >
+                          {h}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
 
-              <div className="flex flex-col items-center pt-6 pb-16">
-                <AtiendeWordmark className="mb-6 scale-125" />
-                <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
-                <p className="text-sm text-muted-foreground text-center max-w-md mb-8">
-                  Tu operación, con la cifra que ya calculó el sistema — pregunta por clientes o pedidos en toda la plataforma.
-                </p>
+              <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-4'}`}>
+                {mensajesChat.length === 0 && (
+                  <>
+                    <AtiendeWordmark className="mb-6" markClassName="h-9 w-auto" animado />
+                    <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
+                    <p className="text-sm text-muted-foreground text-center max-w-md mb-8">
+                      Tu operación, con la cifra que ya calculó el sistema — pregunta por clientes, restaurantes o pedidos en toda la plataforma.
+                    </p>
+                  </>
+                )}
+
+                {/* Hilo de conversación — mismo patrón que el panel de tenant:
+                    burbuja del usuario a la derecha, respuesta como texto +
+                    tabla de resultados con hairline punteado. */}
+                {mensajesChat.length > 0 && (
+                  <div className="w-full max-w-2xl space-y-5 mb-6">
+                    {mensajesChat.map((m, i) => (
+                      m.rol === 'usuario' ? (
+                        <div key={i} className="flex justify-end">
+                          <div className="max-w-[80%] bg-card border border-border rounded-2xl px-4 py-2 text-sm text-foreground shadow-sm">
+                            {m.texto}
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={i} className="space-y-3">
+                          <div className="flex items-start gap-2">
+                            <AtiendeMark className="h-4 w-auto shrink-0 mt-0.5" />
+                            <p className="text-sm text-foreground leading-relaxed">{m.texto}</p>
+                          </div>
+
+                          {m.filas && m.filas.length > 0 && (
+                            <div className="rounded-xl border border-border bg-card p-3">
+                              <ul className="space-y-2 text-sm">
+                                {m.filas.slice(0, 10).map((r, j) => (
+                                  <li key={j} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
+                                    {'phone' in r ? (
+                                      <>
+                                        <span>{r.name || 'Sin nombre'} · {r.phone}</span>
+                                        <span className="font-mono tabular-nums text-muted-foreground">{r.order_count} pedidos</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span>{new Date(r.created_at).toLocaleString('es-MX')}</span>
+                                        <span className="font-mono tabular-nums text-muted-foreground">${Number(r.total).toLocaleString('es-MX')}</span>
+                                      </>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {m.filas && m.filas.length > 0 && (
+                            <button
+                              onClick={() => descargarPdfRespuestaSA(mensajesChat[i - 1]?.texto ?? '', m.texto, m.filas)}
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors ml-6"
+                            >
+                              <FileDown className="w-3.5 h-3.5" />
+                              Descargar PDF
+                            </button>
+                          )}
+                        </div>
+                      )
+                    ))}
+
+                    {pensando && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <AtiendeMark className="h-4 w-auto atiende-respira shrink-0" />
+                        <span>{fasePensando}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Categorías — sólo al apretar Consulta con el campo vacío,
+                    arriba del input (igual que en el panel de tenant). */}
+                <AnimatePresence>
+                  {mostrarSugerencias && (
+                    <motion.div
+                      key="categorias"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.25, ease: 'easeOut' }}
+                      className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mb-5"
+                    >
+                      {categoriasPreguntasSA.map((cat) => (
+                        <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
+                          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
+                          <div className="space-y-1">
+                            {cat.preguntas.map((p) => (
+                              <button
+                                key={p}
+                                onClick={() => responderPregunta(p)}
+                                className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                              >
+                                {p}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <form
-                  onSubmit={(e) => { e.preventDefault(); responderPregunta(pregunta); }}
-                  className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!pregunta.trim()) { setMostrarSugerencias((v) => !v); return; }
+                    responderPregunta(pregunta);
+                  }}
+                  className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0"
                 >
                   <input
                     value={pregunta}
@@ -340,7 +546,8 @@ const SuperAdminDashboard = () => {
                   <div className="flex items-center justify-between mt-1">
                     <button
                       type="submit"
-                      className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 transition-opacity"
+                      disabled={pensando}
+                      className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
                       <Search className="w-3.5 h-3.5" />
                       Consulta
@@ -354,57 +561,33 @@ const SuperAdminDashboard = () => {
                           onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
                         />
                       </label>
-                      <Button type="submit" size="icon" className="rounded-full shrink-0 w-8 h-8">
+                      <Button type="submit" size="icon" disabled={pensando} className="rounded-full shrink-0 w-8 h-8">
                         <ArrowUp className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
                 </form>
 
-                <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
-                  {preguntasSugeridas.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => { setPregunta(p); responderPregunta(p); }}
-                      className="text-xs border border-border rounded-full px-3 py-1.5 bg-card text-muted-foreground hover:bg-muted transition-colors"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-
-                <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
-                  Responde con cifras ya calculadas en el servidor — búsqueda simple por nombre, teléfono y estatus por ahora, no
-                  un motor de lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos ni lo
-                  analizamos automáticamente.
-                </p>
-
-                {respuesta && (
-                  <div className="w-full max-w-xl mt-8">
-                    <SectionCard title={`${respuesta.length} resultado${respuesta.length === 1 ? "" : "s"}`}>
-                      {respuesta.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Sin resultados.</p>
-                      ) : (
-                        <ul className="space-y-2 text-sm">
-                          {respuesta.slice(0, 10).map((r, i) => (
-                            <li key={i} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
-                              {"phone" in r ? (
-                                <>
-                                  <span>{r.name || "Sin nombre"} · {r.phone}</span>
-                                  <span className="font-mono tabular-nums text-muted-foreground">{r.order_count} pedidos</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span>{new Date(r.created_at).toLocaleString("es-MX")}</span>
-                                  <span className="font-mono tabular-nums text-muted-foreground">${Number(r.total).toLocaleString("es-MX")}</span>
-                                </>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </SectionCard>
+                {mensajesChat.length === 0 && !mostrarSugerencias && (
+                  <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
+                    {preguntasSugeridasSAPlano.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => responderPregunta(p)}
+                        className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
+                      >
+                        {p}
+                      </button>
+                    ))}
                   </div>
+                )}
+
+                {mensajesChat.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
+                    Responde con cifras ya calculadas en el servidor — búsqueda simple por nombre, teléfono y estatus por ahora, no
+                    un motor de lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos ni lo
+                    analizamos automáticamente.
+                  </p>
                 )}
               </div>
             </div>
