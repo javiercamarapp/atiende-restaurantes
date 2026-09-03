@@ -492,6 +492,23 @@ const AdminDashboard = () => {
     document.body.appendChild(script);
   }, [activeSection, agentIdActivo]);
 
+  // "Vista previa" no tiene forma de escuchar el evento real de "el
+  // usuario cerró el panel del widget" (no lo expone la API pública) — así
+  // que lo inferimos: mientras está activo, medimos el tamaño real del
+  // widget en pantalla cada 800ms. Colapsado es una burbuja chica; abierto
+  // es un panel grande. En cuanto vuelve a ser chico, se apaga el azul.
+  useEffect(() => {
+    if (!vistaPreviaActiva) return;
+    const intervalo = setInterval(() => {
+      const widget = document.querySelector('elevenlabs-convai');
+      const caja = widget?.getBoundingClientRect();
+      if (!caja || (caja.width < 150 && caja.height < 150)) {
+        setVistaPreviaActiva(false);
+      }
+    }, 800);
+    return () => clearInterval(intervalo);
+  }, [vistaPreviaActiva]);
+
   // El color del botón ("Iniciar llamada") del widget real sólo se puede
   // fijar desde el dashboard de ElevenLabs (Agente → Widget) o su API —
   // no hay atributo HTML para eso (verificado en su documentación).
