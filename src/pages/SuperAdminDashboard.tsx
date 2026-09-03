@@ -38,6 +38,8 @@ const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toD
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -58,11 +60,13 @@ const SuperAdminDashboard = () => {
       }
       setUserEmail(session.user.email ?? "");
 
-      const [{ data: r }, { data: o }, { data: c }] = await Promise.all([
+      const [{ data: r }, { data: o }, { data: c }, { data: profile }] = await Promise.all([
         supabase.from("restaurants").select("id, name, slug, is_active").order("created_at"),
         supabase.from("orders").select("restaurant_id, total, status, created_at"),
         supabase.from("customers").select("restaurant_id, name, phone, order_count, last_order_at").order("last_order_at", { ascending: false }),
+        supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle(),
       ]);
+      setUserName(profile?.nombre?.split(" ")[0] || (session.user.email ?? "").split("@")[0]);
       setRestaurants(r ?? []);
       setOrders(o ?? []);
       setCustomers(c ?? []);
@@ -134,12 +138,18 @@ const SuperAdminDashboard = () => {
           header ni con el contenido): mismo patrón que el sidebar real de
           Likida. Logo suelto arriba, nav suelta, y todo lo de cuenta abajo
           metido en su propio recuadro más gris. */}
-      <aside className="hidden md:flex flex-col w-60 shrink-0 rounded-2xl border border-border bg-card sticky top-3 h-[calc(100vh-1.5rem)] overflow-hidden">
-        <div className="h-16 flex items-center px-5 border-b border-border shrink-0">
-          <AtiendeWordmark />
+      <aside className={`hidden md:flex flex-col shrink-0 rounded-2xl border border-border bg-card sticky top-3 h-[calc(100vh-1.5rem)] overflow-hidden transition-all duration-300 ${collapsed ? "w-16" : "w-60"}`}>
+        <div className="h-14 flex items-center justify-between px-3.5 shrink-0">
+          {!collapsed ? <AtiendeWordmark className="scale-90 origin-left" /> : <AtiendeMark className="h-6 w-auto" />}
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="w-6 h-6 rounded-md border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+          >
+            {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+          </button>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground px-2.5 mb-1.5">Superadmin</p>
+        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
+          {!collapsed && <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground px-2.5 mb-1.5">Superadmin</p>}
           {navItems.map((item) => (
             <button
               key={item.id}
@@ -151,56 +161,63 @@ const SuperAdminDashboard = () => {
               }`}
             >
               <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-              <span className="truncate">{item.label}</span>
+              {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
           ))}
         </nav>
 
         <div className="p-3 space-y-2 shrink-0">
           {/* Recuadro de cuenta — bg-muted, visualmente separado de la nav */}
-          <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
-              <LifeBuoy className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
-              <span className="truncate">Centro de ayuda</span>
-            </button>
-            {[
-              { label: "Notificaciones", icon: Bell },
-              { label: "Mi perfil", icon: UserRound },
-              { label: "Plan y facturación", icon: CreditCard },
-              { label: "Configuración", icon: Settings },
-            ].map((it) => (
-              <button key={it.label} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-background transition-colors">
-                <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">{it.label}</span>
+          {!collapsed && (
+            <div className="rounded-xl bg-muted/60 border border-border p-2 space-y-0.5">
+              <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] font-medium border border-border bg-background hover:bg-muted transition-colors">
+                <LifeBuoy className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.75} />
+                <span className="truncate">Centro de ayuda</span>
               </button>
-            ))}
-            <div className="pt-1 flex justify-center">
-              <ThemeSelector />
+              {[
+                { label: "Notificaciones", icon: Bell },
+                { label: "Mi perfil", icon: UserRound },
+                { label: "Plan y facturación", icon: CreditCard },
+                { label: "Configuración", icon: Settings },
+              ].map((it) => (
+                <button key={it.label} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] text-muted-foreground hover:bg-background transition-colors">
+                  <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                  <span className="truncate">{it.label}</span>
+                </button>
+              ))}
+              <div className="pt-1 flex justify-center">
+                <ThemeSelector />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Chip de usuario — recuadro aparte, blanco */}
-          <div className="rounded-xl border border-border bg-card p-2.5">
+          <div className={`rounded-xl border border-border bg-card ${collapsed ? "p-2" : "p-2.5"}`}>
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-medium shrink-0">
-                {userEmail.charAt(0).toUpperCase()}
+                {(userName || userEmail).charAt(0).toUpperCase()}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-foreground truncate">{userEmail.split("@")[0]}</p>
-                <p className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Superadmin</p>
-              </div>
-              <button onClick={handleLogout} className="text-destructive hover:opacity-70 shrink-0">
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
+              {!collapsed && (
+                <>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-foreground truncate">{userName}</p>
+                    <p className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Superadmin</p>
+                  </div>
+                  <button onClick={handleLogout} className="text-destructive hover:opacity-70 shrink-0">
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main — su propia columna, con el header como panel flotante aparte,
-          no fundido al sidebar ni al contenido de abajo. */}
-      <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <div className="rounded-2xl border border-border bg-card h-14 flex items-center justify-between px-6 shrink-0 sticky top-3 z-10">
+      {/* Main — UN solo panel grande (como la consola real de Likida): encabezado
+          blanco arriba, cuerpo gris abajo con las tarjetas encima, todo dentro
+          del mismo recuadro redondeado. */}
+      <div className="flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
+        <div className="h-14 flex items-center justify-between px-6 shrink-0 border-b border-border bg-card sticky top-0 z-10">
           <div className="flex items-center gap-2 text-sm text-foreground">
             <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
             <span className="font-medium">
@@ -210,12 +227,17 @@ const SuperAdminDashboard = () => {
               {section === "clientes" && "Clientes"}
             </span>
           </div>
-          <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1">
-            {new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
-          </span>
+          <div className="flex items-center gap-2">
+            <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+              <Bell className="w-4 h-4" strokeWidth={1.75} />
+            </button>
+            <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5">
+              {new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
+            </span>
+          </div>
         </div>
 
-        <div className="w-full p-6 pt-4">
+        <div className="w-full flex-1 overflow-auto bg-muted/30 p-6">
           {loading ? (
             <p className="text-sm text-muted-foreground">Cargando…</p>
           ) : section === "resumen" ? (
