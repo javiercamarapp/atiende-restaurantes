@@ -28,7 +28,6 @@ const FORM_VACIO = {
   nombre_completo: "",
   telefono: "",
   correo: "",
-  password: "",
   fecha_nacimiento: "",
   tipo_vehiculo: "" as TipoVehiculo | "",
   placas: "",
@@ -73,7 +72,6 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
     if (!form.nombre_completo.trim()) e.nombre_completo = "El nombre completo es obligatorio.";
     if (form.telefono.replace(/\D/g, "").length < 10) e.telefono = "Escribe un teléfono válido de al menos 10 dígitos.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) e.correo = "Escribe un correo válido.";
-    if (form.password.length < 8) e.password = "La contraseña temporal debe tener al menos 8 caracteres.";
     if (!form.fecha_nacimiento) {
       e.fecha_nacimiento = "La fecha de nacimiento es obligatoria.";
     } else if (edadEnAnios(form.fecha_nacimiento) < 18) {
@@ -103,7 +101,6 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
         nombre_completo: form.nombre_completo.trim(),
         telefono: form.telefono.trim(),
         correo: form.correo.trim(),
-        password: form.password,
         fecha_nacimiento: form.fecha_nacimiento,
         tipo_vehiculo: form.tipo_vehiculo,
         placas: form.placas.trim() || null,
@@ -120,7 +117,7 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
       return;
     }
 
-    toast({ title: "¡Repartidor agregado!", description: `${form.nombre_completo.trim()} ya puede iniciar sesión con la contraseña temporal.` });
+    toast({ title: "¡Repartidor agregado!", description: `${form.nombre_completo.trim()} ya puede iniciar sesión con Google o un enlace mágico a ${form.correo.trim()}.` });
     onOpenChange(false);
     await onGuardado();
   };
@@ -130,7 +127,7 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
       open={open}
       onOpenChange={onOpenChange}
       titulo="Agregar repartidor"
-      subtitulo="Crea su cuenta real de acceso y su perfil operativo — podrá iniciar sesión de inmediato con la contraseña temporal."
+      subtitulo="Crea su cuenta real de acceso y su perfil operativo — podrá iniciar sesión de inmediato con Google o un enlace mágico a su correo."
       onGuardar={handleGuardar}
       guardando={guardando}
       textoBotonGuardar="Agregar repartidor"
@@ -150,12 +147,8 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
           <Input id="rep-fecha-nacimiento" type="date" value={form.fecha_nacimiento} onChange={(ev) => set("fecha_nacimiento", ev.target.value)} />
         </CampoFormulario>
 
-        <CampoFormulario id="rep-correo" label="Correo" error={errores.correo} hint="Con esto inicia sesión.">
+        <CampoFormulario id="rep-correo" label="Correo" error={errores.correo} hint="Con esto inicia sesión — Google o enlace mágico, sin contraseña.">
           <Input id="rep-correo" type="email" value={form.correo} onChange={(ev) => set("correo", ev.target.value)} />
-        </CampoFormulario>
-
-        <CampoFormulario id="rep-password" label="Contraseña temporal" error={errores.password} hint="Mínimo 8 caracteres — compártela por un canal seguro.">
-          <Input id="rep-password" type="text" value={form.password} onChange={(ev) => set("password", ev.target.value)} />
         </CampoFormulario>
 
         <CampoFormulario id="rep-vehiculo" label="Tipo de vehículo" error={errores.tipo_vehiculo}>

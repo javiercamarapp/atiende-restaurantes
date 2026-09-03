@@ -168,6 +168,7 @@ export type Database = {
           created_at: string | null
           display_order: number | null
           id: string
+          image_url: string | null
           name: string
           restaurant_id: string
           slug: string
@@ -177,6 +178,7 @@ export type Database = {
           created_at?: string | null
           display_order?: number | null
           id?: string
+          image_url?: string | null
           name: string
           restaurant_id: string
           slug: string
@@ -186,6 +188,7 @@ export type Database = {
           created_at?: string | null
           display_order?: number | null
           id?: string
+          image_url?: string | null
           name?: string
           restaurant_id?: string
           slug?: string

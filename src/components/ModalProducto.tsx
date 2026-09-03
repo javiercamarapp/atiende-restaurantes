@@ -2,9 +2,13 @@
 // ModalFormularioElegante — mismos campos, validación y lógica de guardado
 // (insert/update en `products`, validación de restaurant_id al crear) que
 // la versión inline anterior en AdminDashboard.tsx, solo con la
-// presentación nueva. Autocontenido: trae su propio estado de formulario,
-// subida de imagen y submit — el padre solo pasa qué producto se edita
-// (o null para crear) y qué hacer al terminar de guardar.
+// presentación nueva. Campos en grid de 2 columnas (Nombre+Precio,
+// Descripción+Categoría, Imagen a lo ancho, los dos toggles lado a lado)
+// para que el modal se lea ancho/corto en vez de angosto/alto — mismo
+// ancho (max-w-xl) que ModalRepartidor. Autocontenido: trae su propio
+// estado de formulario, subida de imagen y submit — el padre solo pasa
+// qué producto se edita (o null para crear) y qué hacer al terminar de
+// guardar.
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -164,48 +168,52 @@ export function ModalProducto({ open, onOpenChange, editingProduct, categories, 
       guardando={guardando}
       textoBotonGuardar={editingProduct ? "Guardar cambios" : "Agregar producto"}
       guardarDeshabilitado={subiendoImagen}
+      anchoClase="max-w-xl"
     >
-      <CampoFormulario id="producto-nombre" label="Nombre" error={errorNombre}>
-        <Input id="producto-nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      </CampoFormulario>
+      <div className="grid grid-cols-2 gap-4">
+        <CampoFormulario id="producto-nombre" label="Nombre" error={errorNombre}>
+          <Input id="producto-nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
+        </CampoFormulario>
 
-      <CampoFormulario id="producto-descripcion" label="Descripción" hint="Opcional — ayuda al agente a describirlo mejor.">
-        <Textarea id="producto-descripcion" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-      </CampoFormulario>
+        <CampoFormulario id="producto-precio" label="Precio" error={errorPrecio}>
+          <Input id="producto-precio" type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+        </CampoFormulario>
 
-      <CampoFormulario id="producto-precio" label="Precio" error={errorPrecio}>
-        <Input id="producto-precio" type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
-      </CampoFormulario>
+        <CampoFormulario id="producto-descripcion" label="Descripción" hint="Opcional — ayuda al agente a describirlo mejor.">
+          <Textarea id="producto-descripcion" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </CampoFormulario>
 
-      <CampoFormulario label="Categoría" hint="Opcional — así se agrupa en el menú.">
-        <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
-          <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
-          <SelectContent>
-            {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </CampoFormulario>
+        <CampoFormulario label="Categoría" hint="Opcional — así se agrupa en el menú.">
+          <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
+            <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CampoFormulario>
 
-      <CampoFormulario
-        id="producto-imagen"
-        label="Imagen"
-        hint={subiendoImagen ? "Subiendo imagen…" : "Opcional — JPG o PNG, hasta 5MB."}
-      >
-        <div className="flex items-center gap-3">
-          {form.image_url && (
-            <img src={form.image_url} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-border" />
-          )}
-          <Input id="producto-imagen" type="file" accept="image/*" onChange={handleImageUpload} disabled={subiendoImagen} />
+        <CampoFormulario
+          id="producto-imagen"
+          label="Imagen"
+          hint={subiendoImagen ? "Subiendo imagen…" : "Opcional — JPG o PNG, hasta 5MB."}
+          className="col-span-2"
+        >
+          <div className="flex items-center gap-3">
+            {form.image_url && (
+              <img src={form.image_url} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-border" />
+            )}
+            <Input id="producto-imagen" type="file" accept="image/*" onChange={handleImageUpload} disabled={subiendoImagen} />
+          </div>
+        </CampoFormulario>
+
+        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+          <Label htmlFor="producto-popular" className="text-[12.5px]">Popular</Label>
+          <Switch id="producto-popular" checked={form.is_popular} onCheckedChange={(v) => setForm({ ...form, is_popular: v })} />
         </div>
-      </CampoFormulario>
-
-      <div className="flex items-center justify-between">
-        <Label htmlFor="producto-popular" className="text-[12.5px]">Popular</Label>
-        <Switch id="producto-popular" checked={form.is_popular} onCheckedChange={(v) => setForm({ ...form, is_popular: v })} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label htmlFor="producto-disponible" className="text-[12.5px]">Disponible</Label>
-        <Switch id="producto-disponible" checked={form.is_available} onCheckedChange={(v) => setForm({ ...form, is_available: v })} />
+        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+          <Label htmlFor="producto-disponible" className="text-[12.5px]">Disponible</Label>
+          <Switch id="producto-disponible" checked={form.is_available} onCheckedChange={(v) => setForm({ ...form, is_available: v })} />
+        </div>
       </div>
     </ModalFormularioElegante>
   );

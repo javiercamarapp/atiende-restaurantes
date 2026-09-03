@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, subDays, subWeeks, subMonths, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, isAfter } from "date-fns";
 import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
@@ -482,9 +483,35 @@ function DashboardAgente({
     setMisVoces((prev) => [nuevaVoz, ...prev]);
     if (borrador) setBorrador({ ...borrador, voice_id: voiceId, voice_public_owner_id: undefined });
   };
+  // "Todas" solo debe traer voces que suenen mexicanas o genéricamente
+  // latinoamericanas — nunca acentos de España u otros países/idiomas que
+  // ElevenLabs incluya en el catálogo compartido en español. Se filtra por
+  // el campo `accent` (el mismo que ya se traduce/muestra en la tarjeta de
+  // cada voz), con una lista explícita de países LatAm + "neutral"
+  // (el acento "neutral" del catálogo en español de ElevenLabs es el
+  // neutro latinoamericano) y una lista de exclusión para acentos de
+  // España/Europa que a veces también matchean alguna palabra suelta.
+  const ACENTOS_LATAM = [
+    'latin', 'mexic', 'colomb', 'argentin', 'chilen', 'peru', 'venezol', 'urugu', 'bolivi',
+    'ecuator', 'panam', 'costarric', 'guatemal', 'hondure', 'salvador', 'nicarag', 'paragua',
+    'dominican', 'puertorrique', 'centroamerican', 'sudamerican', 'neutral',
+  ];
+  const ACENTOS_NO_LATAM = ['spain', 'españ', 'castellan', 'castiz', 'castilian', 'iberi', 'european', 'europe'];
+  const esAcentoMexicanoOLatam = (acento: string) => {
+    const a = (acento || '').toLowerCase();
+    if (a === 'clonada') return true; // voz propia — no aplica filtro de acento
+    if (ACENTOS_NO_LATAM.some((k) => a.includes(k))) return false;
+    return ACENTOS_LATAM.some((k) => a.includes(k));
+  };
   // "Mis voces" primero, y sin repetir una que ya esté ahí (por si alguna
-  // vez se añadió una voz del catálogo compartido a la cuenta).
-  const todasLasVoces = [...misVoces, ...voces.filter((v) => !misVoces.some((m) => m.voice_id === v.voice_id))];
+  // vez se añadió una voz del catálogo compartido a la cuenta). El
+  // catálogo compartido (`voces`) se acota aquí a acento mexicano/LatAm —
+  // esta es la lista base de la que "Todas" y, por extensión, los filtros
+  // de Mujer/Hombre parten.
+  const todasLasVoces = [
+    ...misVoces,
+    ...voces.filter((v) => esAcentoMexicanoOLatam(v.accent) && !misVoces.some((m) => m.voice_id === v.voice_id)),
+  ];
   const vocesFiltradas = todasLasVoces.filter((v) => {
     if (filtroGenero === 'mias') return misVoces.some((m) => m.voice_id === v.voice_id);
     if (filtroGenero !== 'todos' && v.gender !== filtroGenero) return false;
@@ -1081,7 +1108,7 @@ function DashboardAgente({
                     rows={2}
                     className="w-full rounded-xl border border-primary/40 p-3 text-[13px] text-foreground bg-transparent resize-none"
                   />
-                  <div className="flex items-center justify-end gap-2 mt-1.5 flex-nowrap" title="Permitir a los usuarios interrumpir al agente mientras se entrega el primer mensaje.">
+                  <div className="flex items-center justify-end gap-2 mt-1.5 flex-wrap">
                     <button
                       role="switch"
                       aria-checked={borrador.first_message_interruptible}
@@ -1090,7 +1117,23 @@ function DashboardAgente({
                     >
                       <span className={`absolute top-0.5 w-[14px] h-[14px] rounded-full bg-white transition-transform ${borrador.first_message_interruptible ? 'translate-x-[17px]' : 'translate-x-0.5'}`} />
                     </button>
-                    <span className="text-[11.5px] text-muted-foreground whitespace-nowrap shrink-0">Interrumpible</span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <span className="text-[11.5px] text-muted-foreground whitespace-nowrap">Interrumpible</span>
+                      <UiTooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-muted-foreground/60 hover:text-foreground transition-colors"
+                            aria-label="Qué significa interrumpible"
+                          >
+                            <Info className="w-3 h-3" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[260px] text-[12px] whitespace-normal">
+                          Permitir a los usuarios interrumpir al agente mientras se entrega el primer mensaje.
+                        </TooltipContent>
+                      </UiTooltip>
+                    </span>
                   </div>
                 </div>
                 <div>
@@ -1733,6 +1776,15 @@ const AdminDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, restaurantId]);
 
+  // Vuelve a pedir `orders` con la ventana de fecha correcta cada vez que
+  // Javier cambia el pill de periodo en Estadísticas (Hoy/7 días/1 mes/...) —
+  // fetchData ya arma el WHERE created_at real según dateFilter (ver
+  // ordersQuery más abajo), así que solo hace falta dispararlo de nuevo.
+  useEffect(() => {
+    if (!loading) fetchData(restaurantId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter]);
+
   const refrescarDatos = async () => {
     setRefrescando(true);
     await fetchData(restaurantId);
@@ -1770,9 +1822,39 @@ const AdminDashboard = () => {
     const categoriesQuery = scopedRestaurantId
       ? sb.from("categories").select("*").order("display_order").eq("restaurant_id", scopedRestaurantId)
       : sb.from("categories").select("*").order("display_order");
-    const ordersQuery = scopedRestaurantId
-      ? sb.from("orders").select("*").order("created_at", { ascending: false }).limit(50).eq("restaurant_id", scopedRestaurantId)
-      : sb.from("orders").select("*").order("created_at", { ascending: false }).limit(50);
+    // Ventana real según el periodo seleccionado en Estadísticas — un
+    // `.limit(50)` fijo se quedaba invisible con pocos pedidos de prueba,
+    // pero con volumen real (90,000 pedidos de demo repartidos en 90 días)
+    // los 50 más recientes de TODA la tabla casi nunca caen dentro de "Hoy"
+    // (son solo ~1000 de 90,000 filas), así que Estadísticas mostraba $0
+    // aunque sí había pedidos reales ese día. Se acota por fecha real en vez
+    // de por cantidad de filas.
+    const inicioVentanaOrders = (() => {
+      const ahora = new Date();
+      switch (dateFilter) {
+        case 'today': return startOfDay(ahora);
+        case '7': return subDays(ahora, 7);
+        case '30': return subDays(ahora, 30);
+        case '90': return subDays(ahora, 90);
+        case '180': return subDays(ahora, 180);
+        case '365': return subDays(ahora, 365);
+        default: return null; // 'historico' — sin cota inferior
+      }
+    })();
+    const ordersQueryBase = sb.from("orders").select("id, customer_name, customer_phone, branch, total, status, source, created_at, restaurant_id").order("created_at", { ascending: false }).limit(50000);
+    const ordersQuery = (() => {
+      let q = ordersQueryBase;
+      if (scopedRestaurantId) q = q.eq("restaurant_id", scopedRestaurantId);
+      if (inicioVentanaOrders) q = q.gte("created_at", inicioVentanaOrders.toISOString());
+      // El widget de WhatsApp de prueba (WidgetWhatsApp.tsx) crea pedidos
+      // reales con customer_phone = "widget-<uuid>" para que la conversación
+      // se pueda probar de punta a punta — pero esos NO son pedidos de demo
+      // intencionales (is_demo se queda como está, sí cuenta para las
+      // cifras reales de "restaurante con volumen"), son basura de pruebas
+      // manuales y no deben mezclarse con nada visible en el admin.
+      q = q.not("customer_phone", "ilike", "widget-%");
+      return q;
+    })();
     const {
       data: productsData
     } = await productsQuery;
@@ -2175,14 +2257,6 @@ const AdminDashboard = () => {
       await fetchData(restaurantId);
     }
   };
-  const handleResolverContacto = async (id: string, resolved: boolean) => {
-    const { error } = await supabase.from("callback_requests").update({ resolved }).eq("id", id);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-      return;
-    }
-    setCallbackRequests((prev) => prev.map((c) => (c.id === id ? { ...c, resolved } : c)));
-  };
   const handlePromoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const promoData = {
@@ -2424,7 +2498,6 @@ const AdminDashboard = () => {
                 {activeSection === 'users' && (<><Contact className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Clientes</>)}
                 {activeSection === 'repartidores' && (<><Bike className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Repartidores</>)}
                 {activeSection === 'notificaciones' && (<><Bell className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Notificaciones</>)}
-                {activeSection === 'contactos' && (<><PhoneCall className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Contactos por regresar llamada</>)}
                 {activeSection === 'sucursales' && (<><Store className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Sucursales</>)}
                 {activeSection === 'historial-ordenes' && (<><History className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Historial de Órdenes</>)}
                 {activeSection === 'cuentas-accesos' && (<><Users className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} /> Cuentas & Accesos</>)}
@@ -3441,60 +3514,7 @@ const AdminDashboard = () => {
         )}
 
         {activeSection === 'notificaciones' && (
-          <div className="max-w-xl">
-            <NotificacionesSection userId={user?.id} />
-          </div>
-        )}
-
-        {activeSection === 'contactos' && (
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                {callbackRequests.length} en total · {callbackRequests.filter((c) => !c.resolved).length} pendientes
-              </p>
-            </div>
-            <p className="text-[12px] text-muted-foreground -mt-1">
-              Mensajes o llamadas que NO eran para hacer un pedido (quejas, facturación, empleo, etc.) — el agente de voz o de WhatsApp anotó el contacto para que alguien del restaurante le regrese la comunicación.
-            </p>
-
-            {callbackRequests.length === 0 ? (
-              <div className="py-12 text-center">
-                <PhoneCall className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
-                <p className="text-[13px] text-muted-foreground">No hay contactos pendientes de regresar llamada.</p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border overflow-hidden">
-                {callbackRequests.map((c) => (
-                  <div
-                    key={c.id}
-                    className={`p-3 flex items-start justify-between gap-3 border-b border-dashed border-border last:border-0 transition-colors ${c.resolved ? 'opacity-50' : ''}`}
-                  >
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        {c.source === 'voice' ? <Mic className="w-5 h-5 text-primary" strokeWidth={1.75} /> : <MessageCircle className="w-5 h-5 text-primary" strokeWidth={1.75} />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-medium text-foreground truncate">{c.customer_name} <span className="text-muted-foreground font-normal">· {c.customer_phone}</span></p>
-                        <p className="text-[12px] text-muted-foreground">
-                          {c.reason && <span className="px-1.5 py-0.5 rounded bg-muted text-foreground mr-1.5">{c.reason}</span>}
-                          {format(new Date(c.created_at), "d MMM yyyy, HH:mm", { locale: es })}
-                        </p>
-                        {c.message && <p className="text-[12.5px] text-foreground mt-1 leading-snug">{c.message}</p>}
-                      </div>
-                    </div>
-                    <Button
-                      variant={c.resolved ? "outline" : "default"}
-                      size="sm"
-                      className="h-7 px-2.5 rounded-full text-[11px] shrink-0"
-                      onClick={() => handleResolverContacto(c.id, !c.resolved)}
-                    >
-                      {c.resolved ? "Reabrir" : "Marcar atendido"}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <NotificacionesSection userId={user?.id} />
         )}
 
         {activeSection === 'sucursales' && (
@@ -3671,8 +3691,6 @@ const AdminDashboard = () => {
               </p>
             </div>
 
-            <WhatsAppAgenteConfigSection restaurantId={restaurantId} />
-
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <TileKpiAgente
                 indice={0}
@@ -3738,6 +3756,9 @@ const AdminDashboard = () => {
                 </div>
               )}
             </div>
+
+            <WhatsAppAgenteConfigSection restaurantId={restaurantId} />
+
             <WidgetWhatsApp restaurantName={restaurantName ?? 'Los Taquitos de PM'} />
           </div>
         )}

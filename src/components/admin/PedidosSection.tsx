@@ -82,9 +82,21 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
 
   const cargar = async () => {
     const sb: any = supabase;
+    // Recibidas/Enviadas/Programadas es un tablero operativo, no un
+    // histórico — se acota a los últimos 3 días (de sobra para cualquier
+    // pedido activo real) para no traer las 90,000 filas de demo completo
+    // a un tablero que solo necesita lo reciente/sin completar. El
+    // histórico completo vive en HistorialOrdenesSection.
+    const desde = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const ordersQueryBase = sb.from("orders").select("*").order("created_at", { ascending: false }).gte("created_at", desde)
+      // El widget de WhatsApp de prueba de la página pública crea pedidos
+      // reales con customer_phone = "widget-<uuid>" para poder probar la
+      // conversación de punta a punta — no son pedidos operativos reales,
+      // nunca deben aparecer en el tablero de despacho.
+      .not("customer_phone", "ilike", "widget-%");
     const ordersQuery = restaurantId
-      ? sb.from("orders").select("*").order("created_at", { ascending: false }).eq("restaurant_id", restaurantId)
-      : sb.from("orders").select("*").order("created_at", { ascending: false });
+      ? ordersQueryBase.eq("restaurant_id", restaurantId)
+      : ordersQueryBase;
     const [{ data: ordersData }, { data: branchesData }, { data: repartidoresRoles }] = await Promise.all([
       ordersQuery,
       restaurantId

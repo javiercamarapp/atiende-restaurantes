@@ -36,6 +36,8 @@ interface PreferenciasRow {
   notify_cancelado: boolean;
   notify_entrega_tardia?: boolean;
   notify_programado_por_vencer?: boolean;
+  notify_queja: boolean;
+  notify_escalar: boolean;
 }
 
 // Un pedido tal cual sale de `orders` — se pide con select("*") a propósito
@@ -78,6 +80,8 @@ const EVENTOS: { key: keyof Omit<PreferenciasRow, "id" | "restaurant_id">; label
   { key: "notify_cancelado", label: "Con reclamos (cancelado)", descripcion: "Cuando se cancela un pedido — la única señal real de reclamo que existe hoy en `orders`. Correo real, y controla la pestaña \"Con reclamos\"." },
   { key: "notify_entrega_tardia", label: "Entrega tardía", descripcion: "Cuando un pedido se entrega más tarde de lo prometido (o de lo común, si no hay hora prometida). Controla la pestaña \"Entrega tardía\".", sinCorreoAun: true },
   { key: "notify_programado_por_vencer", label: "Programado por vencer", descripcion: "Cuando un pedido programado está por llegar a su hora y sigue sin despacharse. Controla la pestaña \"Programados\".", sinCorreoAun: true },
+  { key: "notify_queja", label: "Quejas registradas", descripcion: "Cuando el agente anota un contacto con motivo de queja o inconformidad — riesgo directo de perder al cliente si no se atiende rápido. Controla la pestaña \"Quejas\".", sinCorreoAun: true },
+  { key: "notify_escalar", label: "Escalar a personal", descripcion: "Cuando un cliente pidió hablar con una persona durante la conversación con el agente. Controla la pestaña \"Escalar\".", sinCorreoAun: true },
 ];
 
 // Palabras que delatan una queja real dentro de `reason` (texto libre que
@@ -105,6 +109,8 @@ const TOGGLE_POR_TAB: Partial<Record<TabId, keyof Omit<PreferenciasRow, "id" | "
   reclamos: "notify_cancelado",
   entrega_tardia: "notify_entrega_tardia",
   programados: "notify_programado_por_vencer",
+  quejas: "notify_queja",
+  escalar: "notify_escalar",
 };
 
 // undefined se trata como "activo" — es el default real de la migración
@@ -327,8 +333,8 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
     reclamos: activo(fila.notify_cancelado) ? reclamos.length : 0,
     entrega_tardia: activo(fila.notify_entrega_tardia) ? entregaTardia.length : 0,
     programados: activo(fila.notify_programado_por_vencer) ? programados.length : 0,
-    quejas: quejas.length,
-    escalar: escalar.length,
+    quejas: activo(fila.notify_queja) ? quejas.length : 0,
+    escalar: activo(fila.notify_escalar) ? escalar.length : 0,
   };
 
   // Si el tab activo tiene preferencia y está apagada, se muestra el
@@ -527,6 +533,9 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
           )}
 
           {tab === "quejas" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_queja"} onActivar={() => toggle("notify_queja", true)} />
+            ) : (
             <>
               <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
                 {quejas.length} en total · {quejas.filter((c) => !c.resolved).length} sin atender
@@ -565,9 +574,13 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                 </div>
               )}
             </>
+            )
           )}
 
           {tab === "escalar" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_escalar"} onActivar={() => toggle("notify_escalar", true)} />
+            ) : (
             <>
               <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{escalar.length} pendientes</p>
               <p className="text-[12px] text-muted-foreground -mt-1">
@@ -602,6 +615,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                 </div>
               )}
             </>
+            )
           )}
         </div>
       </div>
@@ -618,10 +632,10 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
         <p className="text-[12px] text-muted-foreground -mt-1">
           Elige qué eventos de pedido quieres ver en las pestañas de arriba y recibir por correo — solo para tu cuenta.
         </p>
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {EVENTOS.map((ev) => (
-            <div key={ev.key} className="p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0">
-              <div className="pr-4 min-w-0">
+            <div key={ev.key} className="rounded-xl border border-border p-3 flex items-start justify-between gap-3">
+              <div className="pr-2 min-w-0">
                 <p className="text-[13px] font-medium text-foreground">{ev.label}</p>
                 <p className="text-[12px] text-muted-foreground">{ev.descripcion}</p>
                 {ev.sinCorreoAun && (
@@ -632,6 +646,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                 checked={activo(fila[ev.key])}
                 disabled={guardando === ev.key}
                 onCheckedChange={(v) => toggle(ev.key, v)}
+                className="shrink-0 mt-0.5"
               />
             </div>
           ))}

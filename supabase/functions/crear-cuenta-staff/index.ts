@@ -35,8 +35,6 @@ function json(body: unknown, status = 200) {
 const ROLES_VALIDOS = ["admin", "repartidor", "superadmin"] as const;
 type RolStaff = (typeof ROLES_VALIDOS)[number];
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -60,21 +58,17 @@ Deno.serve(async (req: Request) => {
       apellidos,
       email,
       telefono,
-      password,
       role,
     } = body as {
       restaurant_id?: string; nombre?: string; apellidos?: string; email?: string;
-      telefono?: string; password?: string; role?: string;
+      telefono?: string; role?: string;
     };
 
-    if (!nombre?.trim() || !apellidos?.trim() || !email?.trim() || !password || !role) {
+    if (!nombre?.trim() || !apellidos?.trim() || !email?.trim() || !role) {
       return json({ error: "Faltan campos requeridos" }, 400);
     }
     if (!ROLES_VALIDOS.includes(role as RolStaff)) {
       return json({ error: `Rol inválido: ${role}` }, 400);
-    }
-    if (!PASSWORD_REGEX.test(password)) {
-      return json({ error: "La contraseña no cumple los requisitos de seguridad (8+ caracteres, mayúscula, minúscula, número y carácter especial)" }, 400);
     }
     if (role !== "superadmin" && !restaurantId) {
       return json({ error: "Falta el restaurante para este rol" }, 400);
@@ -98,9 +92,11 @@ Deno.serve(async (req: Request) => {
     const nombreCompleto = `${nombre.trim()} ${apellidos.trim()}`.trim();
     const emailLimpio = email.trim().toLowerCase();
 
+    // Sin contraseña a propósito: este panel entra con Google o enlace
+    // mágico, no con credenciales manuales — email_confirm:true deja la
+    // cuenta lista para iniciar sesión así de inmediato.
     const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: emailLimpio,
-      password,
       email_confirm: true,
       user_metadata: { nombre: nombreCompleto },
     });

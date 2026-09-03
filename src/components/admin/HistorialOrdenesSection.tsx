@@ -74,6 +74,9 @@ const ESTADO_BADGE: Record<string, { etiqueta: string; clase: string }> = {
   entregado: { etiqueta: "Entregado", clase: "bg-green-100 text-green-700" },
   completado: { etiqueta: "Entregado", clase: "bg-green-100 text-green-700" },
   cancelado: { etiqueta: "Cancelado", clase: "bg-red-100 text-red-700" },
+  programado: { etiqueta: "Programado", clase: "bg-purple-100 text-purple-700" },
+  reclamado: { etiqueta: "Reclamado", clase: "bg-amber-100 text-amber-800" },
+  regresado: { etiqueta: "Regresado", clase: "bg-red-100 text-red-700" },
 };
 const badgeDeEstado = (status: string | null) =>
   ESTADO_BADGE[status ?? ""] ?? { etiqueta: status || "Sin estado", clase: "bg-muted text-muted-foreground" };
@@ -95,6 +98,7 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
 
   const [sucursales, setSucursales] = useState<BranchOption[]>([]);
   const [sucursalId, setSucursalId] = useState<string>("todas");
+  const [mostrarSucursales, setMostrarSucursales] = useState(false);
   const [soloProblemas, setSoloProblemas] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [busquedaAplicada, setBusquedaAplicada] = useState("");
@@ -126,7 +130,11 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
         .from("orders")
         .select("id, customer_name, customer_phone, total, status, created_at, source, branch, branch_id", { count: "exact" })
         .order("created_at", { ascending: false })
-        .range(desde, hasta);
+        .range(desde, hasta)
+        // Pedidos de prueba reales del widget de WhatsApp de la página
+        // pública (customer_phone = "widget-<uuid>") — nunca son historial
+        // real, no deben contar en el conteo ni aparecer en la lista.
+        .not("customer_phone", "ilike", "widget-%");
       if (restaurantId) q = q.eq("restaurant_id", restaurantId);
       if (sucursalId !== "todas") q = q.eq("branch_id", sucursalId);
       if (soloProblemas) q = q.neq("status", "entregado").neq("status", "completado");
@@ -284,22 +292,42 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
             </PopoverContent>
           </Popover>
 
-          {/* Sucursal */}
-          <div className="relative">
-            <select
-              value={sucursalId}
-              onChange={(e) => setSucursalId(e.target.value)}
-              className="h-8 pl-2.5 pr-6 rounded-full border border-border bg-card text-[12px] text-foreground appearance-none hover:bg-muted transition-colors cursor-pointer"
-            >
-              <option value="todas">Todas las sucursales</option>
+          {/* Sucursal — mismo patrón de popover con lista tipo tarjeta
+              (bordes, hover, estado seleccionado) que el resto del panel;
+              antes era un <select> nativo cuyo menú desplegado no se puede
+              vestir con Tailwind y salía como una lista lisa del sistema
+              operativo, sin el estilo del software. */}
+          <Popover open={mostrarSucursales} onOpenChange={setMostrarSucursales}>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-1.5 h-8 pl-2.5 pr-2 rounded-full border border-border bg-card text-[12px] text-foreground hover:bg-muted transition-colors">
+                {sucursalId === "todas"
+                  ? <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  : <Store className="w-3.5 h-3.5 text-muted-foreground" />}
+                <span className="font-medium truncate max-w-[160px]">
+                  {sucursalId === "todas" ? "Todas las sucursales" : (sucursales.find((s) => s.id === sucursalId)?.name ?? "Sucursal")}
+                </span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-56 p-1">
+              <button
+                onClick={() => { setSucursalId("todas"); setMostrarSucursales(false); }}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalId === "todas" ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted"}`}
+              >
+                <Globe className="w-3.5 h-3.5 shrink-0" /> Todas las sucursales
+              </button>
+              {sucursales.length > 0 && <div className="my-1 border-t border-border" />}
               {sucursales.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <button
+                  key={s.id}
+                  onClick={() => { setSucursalId(s.id); setMostrarSucursales(false); }}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-left transition-colors ${sucursalId === s.id ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted"}`}
+                >
+                  <Store className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{s.name}</span>
+                </button>
               ))}
-            </select>
-            {sucursalId === "todas"
-              ? <Globe className="w-3 h-3 text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              : <Store className="w-3 h-3 text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />}
-          </div>
+            </PopoverContent>
+          </Popover>
 
           {/* Reclamos / quejas / no entregados — mapeado al estado real
               disponible: todo lo que no llegó a "entregado" (incluye

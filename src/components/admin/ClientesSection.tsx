@@ -25,10 +25,14 @@ import {
    valores "de negocio" fijos en este archivo. Todo lo demás (a qué tier
    cae cada cliente, los KPIs) se calcula en vivo contra los datos reales.
    ──────────────────────────────────────────────────────────────────────── */
-const CORTE_PERCENTIL_BLACK = 90; // percentil ≥ 90 → BLACK (10% que más consume)
-const CORTE_PERCENTIL_PLATINUM = 75; // percentil ≥ 75 → PLATINUM (siguiente 15%)
-const CORTE_PERCENTIL_GOLD = 35; // percentil ≥ 35 → GOLD (siguiente ~40%)
-// el resto (percentil < 35, ~65% que menos consume) → BLUE
+// Pedido explícito de Javier: Black = top 5% ("elite"), Platinum = top 10%,
+// Gold = top 30%, Blue = el resto (~70%, mencionó "50%" pero eso invertía
+// el criterio de la noche anterior — Blue sigue siendo el tier de los que
+// menos consumen, solo que ahora es un grupo más grande). Ajustable aquí.
+const CORTE_PERCENTIL_BLACK = 95; // percentil ≥ 95 → BLACK (5% que más consume, "elite")
+const CORTE_PERCENTIL_PLATINUM = 90; // percentil ≥ 90 → PLATINUM (siguiente 5%, hasta el top 10%)
+const CORTE_PERCENTIL_GOLD = 70; // percentil ≥ 70 → GOLD (siguiente 20%, hasta el top 30%)
+// el resto (percentil < 70, ~70% que menos consume) → BLUE
 
 type Tier = "BLACK" | "PLATINUM" | "GOLD" | "BLUE";
 
@@ -196,9 +200,13 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
     (async () => {
       setCargando(true);
       setErrorCarga(null);
+      // El widget de WhatsApp de prueba de la página pública crea clientes
+      // reales con phone = "widget-<uuid>" para poder probar la conversación
+      // de punta a punta — no son clientes reales, no deben aparecer en el
+      // CRM ni contar en tiers/KPIs.
       const [{ data: clientesData, error: errClientes }, { data: ordenesData, error: errOrdenes }] = await Promise.all([
-        supabase.from("customers").select("*").eq("restaurant_id", restaurantId).order("created_at", { ascending: false }),
-        supabase.from("orders").select("customer_id, total").eq("restaurant_id", restaurantId),
+        supabase.from("customers").select("*").eq("restaurant_id", restaurantId).not("phone", "ilike", "widget-%").order("created_at", { ascending: false }),
+        supabase.from("orders").select("customer_id, total").eq("restaurant_id", restaurantId).not("customer_phone", "ilike", "widget-%"),
       ]);
       if (cancelado) return;
       if (errClientes || errOrdenes) {

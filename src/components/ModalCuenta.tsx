@@ -13,7 +13,6 @@ import { useToast } from "@/hooks/use-toast";
 import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, EyeOff } from "lucide-react";
 
 interface ModalCuentaProps {
   open: boolean;
@@ -42,16 +41,12 @@ const CODIGOS_PAIS = [
   { value: "+34", label: "🇪🇸 +34 España" },
 ];
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-
 const FORM_VACIO = {
   nombre: "",
   apellidos: "",
   email: "",
   codigoPais: "+52",
   telefono: "",
-  password: "",
-  confirmarPassword: "",
   role: "admin" as "admin" | "repartidor" | "superadmin",
 };
 
@@ -59,14 +54,12 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
   const { toast } = useToast();
   const [form, setForm] = useState(FORM_VACIO);
   const [guardando, setGuardando] = useState(false);
-  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [errores, setErrores] = useState<Record<string, string | undefined>>({});
 
   useEffect(() => {
     if (!open) return;
     setForm(FORM_VACIO);
     setErrores({});
-    setMostrarPassword(false);
   }, [open]);
 
   const validar = () => {
@@ -75,12 +68,6 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
     if (!form.apellidos.trim()) nuevosErrores.apellidos = "Los apellidos son obligatorios.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) nuevosErrores.email = "Ingresa un correo válido.";
     if (!/^\d{7,15}$/.test(form.telefono.trim())) nuevosErrores.telefono = "Ingresa un teléfono válido, solo dígitos.";
-    if (!PASSWORD_REGEX.test(form.password)) {
-      nuevosErrores.password = "No cumple los requisitos de seguridad de abajo.";
-    }
-    if (form.confirmarPassword !== form.password) {
-      nuevosErrores.confirmarPassword = "Las contraseñas no coinciden.";
-    }
     if (form.role !== "superadmin" && !restaurantId) {
       nuevosErrores.role = "No se pudo determinar el restaurante para esta cuenta.";
     }
@@ -99,7 +86,6 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
         apellidos: form.apellidos.trim(),
         email: form.email.trim(),
         telefono: `${form.codigoPais} ${form.telefono.trim()}`,
-        password: form.password,
         role: form.role,
       },
     });
@@ -114,7 +100,7 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
       return;
     }
 
-    toast({ title: "¡Cuenta creada!", description: `${form.nombre} ${form.apellidos} ya puede iniciar sesión.` });
+    toast({ title: "¡Cuenta creada!", description: `${form.nombre} ${form.apellidos} ya puede iniciar sesión con Google o un enlace mágico a ${form.email.trim()}.` });
     onOpenChange(false);
     await onCuentaCreada();
   };
@@ -169,39 +155,8 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
           </SelectContent>
         </Select>
       </CampoFormulario>
-
-      <div className="grid grid-cols-2 gap-3">
-        <CampoFormulario id="cuenta-password" label="Contraseña" error={errores.password}>
-          <div className="relative">
-            <Input
-              id="cuenta-password"
-              type={mostrarPassword ? "text" : "password"}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="pr-9"
-            />
-            <button
-              type="button"
-              onClick={() => setMostrarPassword((v) => !v)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              tabIndex={-1}
-              aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-            >
-              {mostrarPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </CampoFormulario>
-        <CampoFormulario id="cuenta-confirmar-password" label="Confirmar contraseña" error={errores.confirmarPassword}>
-          <Input
-            id="cuenta-confirmar-password"
-            type={mostrarPassword ? "text" : "password"}
-            value={form.confirmarPassword}
-            onChange={(e) => setForm({ ...form, confirmarPassword: e.target.value })}
-          />
-        </CampoFormulario>
-      </div>
       <p className="text-[11.5px] text-muted-foreground -mt-2">
-        Mínimo 8 caracteres, con al menos una mayúscula, una minúscula, un número y un carácter especial.
+        No pide contraseña — inicia sesión con Google o un enlace mágico a este correo, igual que el resto del panel.
       </p>
     </ModalFormularioElegante>
   );

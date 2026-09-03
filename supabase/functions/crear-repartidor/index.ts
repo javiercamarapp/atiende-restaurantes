@@ -2,10 +2,10 @@
 //
 // Crear un usuario real de Supabase Auth necesita el service role (el
 // navegador solo tiene la publishable key), así que esto vive en una Edge
-// Function. Flujo elegido: contraseña temporal que el admin escribe en el
-// formulario (no invitación por correo) — es el camino más simple que no
-// depende de que el proyecto tenga SMTP/plantillas de correo configuradas,
-// algo que no está verificado a tiempo para la demo de mañana.
+// Function. Sin contraseña a propósito: todo el panel entra con Google o
+// enlace mágico, nunca con credenciales manuales — email_confirm:true deja
+// la cuenta lista para eso de inmediato, sin depender de invitación por
+// correo ni de que el proyecto tenga SMTP configurado.
 //
 // Al crear el usuario en auth.users, dos triggers ya existentes en el
 // proyecto corren solos (ver migraciones 20251204072058 y 20251204091424):
@@ -30,7 +30,6 @@ interface CrearRepartidorPayload {
   nombre_completo?: string;
   telefono?: string;
   correo?: string;
-  password?: string;
   fecha_nacimiento?: string; // YYYY-MM-DD
   tipo_vehiculo?: string; // 'moto' | 'bicicleta' | 'auto'
   placas?: string;
@@ -57,7 +56,6 @@ function validar(body: CrearRepartidorPayload): string | null {
   if (!body.nombre_completo?.trim()) return "Falta el nombre completo.";
   if (!body.telefono?.trim() || body.telefono.replace(/\D/g, "").length < 10) return "El teléfono debe tener al menos 10 dígitos.";
   if (!body.correo?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.correo)) return "El correo no es válido.";
-  if (!body.password || body.password.length < 8) return "La contraseña temporal debe tener al menos 8 caracteres.";
   if (!body.fecha_nacimiento || Number.isNaN(new Date(body.fecha_nacimiento).getTime())) return "Falta la fecha de nacimiento.";
   if (edadEnAnios(body.fecha_nacimiento) < 18) return "El repartidor debe ser mayor de edad (18 años o más).";
   if (!body.tipo_vehiculo || !VEHICULOS.has(body.tipo_vehiculo)) return "El tipo de vehículo debe ser moto, bicicleta o auto.";
@@ -103,9 +101,10 @@ Deno.serve(async (req: Request) => {
     const nombreCompleto = body.nombre_completo!.trim();
     const telefono = body.telefono!.trim();
 
+    // Sin contraseña a propósito: el panel entra con Google o enlace mágico
+    // — email_confirm:true deja la cuenta lista para eso de inmediato.
     const { data: creado, error: errorCrear } = await supabaseAdmin.auth.admin.createUser({
       email: correo,
-      password: body.password,
       email_confirm: true,
       user_metadata: { nombre: nombreCompleto, telefono, isRepartidor: true },
     });
