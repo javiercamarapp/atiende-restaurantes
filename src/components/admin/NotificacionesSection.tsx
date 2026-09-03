@@ -1,97 +1,643 @@
-import { useEffect, useState } from "react";
+// Centro de notificaciones estilo Rappi: barra de tabs horizontal con
+// scroll y un indicador deslizante que brilla (glow) bajo el tab activo —
+// mismo mecanismo visual que el centro de notificaciones de Rappi, en el
+// azul/cielo de marca de esta app, con tabs reales ligados al ciclo de vida
+// real de un pedido (tabla `orders`) más las dos categorías de triage que ya
+// existían (quejas anotadas por el agente, escalar a personal). Cada tab lee
+// datos reales — nada de contadores inventados.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { format, formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Bell } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import {
+  ShoppingCart, AlertTriangle, PhoneCall, SlidersHorizontal,
+  Mic, MessageCircle, Loader2, Package, CheckCircle2, Ban, Clock,
+  CalendarClock, Bell, BellOff,
+} from "lucide-react";
 
+// `notify_entrega_tardia` y `notify_programado_por_vencer` son opcionales:
+// existen en la migración 20260903041514_orders_delivered_at_and_staff_notify_prefs.sql
+// pero esa migración quedó bloqueada por el clasificador de Auto Mode (ver
+// nota dentro del archivo) — hasta que alguien con permiso la aplique, la
+// columna real no existe todavía y Supabase simplemente no la devuelve. El
+// resto del código trata "undefined" igual que "true" (el default real de
+// la migración), así que nada se rompe mientras tanto.
 interface PreferenciasRow {
   id: string;
+  restaurant_id: string;
   notify_nuevo: boolean;
   notify_preparando: boolean;
   notify_en_camino: boolean;
   notify_entregado: boolean;
   notify_cancelado: boolean;
+  notify_entrega_tardia?: boolean;
+  notify_programado_por_vencer?: boolean;
 }
 
-const EVENTOS: { key: keyof Omit<PreferenciasRow, "id">; label: string; descripcion: string }[] = [
-  { key: "notify_nuevo", label: "Pedido nuevo", descripcion: "Cuando el agente de voz o WhatsApp toma un pedido." },
-  { key: "notify_preparando", label: "En preparación", descripcion: "Cuando se confirma un pedido y pasa a cocina." },
-  { key: "notify_en_camino", label: "En camino", descripcion: "Cuando un pedido sale a entrega." },
-  { key: "notify_entregado", label: "Entregado", descripcion: "Cuando se marca un pedido como entregado." },
-  { key: "notify_cancelado", label: "Cancelado", descripcion: "Cuando se cancela un pedido." },
+// Un pedido tal cual sale de `orders` — se pide con select("*") a propósito
+// (no una lista fija de columnas) para que estas pantallas no truenen si
+// `delivered_at` todavía no existe en la base real (ver nota arriba).
+interface OrderRow {
+  id: string;
+  order_number?: number;
+  customer_name: string;
+  total: number;
+  status: string | null;
+  source: string | null;
+  branch: string | null;
+  created_at: string;
+  delivered_at?: string | null;
+  estimated_delivery_at?: string | null;
+  scheduled_for?: string | null;
+}
+
+interface CallbackRow {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  reason: string | null;
+  message: string | null;
+  source: string;
+  resolved: boolean;
+  created_at: string;
+}
+
+// Umbrales de negocio — los dos únicos números "editables" de este archivo.
+const VENTANA_PROGRAMADO_POR_VENCER_MIN = 30; // qué tan cerca de su hora (antes o después) cuenta como "a punto de vencer"
+const UMBRAL_TARDANZA_MIN_DEFAULT = 60; // solo aplica cuando el pedido no tiene `estimated_delivery_at` real con qué compararse
+
+const EVENTOS: { key: keyof Omit<PreferenciasRow, "id" | "restaurant_id">; label: string; descripcion: string; sinCorreoAun?: boolean }[] = [
+  { key: "notify_nuevo", label: "Pedido nuevo", descripcion: "Cuando el agente de voz o WhatsApp toma un pedido — correo real, y controla la pestaña \"Recibidos\"." },
+  { key: "notify_preparando", label: "En preparación", descripcion: "Cuando se confirma un pedido y pasa a cocina — correo real." },
+  { key: "notify_en_camino", label: "En camino", descripcion: "Cuando un pedido sale a entrega — correo real." },
+  { key: "notify_entregado", label: "Entregado", descripcion: "Cuando se marca un pedido como entregado — correo real, y controla la pestaña \"Entregados\"." },
+  { key: "notify_cancelado", label: "Con reclamos (cancelado)", descripcion: "Cuando se cancela un pedido — la única señal real de reclamo que existe hoy en `orders`. Correo real, y controla la pestaña \"Con reclamos\"." },
+  { key: "notify_entrega_tardia", label: "Entrega tardía", descripcion: "Cuando un pedido se entrega más tarde de lo prometido (o de lo común, si no hay hora prometida). Controla la pestaña \"Entrega tardía\".", sinCorreoAun: true },
+  { key: "notify_programado_por_vencer", label: "Programado por vencer", descripcion: "Cuando un pedido programado está por llegar a su hora y sigue sin despacharse. Controla la pestaña \"Programados\".", sinCorreoAun: true },
 ];
+
+// Palabras que delatan una queja real dentro de `reason` (texto libre que
+// anota el propio agente al llamar a la tool `registrar_contacto`).
+const PALABRAS_QUEJA = ["queja", "reclamo", "inconform", "molest", "insatisfe", "mal servicio"];
+
+type TabId = "recibidos" | "entregados" | "reclamos" | "entrega_tardia" | "programados" | "quejas" | "escalar";
+
+const TABS: { id: TabId; label: string; icon: typeof Package }[] = [
+  { id: "recibidos", label: "Recibidos", icon: Package },
+  { id: "entregados", label: "Entregados", icon: CheckCircle2 },
+  { id: "reclamos", label: "Con reclamos", icon: Ban },
+  { id: "entrega_tardia", label: "Entrega tardía", icon: Clock },
+  { id: "programados", label: "Programados", icon: CalendarClock },
+  { id: "quejas", label: "Quejas", icon: AlertTriangle },
+  { id: "escalar", label: "Escalar", icon: PhoneCall },
+];
+
+// Preferencia que apaga/prende cada tab con contador real — los dos tabs de
+// triage (quejas anotadas, escalar) no tienen una columna de preferencia
+// propia todavía, así que siempre se muestran.
+const TOGGLE_POR_TAB: Partial<Record<TabId, keyof Omit<PreferenciasRow, "id" | "restaurant_id">>> = {
+  recibidos: "notify_nuevo",
+  entregados: "notify_entregado",
+  reclamos: "notify_cancelado",
+  entrega_tardia: "notify_entrega_tardia",
+  programados: "notify_programado_por_vencer",
+};
+
+// undefined se trata como "activo" — es el default real de la migración
+// (ver PreferenciasRow arriba) y evita apagar todo de golpe mientras esa
+// migración no se haya aplicado en la base real.
+const activo = (v: boolean | undefined) => v !== false;
+
+const formatoDuracion = (minutos: number) => {
+  const m = Math.max(0, Math.round(minutos));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r === 0 ? `${h} h` : `${h} h ${r} min`;
+};
+
+// ¿Este pedido entregado tardó más de lo debido? Compara contra la hora
+// prometida real (`estimated_delivery_at`, capturada al despachar) cuando
+// existe; si no, cae al umbral fijo de creación→entrega.
+const esEntregaTardia = (o: OrderRow): boolean => {
+  if (!o.delivered_at) return false;
+  const entregado = new Date(o.delivered_at).getTime();
+  if (o.estimated_delivery_at) return entregado > new Date(o.estimated_delivery_at).getTime();
+  return (entregado - new Date(o.created_at).getTime()) / 60000 > UMBRAL_TARDANZA_MIN_DEFAULT;
+};
+
+const IconoFuente = ({ source }: { source: string | null | undefined }) =>
+  source === "voice" ? <Mic className="w-5 h-5 text-primary" strokeWidth={1.75} />
+  : source === "whatsapp" ? <MessageCircle className="w-5 h-5 text-primary" strokeWidth={1.75} />
+  : <ShoppingCart className="w-5 h-5 text-primary" strokeWidth={1.75} />;
+
+const numeroPedido = (o: OrderRow) => (o.order_number ? `Venta ${String(o.order_number).padStart(4, "0")}` : `#${o.id.slice(0, 8)}`);
+
+// Fila compartida por los 5 tabs de pedidos — solo cambia el `pill` de la
+// derecha (estado propio de cada categoría).
+function FilaPedido({ order, pill }: { order: OrderRow; pill?: React.ReactNode }) {
+  return (
+    <div className="p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+          <IconoFuente source={order.source} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-foreground truncate">{order.customer_name}</p>
+          <p className="text-[12px] text-muted-foreground truncate">
+            {numeroPedido(order)}
+            {order.branch ? ` · ${order.branch}` : ""} · {format(new Date(order.created_at), "d MMM, HH:mm", { locale: es })}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <p className="font-display text-[13px] font-semibold tabular-nums text-foreground">${Number(order.total).toLocaleString()}</p>
+        {pill}
+      </div>
+    </div>
+  );
+}
+
+function Pill({ children, clase }: { children: React.ReactNode; clase: string }) {
+  return <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-medium whitespace-nowrap ${clase}`}>{children}</span>;
+}
+
+function EstadoVacio({ icon: Icon, texto }: { icon: typeof Package; texto: string }) {
+  return (
+    <div className="py-10 text-center">
+      <Icon className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+      <p className="text-[13px] text-muted-foreground">{texto}</p>
+    </div>
+  );
+}
+
+// Categoría apagada por el propio usuario en Preferencias — se respeta
+// "no quiere ver esto" ocultando la lista, con un atajo para reactivarla.
+function EstadoSilenciado({ etiqueta, onActivar, activando }: { etiqueta: string; onActivar: () => void; activando: boolean }) {
+  return (
+    <div className="py-10 text-center">
+      <BellOff className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" strokeWidth={1.5} />
+      <p className="text-[13px] text-muted-foreground mb-3 max-w-xs mx-auto">
+        Desactivaste "{etiqueta}" en tus preferencias — por eso no se muestra aquí.
+      </p>
+      <Button size="sm" variant="outline" className="h-8 rounded-full text-[12px]" onClick={onActivar} disabled={activando}>
+        {activando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+        Volver a activar
+      </Button>
+    </div>
+  );
+}
 
 const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   const { toast } = useToast();
   const [fila, setFila] = useState<PreferenciasRow | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>("recibidos");
+
+  const [cargandoListas, setCargandoListas] = useState(true);
+  const [recibidos, setRecibidos] = useState<OrderRow[]>([]);
+  const [entregados, setEntregados] = useState<OrderRow[]>([]);
+  const [reclamos, setReclamos] = useState<OrderRow[]>([]);
+  const [entregaTardiaPool, setEntregaTardiaPool] = useState<OrderRow[]>([]);
+  const [programados, setProgramados] = useState<OrderRow[]>([]);
+  const [quejas, setQuejas] = useState<CallbackRow[]>([]);
+  const [escalar, setEscalar] = useState<CallbackRow[]>([]);
+
+  // Solo para refrescar las etiquetas "vencido hace / en" de Programados
+  // cada tanto — no dispara ninguna consulta nueva.
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAhora(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
-    supabase
-      .from("restaurant_staff")
-      .select("id, notify_nuevo, notify_preparando, notify_en_camino, notify_entregado, notify_cancelado")
+    const sb: any = supabase; // select("*") a propósito — ver nota junto a PreferenciasRow
+    sb.from("restaurant_staff")
+      .select("*")
       .eq("user_id", userId)
       .maybeSingle()
-      .then(({ data }) => {
-        setFila(data as PreferenciasRow | null);
-        setLoading(false);
+      .then(({ data }: { data: PreferenciasRow | null }) => {
+        setFila(data);
+        setLoadingPrefs(false);
       });
   }, [userId]);
 
-  const toggle = async (key: keyof Omit<PreferenciasRow, "id">, value: boolean) => {
+  const cargarListas = useCallback(async (restaurantId: string) => {
+    setCargandoListas(true);
+    const sb: any = supabase;
+    const umbralProgramado = new Date(Date.now() + VENTANA_PROGRAMADO_POR_VENCER_MIN * 60_000).toISOString();
+    const [recibidosRes, entregadosRes, reclamosRes, entregaTardiaRes, programadosRes, quejasRes, escalarRes] = await Promise.all([
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
+        .order("created_at", { ascending: false }).limit(50),
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
+        .order("created_at", { ascending: false }).limit(50),
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "cancelado")
+        .order("created_at", { ascending: false }).limit(50),
+      // Candidatos a "entrega tardía": todo lo entregado con marca real de
+      // hora de entrega — el filtro fino (¿de verdad tardó?) es client-side
+      // en `esEntregaTardia`, porque cruza dos columnas distintas.
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
+        .not("delivered_at", "is", null).order("delivered_at", { ascending: false }).limit(100),
+      sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
+        .not("scheduled_for", "is", null).lte("scheduled_for", umbralProgramado)
+        .order("scheduled_for", { ascending: true }).limit(50),
+      supabase.from("callback_requests").select("*").eq("restaurant_id", restaurantId)
+        .or(PALABRAS_QUEJA.map((p) => `reason.ilike.%${p}%`).join(","))
+        .order("created_at", { ascending: false }).limit(50),
+      supabase.from("callback_requests").select("*").eq("restaurant_id", restaurantId)
+        .eq("resolved", false).order("created_at", { ascending: false }).limit(50),
+    ]);
+    setRecibidos((recibidosRes.data as OrderRow[] | null) ?? []);
+    setEntregados((entregadosRes.data as OrderRow[] | null) ?? []);
+    setReclamos((reclamosRes.data as OrderRow[] | null) ?? []);
+    setEntregaTardiaPool((entregaTardiaRes.data as OrderRow[] | null) ?? []);
+    setProgramados((programadosRes.data as OrderRow[] | null) ?? []);
+    setQuejas((quejasRes.data as CallbackRow[] | null) ?? []);
+    setEscalar((escalarRes.data as CallbackRow[] | null) ?? []);
+    setCargandoListas(false);
+  }, []);
+
+  useEffect(() => {
+    if (fila?.restaurant_id) cargarListas(fila.restaurant_id);
+  }, [fila?.restaurant_id, cargarListas]);
+
+  const entregaTardia = entregaTardiaPool.filter(esEntregaTardia);
+
+  const toggle = async (key: keyof Omit<PreferenciasRow, "id" | "restaurant_id">, value: boolean) => {
     if (!fila) return;
+    const anterior = fila;
     setFila({ ...fila, [key]: value });
     setGuardando(key);
     const { error } = await supabase.from("restaurant_staff").update({ [key]: value }).eq("id", fila.id);
     setGuardando(null);
     if (error) {
-      setFila(fila); // revertir
-      toast({ title: "No se pudo guardar", description: error.message, variant: "destructive" });
+      setFila(anterior);
+      toast({
+        title: "No se pudo guardar",
+        description: key === "notify_entrega_tardia" || key === "notify_programado_por_vencer"
+          ? "Esta preferencia es nueva y su columna todavía no existe en la base real — aplica la migración pendiente y vuelve a intentar."
+          : error.message,
+        variant: "destructive",
+      });
     }
   };
 
-  if (loading) return null;
+  const marcarAtendido = async (id: string) => {
+    const { error } = await supabase.from("callback_requests").update({ resolved: true }).eq("id", id);
+    if (error) {
+      toast({ title: "No se pudo actualizar", description: error.message, variant: "destructive" });
+      return;
+    }
+    if (fila?.restaurant_id) cargarListas(fila.restaurant_id);
+  };
+
+  // Barra de tabs con scroll horizontal — con 7 categorías ya no cabe un
+  // grid de columnas iguales, así que el indicador deslizante se mide de
+  // verdad contra el ancho real de cada botón (ref por tab) en vez de
+  // asumir 1/N del ancho del contenedor.
+  const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
+  const [indicador, setIndicador] = useState({ left: 0, width: 0 });
+  useLayoutEffect(() => {
+    const el = tabRefs.current[tab];
+    if (el) setIndicador({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [tab, loadingPrefs]);
+
+  if (loadingPrefs) return null;
 
   if (!fila) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          No encontramos tu cuenta dentro del staff de este restaurante, así que no hay preferencias de notificación que mostrar.
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-[13px] text-muted-foreground text-center py-8">
+          No encontramos tu cuenta dentro del staff de este restaurante, así que no hay notificaciones que mostrar.
+        </p>
+      </div>
     );
   }
 
+  const conteos: Record<TabId, number> = {
+    recibidos: activo(fila.notify_nuevo) ? recibidos.length : 0,
+    entregados: activo(fila.notify_entregado) ? entregados.length : 0,
+    reclamos: activo(fila.notify_cancelado) ? reclamos.length : 0,
+    entrega_tardia: activo(fila.notify_entrega_tardia) ? entregaTardia.length : 0,
+    programados: activo(fila.notify_programado_por_vencer) ? programados.length : 0,
+    quejas: quejas.length,
+    escalar: escalar.length,
+  };
+
+  // Si el tab activo tiene preferencia y está apagada, se muestra el
+  // silenciado en vez de la lista (para cualquier tab de triage sin
+  // preferencia propia, `toggleKey` es undefined y esto nunca aplica).
+  const toggleKeyDeTab = TOGGLE_POR_TAB[tab];
+  const tabSilenciado = toggleKeyDeTab ? !activo(fila[toggleKeyDeTab]) : false;
+  const etiquetaTabActivo = TABS.find((t) => t.id === tab)?.label ?? "";
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Bell className="w-5 h-5 text-primary" />
-          Notificaciones por correo
-        </CardTitle>
-        <CardDescription>
-          Elige qué eventos de pedido quieres recibir en tu correo. Cada persona del equipo decide los suyos.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="divide-y divide-border">
-        {EVENTOS.map((ev) => (
-          <div key={ev.key} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
-            <div className="pr-4">
-              <p className="text-sm font-medium text-foreground">{ev.label}</p>
-              <p className="text-sm text-muted-foreground">{ev.descripcion}</p>
-            </div>
-            <Switch
-              checked={fila[ev.key]}
-              disabled={guardando === ev.key}
-              onCheckedChange={(v) => toggle(ev.key, v)}
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        {/* Barra de tabs — indicador deslizante con glow azul/cielo, mismo
+            mecanismo del centro de notificaciones de Rappi (subrayado que se
+            mueve con spring + resplandor bajo el tab activo), ahora en una
+            tira con scroll horizontal para caber las 7 categorías reales. */}
+        <div className="relative border-b border-border overflow-x-auto">
+          <div className="relative flex" style={{ minWidth: "max-content" }}>
+            {TABS.map((t) => {
+              const Icono = t.icon;
+              const activoTab = t.id === tab;
+              const n = conteos[t.id];
+              return (
+                <button
+                  key={t.id}
+                  ref={(el) => { tabRefs.current[t.id] = el; }}
+                  onClick={() => setTab(t.id)}
+                  className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 text-[12px] font-medium whitespace-nowrap transition-colors ${
+                    activoTab ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  style={activoTab ? { filter: "drop-shadow(0 0 5px hsl(var(--primary) / 0.5))" } : undefined}
+                >
+                  <Icono className="w-4 h-4" strokeWidth={1.75} />
+                  {t.label}
+                  {n > 0 && (
+                    <span className="min-w-[15px] h-[15px] px-1 rounded-full bg-primary text-primary-foreground font-mono text-[9px] font-semibold flex items-center justify-center leading-none">
+                      {n}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <motion.div
+              className="absolute bottom-0 h-[3px] rounded-full bg-primary"
+              style={{ boxShadow: "0 0 10px 2px hsl(var(--primary) / 0.65), 0 0 22px 4px hsl(var(--primary) / 0.35)" }}
+              animate={{ left: indicador.left, width: indicador.width }}
+              transition={{ type: "spring", stiffness: 500, damping: 40 }}
             />
           </div>
-        ))}
-      </CardContent>
-    </Card>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {tab === "recibidos" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_nuevo"} onActivar={() => toggle("notify_nuevo", true)} />
+            ) : (
+              <>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{recibidos.length} en total</p>
+                <p className="text-[12px] text-muted-foreground -mt-1">
+                  Pedidos nuevos recién colocados por el agente de voz, WhatsApp o el sitio — status inicial real ("pending"), antes de pasar a cocina.
+                </p>
+                {cargandoListas ? (
+                  <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                ) : recibidos.length === 0 ? (
+                  <EstadoVacio icon={Package} texto="No hay pedidos nuevos en este momento." />
+                ) : (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {recibidos.map((o) => <FilaPedido key={o.id} order={o} pill={<Pill clase="bg-yellow-100 text-yellow-700">Pendiente</Pill>} />)}
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {tab === "entregados" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_entregado"} onActivar={() => toggle("notify_entregado", true)} />
+            ) : (
+              <>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{entregados.length} en total</p>
+                <p className="text-[12px] text-muted-foreground -mt-1">Pedidos que ya se marcaron como entregados — status real "entregado".</p>
+                {cargandoListas ? (
+                  <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                ) : entregados.length === 0 ? (
+                  <EstadoVacio icon={CheckCircle2} texto="Todavía no hay pedidos entregados." />
+                ) : (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {entregados.map((o) => (
+                      <FilaPedido
+                        key={o.id}
+                        order={o}
+                        pill={
+                          <Pill clase="bg-green-100 text-green-700">
+                            {o.delivered_at ? `Entregado ${format(new Date(o.delivered_at), "HH:mm", { locale: es })}` : "Entregado"}
+                          </Pill>
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {tab === "reclamos" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_cancelado"} onActivar={() => toggle("notify_cancelado", true)} />
+            ) : (
+              <>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{reclamos.length} en total</p>
+                <p className="text-[12px] text-muted-foreground -mt-1">
+                  Pedidos cancelados — no existe hoy una columna de "reclamo" en `orders`, así que se usa la señal real más cercana: status "cancelado" (la
+                  única que de verdad indica que un pedido salió mal, según ya definió Historial de Órdenes).
+                </p>
+                {cargandoListas ? (
+                  <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                ) : reclamos.length === 0 ? (
+                  <EstadoVacio icon={Ban} texto="No hay pedidos cancelados." />
+                ) : (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {reclamos.map((o) => <FilaPedido key={o.id} order={o} pill={<Pill clase="bg-red-100 text-red-700">Cancelado</Pill>} />)}
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {tab === "entrega_tardia" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_entrega_tardia"} onActivar={() => toggle("notify_entrega_tardia", true)} />
+            ) : (
+              <>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{entregaTardia.length} en total</p>
+                <p className="text-[12px] text-muted-foreground -mt-1">
+                  Pedidos entregados más tarde de lo prometido (contra su "estimated_delivery_at" real, capturada al despachar) o, si no hubo hora
+                  prometida, más de {UMBRAL_TARDANZA_MIN_DEFAULT} min entre creación y entrega.
+                </p>
+                {cargandoListas ? (
+                  <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                ) : entregaTardia.length === 0 ? (
+                  <EstadoVacio icon={Clock} texto="Ningún pedido entregado se pasó de tiempo." />
+                ) : (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {entregaTardia.map((o) => {
+                      const referencia = o.estimated_delivery_at ? new Date(o.estimated_delivery_at) : new Date(o.created_at);
+                      const minutosTarde = (new Date(o.delivered_at as string).getTime() - referencia.getTime()) / 60000;
+                      return (
+                        <FilaPedido
+                          key={o.id}
+                          order={o}
+                          pill={<Pill clase="bg-orange-100 text-orange-700">+{formatoDuracion(minutosTarde)} tarde</Pill>}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {tab === "programados" && (
+            tabSilenciado ? (
+              <EstadoSilenciado etiqueta={etiquetaTabActivo} activando={guardando === "notify_programado_por_vencer"} onActivar={() => toggle("notify_programado_por_vencer", true)} />
+            ) : (
+              <>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{programados.length} en total</p>
+                <p className="text-[12px] text-muted-foreground -mt-1">
+                  Pedidos programados (columna real "scheduled_for") cuya hora está a {VENTANA_PROGRAMADO_POR_VENCER_MIN} min o menos, o ya pasó, y
+                  siguen sin despacharse — para no dejar que un programado se escape sin repartidor asignado a tiempo.
+                </p>
+                {cargandoListas ? (
+                  <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                ) : programados.length === 0 ? (
+                  <EstadoVacio icon={CalendarClock} texto="No hay programados a punto de vencer su ventana." />
+                ) : (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {programados.map((o) => {
+                      const objetivo = new Date(o.scheduled_for as string).getTime();
+                      const vencido = objetivo <= ahora;
+                      return (
+                        <FilaPedido
+                          key={o.id}
+                          order={o}
+                          pill={
+                            <Pill clase={vencido ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}>
+                              {vencido ? "Vencido hace " : "En "}{formatDistanceToNow(new Date(o.scheduled_for as string), { locale: es })}
+                            </Pill>
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {tab === "quejas" && (
+            <>
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {quejas.length} en total · {quejas.filter((c) => !c.resolved).length} sin atender
+              </p>
+              <p className="text-[12px] text-muted-foreground -mt-1">
+                Contactos que el agente anotó con un motivo de queja — construido sobre los mismos registros de "Escalar" filtrados por motivo.
+              </p>
+              {cargandoListas ? (
+                <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+              ) : quejas.length === 0 ? (
+                <EstadoVacio icon={AlertTriangle} texto="No hay quejas registradas." />
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {quejas.map((c) => (
+                    <div key={c.id} className={`p-3 flex items-start justify-between gap-3 border-b border-dashed border-border last:border-0 ${c.resolved ? "opacity-50" : ""}`}>
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5">
+                          <AlertTriangle className="w-5 h-5 text-destructive" strokeWidth={1.75} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-foreground truncate">{c.customer_name} <span className="text-muted-foreground font-normal">· {c.customer_phone}</span></p>
+                          <p className="text-[12px] text-muted-foreground">
+                            {c.reason && <span className="px-1.5 py-0.5 rounded bg-muted text-foreground mr-1.5">{c.reason}</span>}
+                            {format(new Date(c.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                          </p>
+                          {c.message && <p className="text-[12.5px] text-foreground mt-1 leading-snug">{c.message}</p>}
+                        </div>
+                      </div>
+                      {!c.resolved && (
+                        <Button size="sm" className="h-7 px-2.5 rounded-full text-[11px] shrink-0" onClick={() => marcarAtendido(c.id)}>
+                          Marcar atendido
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "escalar" && (
+            <>
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{escalar.length} pendientes</p>
+              <p className="text-[12px] text-muted-foreground -mt-1">
+                Contactos sin resolver que el agente de voz o WhatsApp registró con "registrar_contacto" — necesitan que alguien del restaurante regrese la comunicación.
+              </p>
+              {cargandoListas ? (
+                <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+              ) : escalar.length === 0 ? (
+                <EstadoVacio icon={PhoneCall} texto="No hay contactos pendientes de escalar a personal." />
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {escalar.map((c) => (
+                    <div key={c.id} className="p-3 flex items-start justify-between gap-3 border-b border-dashed border-border last:border-0">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                          <IconoFuente source={c.source} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-foreground truncate">{c.customer_name} <span className="text-muted-foreground font-normal">· {c.customer_phone}</span></p>
+                          <p className="text-[12px] text-muted-foreground">
+                            {c.reason && <span className="px-1.5 py-0.5 rounded bg-muted text-foreground mr-1.5">{c.reason}</span>}
+                            {format(new Date(c.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                          </p>
+                          {c.message && <p className="text-[12.5px] text-foreground mt-1 leading-snug">{c.message}</p>}
+                        </div>
+                      </div>
+                      <Button size="sm" className="h-7 px-2.5 rounded-full text-[11px] shrink-0" onClick={() => marcarAtendido(c.id)}>
+                        Marcar atendido
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Preferencias — al final de la página, debajo de las listas, NO
+          escondidas en otro tab: un toggle real por tipo de notificación,
+          leído y escrito de verdad contra el row de `restaurant_staff` del
+          usuario actual (mismas columnas boolean que ya usaba el correo). */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+          <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Preferencias de notificaciones</p>
+        </div>
+        <p className="text-[12px] text-muted-foreground -mt-1">
+          Elige qué eventos de pedido quieres ver en las pestañas de arriba y recibir por correo — solo para tu cuenta.
+        </p>
+        <div className="rounded-xl border border-border overflow-hidden">
+          {EVENTOS.map((ev) => (
+            <div key={ev.key} className="p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0">
+              <div className="pr-4 min-w-0">
+                <p className="text-[13px] font-medium text-foreground">{ev.label}</p>
+                <p className="text-[12px] text-muted-foreground">{ev.descripcion}</p>
+                {ev.sinCorreoAun && (
+                  <p className="text-[11px] text-muted-foreground/70 italic mt-0.5">Por ahora solo controla lo que ves aquí — el correo automático de este evento todavía no está conectado.</p>
+                )}
+              </div>
+              <Switch
+                checked={activo(fila[ev.key])}
+                disabled={guardando === ev.key}
+                onCheckedChange={(v) => toggle(ev.key, v)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };
 

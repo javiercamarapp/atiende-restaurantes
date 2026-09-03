@@ -16,6 +16,11 @@
 //                                                        devuelve su id real
 //   { action: "set_knowledge_base", agent_id, knowledge_base } -> reemplaza el
 //                                                        arreglo knowledge_base del agente
+//   { action: "set_languages", agent_id, languages, language_detection_enabled }
+//                                              -> agrega/quita idiomas adicionales
+//                                                 (conversation_config.language_presets)
+//                                                 y activa/desactiva el built-in tool
+//                                                 language_detection
 //
 // Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
 // interna, no algo que el dueño del restaurante deba ver.
@@ -151,6 +156,72 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    if (action === "set_languages") {
+      // Agrega/quita idiomas adicionales del agente (conversation_config.language_presets,
+      // objeto keyed por código de idioma, confirmado contra la documentación oficial de
+      // ElevenLabs: cada entrada trae { overrides: {...} } con los overrides opcionales
+      // de ese idioma) y activa/desactiva el built-in tool nativo language_detection
+      // (agent.prompt.built_in_tools.language_detection) que detecta y cambia de idioma
+      // en vivo durante la llamada.
+      //
+      // Mismo patrón que set_tools/set_knowledge_base: se lee el estado completo actual
+      // de ambos objetos y se reenvía completo — para no perder llaves que esta llamada
+      // no está tocando (ej. el tool end_call ya configurado dentro de built_in_tools, o
+      // el override guardado de un idioma que no cambió en esta edición).
+      const { agent_id, languages, language_detection_enabled } = body as {
+        agent_id?: string;
+        languages?: string[];
+        language_detection_enabled?: boolean;
+      };
+      if (!agent_id || !Array.isArray(languages)) {
+        return json({ error: "agent_id y languages (arreglo de códigos de idioma) son requeridos" }, 400);
+      }
+
+      const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        headers: { "xi-api-key": apiKey },
+      });
+      if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+      const current = await getRes.json();
+
+      // deno-lint-ignore no-explicit-any
+      const presetsActuales: Record<string, any> = current.conversation_config?.language_presets ?? {};
+      // deno-lint-ignore no-explicit-any
+      const nuevosPresets: Record<string, any> = {};
+      for (const codigo of languages) {
+        // Si el idioma ya tenía overrides guardados (ej. primer mensaje o voz
+        // propia de ese idioma), se conservan tal cual; si es nuevo, se agrega
+        // sin overrides (usa la config general del agente para ese idioma).
+        nuevosPresets[codigo] = presetsActuales[codigo] ?? { overrides: {} };
+      }
+
+      // deno-lint-ignore no-explicit-any
+      const builtInToolsActuales: Record<string, any> = current.conversation_config?.agent?.prompt?.built_in_tools ?? {};
+      const nuevoBuiltInTools = {
+        ...builtInToolsActuales,
+        language_detection: language_detection_enabled
+          ? {
+            type: "system",
+            name: "language_detection",
+            description: "",
+            params: { system_tool_type: "language_detection" },
+          }
+          : null,
+      };
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+        method: "PATCH",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_config: {
+            language_presets: nuevosPresets,
+            agent: { prompt: { built_in_tools: nuevoBuiltInTools } },
+          },
+        }),
+      });
+      if (!res.ok) return json({ error: await res.text() }, res.status);
+      return json({ ok: true });
+    }
+
     if (action === "get_raw") {
       const { agent_id } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
@@ -177,6 +248,8 @@ Deno.serve(async (req: Request) => {
         name: data.name,
         first_message: agent.first_message ?? "",
         language: agent.language ?? "es",
+        additional_languages: Object.keys(data.conversation_config?.language_presets ?? {}),
+        language_detection_enabled: !!(agent.prompt?.built_in_tools?.language_detection),
         prompt: agent.prompt?.prompt ?? "",
         temperature: agent.prompt?.temperature ?? 0.4,
         voice_id: tts.voice_id ?? null,

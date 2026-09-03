@@ -75,6 +75,8 @@ export type Database = {
           restaurant_id: string
           slug: string
           updated_at: string
+          voice_agent_active: boolean
+          whatsapp_agent_active: boolean
         }
         Insert: {
           address?: string | null
@@ -91,6 +93,8 @@ export type Database = {
           restaurant_id: string
           slug: string
           updated_at?: string
+          voice_agent_active?: boolean
+          whatsapp_agent_active?: boolean
         }
         Update: {
           address?: string | null
@@ -107,6 +111,8 @@ export type Database = {
           restaurant_id?: string
           slug?: string
           updated_at?: string
+          voice_agent_active?: boolean
+          whatsapp_agent_active?: boolean
         }
         Relationships: [
           {
@@ -273,6 +279,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          assigned_repartidor_id: string | null
           branch: string | null
           branch_id: string | null
           call_recording_url: string | null
@@ -282,14 +289,19 @@ export type Database = {
           customer_id: string | null
           customer_name: string
           customer_phone: string
+          delivered_at: string | null
+          estimated_delivery_at: string | null
           id: string
           items: Json
+          order_number: number
           restaurant_id: string
+          scheduled_for: string | null
           source: string
           status: string | null
           total: number
         }
         Insert: {
+          assigned_repartidor_id?: string | null
           branch?: string | null
           branch_id?: string | null
           call_recording_url?: string | null
@@ -299,14 +311,19 @@ export type Database = {
           customer_id?: string | null
           customer_name: string
           customer_phone: string
+          delivered_at?: string | null
+          estimated_delivery_at?: string | null
           id?: string
           items: Json
+          order_number?: number
           restaurant_id: string
+          scheduled_for?: string | null
           source?: string
           status?: string | null
           total: number
         }
         Update: {
+          assigned_repartidor_id?: string | null
           branch?: string | null
           branch_id?: string | null
           call_recording_url?: string | null
@@ -316,9 +333,13 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string
           customer_phone?: string
+          delivered_at?: string | null
+          estimated_delivery_at?: string | null
           id?: string
           items?: Json
+          order_number?: number
           restaurant_id?: string
+          scheduled_for?: string | null
           source?: string
           status?: string | null
           total?: number
@@ -521,15 +542,68 @@ export type Database = {
         }
         Relationships: []
       }
+      repartidor_perfil: {
+        Row: {
+          contacto_emergencia_nombre: string
+          contacto_emergencia_telefono: string
+          correo: string
+          created_at: string
+          direccion: string
+          fecha_alta: string
+          fecha_nacimiento: string
+          nombre_completo: string
+          numero_licencia: string | null
+          placas: string | null
+          telefono: string
+          tipo_vehiculo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contacto_emergencia_nombre: string
+          contacto_emergencia_telefono: string
+          correo: string
+          created_at?: string
+          direccion: string
+          fecha_alta?: string
+          fecha_nacimiento: string
+          nombre_completo: string
+          numero_licencia?: string | null
+          placas?: string | null
+          telefono: string
+          tipo_vehiculo: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contacto_emergencia_nombre?: string
+          contacto_emergencia_telefono?: string
+          correo?: string
+          created_at?: string
+          direccion?: string
+          fecha_alta?: string
+          fecha_nacimiento?: string
+          nombre_completo?: string
+          numero_licencia?: string | null
+          placas?: string | null
+          telefono?: string
+          tipo_vehiculo?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       restaurant_staff: {
         Row: {
           created_at: string
           id: string
           notify_cancelado: boolean
           notify_en_camino: boolean
+          notify_entrega_tardia: boolean
           notify_entregado: boolean
           notify_nuevo: boolean
           notify_preparando: boolean
+          notify_programado_por_vencer: boolean
           restaurant_id: string
           role: string
           user_id: string
@@ -539,9 +613,11 @@ export type Database = {
           id?: string
           notify_cancelado?: boolean
           notify_en_camino?: boolean
+          notify_entrega_tardia?: boolean
           notify_entregado?: boolean
           notify_nuevo?: boolean
           notify_preparando?: boolean
+          notify_programado_por_vencer?: boolean
           restaurant_id: string
           role: string
           user_id: string
@@ -551,9 +627,11 @@ export type Database = {
           id?: string
           notify_cancelado?: boolean
           notify_en_camino?: boolean
+          notify_entrega_tardia?: boolean
           notify_entregado?: boolean
           notify_nuevo?: boolean
           notify_preparando?: boolean
+          notify_programado_por_vencer?: boolean
           restaurant_id?: string
           role?: string
           user_id?: string
@@ -612,6 +690,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      whatsapp_agent_config: {
+        Row: {
+          created_at: string
+          id: string
+          llm_model: string
+          restaurant_id: string
+          system_prompt: string
+          temperature: number
+          tone_style: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          llm_model?: string
+          restaurant_id: string
+          system_prompt: string
+          temperature?: number
+          tone_style?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          llm_model?: string
+          restaurant_id?: string
+          system_prompt?: string
+          temperature?: number
+          tone_style?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_agent_config_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_conversations: {
         Row: {

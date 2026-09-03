@@ -157,10 +157,35 @@ async function upsertCustomer(supabase: any, restaurantId: string, phone: string
   return customer;
 }
 
+export type CustomerTier = "BLACK" | "PLATINUM" | "GOLD" | "BLUE";
+
+// Nota lista para inyectar tal cual en un prompt/tool-result: cuando el
+// cliente es BLACK o PLATINUM el agente (voz o WhatsApp) debe saberlo y
+// tratarlo con calidez extra/prioridad — pedido explícito de Javier, no
+// dejar el tier calculado sin usar en el trato real.
+export function vipNote(tier: CustomerTier | null): string | null {
+  if (tier === "BLACK") {
+    return "Es cliente BLACK — uno de los clientes de mayor consumo/frecuencia del restaurante (top 10%). Trátalo con calidez extra y dale prioridad.";
+  }
+  if (tier === "PLATINUM") {
+    return "Es cliente PLATINUM — uno de los clientes más frecuentes/de mayor consumo del restaurante. Trátalo con calidez extra y dale prioridad.";
+  }
+  return null;
+}
+
 // Used by the voice agent's buscar_cliente Server Tool and by the WhatsApp
 // webhook to greet a returning customer by name and offer their saved address
 // before taking the order, per the requested flow: identify -> confirm/offer
 // address -> take order -> recap what's included -> total -> wait time.
+//
+// Memoria real de cliente frecuente (no solo del último pedido): además del
+// último pedido, agrega frequent_items (los productos más pedidos across
+// TODO su historial real, contando cantidades reales de orders.items) y
+// tier (BLACK/PLATINUM/GOLD/BLUE, mismos cortes de percentil que
+// ClientesSection.tsx) calculado server-side vía la función SQL
+// calc_customer_tier (ver supabase/migrations/20260903140000_customer_tier_percentile.sql)
+// contra la distribución real de TODOS los clientes del restaurante, sin
+// traer esa lista completa a este edge function.
 export async function lookupCustomer(supabase: any, restaurantId: string, phone: string) {
   const { data: customer } = await supabase
     .from("customers")
@@ -179,13 +204,48 @@ export async function lookupCustomer(supabase: any, restaurantId: string, phone:
     .eq("customer_id", customer.id)
     .order("is_default", { ascending: false });
 
-  const { data: lastOrder } = await supabase
+  // Todo el historial real de pedidos del cliente (no solo el último) —
+  // ordenado desc, así allOrders[0] es también el último pedido y no hace
+  // falta una segunda consulta aparte para eso.
+  const { data: allOrders } = await supabase
     .from("orders")
     .select("items, created_at")
     .eq("customer_id", customer.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
+
+  const lastOrder = allOrders?.[0] ?? null;
+
+  // frequent_items: ocurrencias reales (suma de cantidades) por producto,
+  // contadas across TODO el historial real de orders.items de este
+  // customer_id — no solo el último pedido. Con un solo pedido, coincide
+  // con last_order_items (esperado).
+  const conteoPorProducto = new Map<string, { name: string; quantity: number }>();
+  for (const order of allOrders ?? []) {
+    for (const item of (order.items ?? []) as { id?: string; name: string; quantity: number }[]) {
+      const key = item.id ?? item.name;
+      const actual = conteoPorProducto.get(key);
+      if (actual) actual.quantity += item.quantity;
+      else conteoPorProducto.set(key, { name: item.name, quantity: item.quantity });
+    }
+  }
+  const frequent_items = [...conteoPorProducto.values()]
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 3);
+
+  // Tier real por percentil, calculado en SQL (ver calc_customer_tier) —
+  // si la función todavía no existe en la base (migración bloqueada por
+  // Auto Mode, pendiente de aplicar a mano) o falla por cualquier motivo,
+  // cae a tier: null en vez de romper la conversación.
+  let tier: CustomerTier | null = null;
+  const { data: tierResult, error: tierError } = await supabase.rpc("calc_customer_tier", {
+    p_restaurant_id: restaurantId,
+    p_customer_id: customer.id,
+  });
+  if (tierError) {
+    console.error("calc_customer_tier: no se pudo calcular, tier=null:", tierError);
+  } else {
+    tier = (tierResult?.tier ?? null) as CustomerTier | null;
+  }
 
   return {
     is_new: false as const,
@@ -193,5 +253,7 @@ export async function lookupCustomer(supabase: any, restaurantId: string, phone:
     order_count: customer.order_count as number,
     addresses: (addresses ?? []) as { address: string; label: string | null; is_default: boolean }[],
     last_order_items: (lastOrder?.items ?? null) as { name: string; quantity: number }[] | null,
+    frequent_items: frequent_items as { name: string; quantity: number }[],
+    tier,
   };
 }

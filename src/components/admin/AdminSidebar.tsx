@@ -56,7 +56,7 @@ const menuSections = [
       { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
       { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
       { id: 'contactos', label: 'Contactos', icon: PhoneCall },
-      { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History, disabled: true },
+      { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History },
       { id: 'pagos', label: 'Pagos', icon: CreditCard, disabled: true },
     ],
   },
@@ -81,7 +81,7 @@ const menuSections = [
       { id: 'users', label: 'Usuarios', icon: Users },
       { id: 'repartidores', label: 'Repartidores', icon: Bike },
       { id: 'sucursales', label: 'Sucursales', icon: Store },
-      { id: 'cuentas-accesos', label: 'Cuentas & Accesos', icon: Lock, disabled: true },
+      { id: 'cuentas-accesos', label: 'Cuentas & Accesos', icon: Lock },
     ],
   },
 ];

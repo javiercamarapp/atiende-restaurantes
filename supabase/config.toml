@@ -20,3 +20,8 @@ verify_jwt = false
 [functions.buscar-producto]
 # Called by the ElevenLabs voice agent's Server Tool, no Supabase user JWT.
 verify_jwt = false
+
+[functions.whatsapp-widget-chat]
+# Called by the public/demo page's chat widget (src/components/WidgetWhatsApp.tsx),
+# which has no logged-in Supabase user — same shape as whatsapp-webhook.
+verify_jwt = false
