@@ -909,13 +909,13 @@ const AdminDashboard = () => {
             {/* Date Filter and Last Updated */}
             <div className="flex items-center justify-between">
               <Select value={dateFilter} onValueChange={(value: 'today' | '7' | '30' | '90') => setDateFilter(value)}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-auto min-w-[168px] h-auto rounded-full border-border bg-card px-4 py-2 gap-3">
                   <div className="flex flex-col items-start">
-                    <span className="text-xs text-muted-foreground">FECHA</span>
-                    <span className="text-sm font-medium text-foreground">
-                      {dateFilter === 'today' ? 'Hoy' : 
-                       dateFilter === '7' ? 'Últimos 7 días' : 
-                       dateFilter === '30' ? 'Últimos 30 días' : 
+                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Fecha</span>
+                    <span className="text-[13px] font-semibold text-primary">
+                      {dateFilter === 'today' ? 'Hoy' :
+                       dateFilter === '7' ? 'Últimos 7 días' :
+                       dateFilter === '30' ? 'Últimos 30 días' :
                        'Últimos 90 días'}
                     </span>
                   </div>

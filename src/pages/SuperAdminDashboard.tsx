@@ -167,10 +167,10 @@ const SuperAdminDashboard = () => {
         </nav>
 
         <div className="p-2 space-y-0.5 shrink-0">
-          {/* Cuenta — plana, sin recuadro, igual que el sidebar real de
-              Likida: mismo tamaño de letra que la nav de arriba. */}
+          {/* Cuenta — el recuadro gris real de Likida (sobresale del blanco
+              del sidebar, sin borde propio, contenido dentro del padding). */}
           {!collapsed && (
-            <>
+            <div className="rounded-xl bg-muted/60 p-1.5 space-y-0.5 mb-1.5">
               <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[13px] border border-border bg-card hover:bg-muted transition-colors">
                 <LifeBuoy className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
                 <span className="truncate">Centro de ayuda</span>
@@ -181,7 +181,7 @@ const SuperAdminDashboard = () => {
                 { label: "Plan y facturación", icon: CreditCard },
                 { label: "Configuración", icon: Settings },
               ].map((it) => (
-                <button key={it.label} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] text-muted-foreground hover:bg-muted transition-colors">
+                <button key={it.label} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] text-muted-foreground hover:bg-background transition-colors">
                   <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
                   <span className="truncate">{it.label}</span>
                 </button>
@@ -189,7 +189,7 @@ const SuperAdminDashboard = () => {
               <div className="pt-1.5 pb-0.5 flex justify-center">
                 <ThemeSelector />
               </div>
-            </>
+            </div>
           )}
 
           {/* Usuario — plano, separado solo por un borde superior fino */}
