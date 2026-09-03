@@ -31,7 +31,17 @@ export function StatCard({
       </div>
       {nota && (
         <div className="mx-1.5 mt-1.5 pt-1.5 border-t border-dashed border-border">
-          <p className="text-[11px] text-muted-foreground">{nota}</p>
+          <p
+            className={
+              nota.trim().startsWith('+')
+                ? "text-[11px] text-green-600 dark:text-green-500"
+                : nota.trim().startsWith('-')
+                  ? "text-[11px] text-destructive"
+                  : "text-[11px] text-muted-foreground"
+            }
+          >
+            {nota}
+          </p>
         </div>
       )}
     </div>
