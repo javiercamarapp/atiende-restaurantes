@@ -3,9 +3,10 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw, ChevronUp, ChevronDown, PanelRightClose } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -21,7 +22,7 @@ import { es } from "date-fns/locale";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import NotificacionesSection from "@/components/admin/NotificacionesSection";
 import { StatCard } from "@/components/admin/ui/StatCard";
-import { AtiendeMark } from "@/components/AtiendeLogo";
+import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
 const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
   id: string;
@@ -130,6 +131,7 @@ const AdminDashboard = () => {
   const [fasePensando, setFasePensando] = useState('');
   const [historialPreguntas, setHistorialPreguntas] = useState<string[]>([]);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [busquedaHistorial, setBusquedaHistorial] = useState('');
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const navigate = useNavigate();
@@ -957,6 +959,7 @@ const AdminDashboard = () => {
       preguntas: ['¿Cuántos usuarios tengo registrados?', 'Busca los pedidos de un cliente'],
     },
   ];
+  const preguntasSugeridasPlano = categoriasPreguntasRestaurante.flatMap((c) => c.preguntas);
 
   const historialFiltrado = historialPreguntas.filter((h) => h.toLowerCase().includes(busquedaHistorial.toLowerCase()));
 
@@ -1014,23 +1017,25 @@ const AdminDashboard = () => {
               {activeSection === 'pregunta' && 'Pregunta a tus datos'}
               {activeSection === 'help' && 'Centro de Ayuda'}
             </h1>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setActiveSection('pregunta')}
-                className="h-8 rounded-full text-[13px] shrink-0"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                Chatea con tus datos
-              </Button>
-              <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0">
-                <Bell className="w-4 h-4" strokeWidth={1.75} />
-              </button>
-              <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
-                {format(new Date(), "d MMM yyyy", { locale: es })}
-              </span>
-            </div>
+            {activeSection === 'dashboard' && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveSection('pregunta')}
+                  className="h-8 rounded-full text-[13px] shrink-0"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  Chatea con tus datos
+                </Button>
+                <button className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0">
+                  <Bell className="w-4 h-4" strokeWidth={1.75} />
+                </button>
+                <span className="font-mono text-xs text-muted-foreground border border-border rounded-full px-3 py-1.5 shrink-0">
+                  {format(new Date(), "d MMM yyyy", { locale: es })}
+                </span>
+              </div>
+            )}
           </header>
 
           <main className="flex-1 p-4 space-y-6 overflow-auto bg-muted/30">
@@ -1634,7 +1639,7 @@ const AdminDashboard = () => {
 
         {activeSection === 'pregunta' && (
           <div
-            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 overflow-hidden"
+            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4"
             style={{
               backgroundImage: "radial-gradient(hsl(var(--primary) / 0.22) 1px, transparent 1px)",
               backgroundSize: "18px 18px",
@@ -1655,23 +1660,23 @@ const AdminDashboard = () => {
             {/* Panel de historial — idéntico al de Likida: "Nuevo chat",
                 buscador, etiqueta "RECIENTES", lista o estado vacío. */}
             {mostrarHistorial && (
-              <div className="absolute right-0 top-0 bottom-0 z-20 w-80 max-w-[85vw] bg-card border-l border-border shadow-xl flex flex-col">
-                <div className="p-3 flex items-center gap-2 border-b border-border shrink-0">
+              <div className="absolute right-3 top-3 bottom-3 z-20 w-72 max-w-[85vw] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden">
+                <div className="p-3 flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => { setMensajesChat([]); setMostrarHistorial(false); }}
-                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border bg-card hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                    onClick={() => { setMensajesChat([]); setMostrarHistorial(false); setMostrarSugerencias(false); }}
+                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 hover:bg-muted transition-colors text-sm font-medium text-foreground"
                   >
                     <Edit className="w-3.5 h-3.5" />
                     Nuevo chat
                   </button>
                   <button
                     onClick={() => setMostrarHistorial(false)}
-                    className="p-2 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                    className="w-8 h-8 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
                   >
-                    <X className="w-4 h-4" />
+                    <PanelRightClose className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="p-3 shrink-0">
+                <div className="px-3 pb-3 shrink-0">
                   <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-2">
                     <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <input
@@ -1708,7 +1713,7 @@ const AdminDashboard = () => {
             <div className="flex flex-col items-center pt-4 pb-16">
               {mensajesChat.length === 0 && (
                 <>
-                  <AtiendeMark className="h-8 w-auto mb-6" />
+                  <AtiendeWordmark className="mb-6" markClassName="h-9 w-auto" animado />
                   <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
                   <p className="text-sm text-muted-foreground text-center max-w-md mb-8">
                     Tu operación, con la cifra que ya calculó el sistema — pregunta por pedidos de {restaurantName ?? "tu restaurante"}.
@@ -1794,8 +1799,12 @@ const AdminDashboard = () => {
               )}
 
               <form
-                onSubmit={(e) => { e.preventDefault(); responderPreguntaLocal(pregunta); }}
-                className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!pregunta.trim()) { setMostrarSugerencias((v) => !v); return; }
+                  responderPreguntaLocal(pregunta);
+                }}
+                className={`w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 ${mensajesChat.length > 0 ? 'sticky bottom-4 z-10' : ''}`}
               >
                 <input
                   value={pregunta}
@@ -1838,33 +1847,67 @@ const AdminDashboard = () => {
                 </div>
               </form>
 
+              {/* Por default: sugerencias sueltas en píldoras azul cielo,
+                  igual a Likida en reposo. Al apretar Consulta con el campo
+                  vacío, cambian a la vista por categoría (mismo par de
+                  vistas que Likida). */}
               {mensajesChat.length === 0 && (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-5">
-                    {categoriasPreguntasRestaurante.map((cat) => (
-                      <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
-                        <div className="space-y-1">
-                          {cat.preguntas.map((p) => (
-                            <button
-                              key={p}
-                              onClick={() => responderPreguntaLocal(p)}
-                              className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
-                            >
-                              {p}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="w-full flex flex-col items-center">
+                  <AnimatePresence mode="wait">
+                    {!mostrarSugerencias ? (
+                      <motion.div
+                        key="plano"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl"
+                      >
+                        {preguntasSugeridasPlano.map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => responderPreguntaLocal(p)}
+                            className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="categorias"
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.25, ease: 'easeOut' }}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-5"
+                      >
+                        {categoriasPreguntasRestaurante.map((cat) => (
+                          <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
+                            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
+                            <div className="space-y-1">
+                              {cat.preguntas.map((p) => (
+                                <button
+                                  key={p}
+                                  onClick={() => responderPreguntaLocal(p)}
+                                  className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                                >
+                                  {p}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
                     Responde con cifras ya calculadas en el servidor — búsqueda simple por ahora, no un motor de
                     lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos
                     ni lo analizamos automáticamente.
                   </p>
-                </>
+                </div>
               )}
             </div>
           </div>
