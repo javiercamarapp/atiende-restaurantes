@@ -3,7 +3,9 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp } from "lucide-react";
+import { LogOut, Package, DollarSign, Users, ShoppingCart, Plus, Edit, Trash2, Tag, Upload, Loader2, Menu, X, Truck, Phone, MapPin, Percent, TrendingUp, TrendingDown, Eye, MessageCircle, Bell, Search, Paperclip, History, ArrowUp, FileDown, RefreshCw } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -120,9 +122,15 @@ const AdminDashboard = () => {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
   const [pregunta, setPregunta] = useState("");
-  const [respuestaPregunta, setRespuestaPregunta] = useState<Order[] | null>(null);
+  const [nombreAdmin, setNombreAdmin] = useState('');
+  const [refrescando, setRefrescando] = useState(false);
+  const [ultimaActualizacion, setUltimaActualizacion] = useState<Date>(new Date());
+  const [mensajesChat, setMensajesChat] = useState<{ rol: 'usuario' | 'asistente'; texto: string; pedidos?: Order[]; mostrarGrafica?: boolean }[]>([]);
+  const [pensando, setPensando] = useState(false);
+  const [fasePensando, setFasePensando] = useState('');
   const [historialPreguntas, setHistorialPreguntas] = useState<string[]>([]);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [busquedaHistorial, setBusquedaHistorial] = useState('');
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -221,6 +229,10 @@ const AdminDashboard = () => {
         return;
       }
       setUser(session.user);
+      supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle()
+        .then(({ data: profile }) => {
+          setNombreAdmin(profile?.nombre || (session.user.email ?? "").split("@")[0]);
+        });
 
       // Un superadmin llega aquí con "?restaurante=<id>" desde "Ver cuenta"
       // en su panel — ve esa cuenta puntual. Sin ese parámetro, se resuelve
@@ -256,6 +268,34 @@ const AdminDashboard = () => {
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // Se refresca solo cada 60s mientras se ve el dashboard, además del
+  // refresco manual — el botón bajo "Actualizado" refleja el estado real de
+  // la recarga (no es decorativo).
+  useEffect(() => {
+    if (activeSection !== 'dashboard' || !restaurantId) return;
+    const intervalo = setInterval(() => {
+      refrescarDatos();
+    }, 60000);
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, restaurantId]);
+
+  const refrescarDatos = async () => {
+    setRefrescando(true);
+    await fetchData(restaurantId);
+    setUltimaActualizacion(new Date());
+    setRefrescando(false);
+  };
+
+  const saludoHorario = () => {
+    const hora = new Date().getHours();
+    if (hora < 12) return 'Buenos días';
+    if (hora < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
+  const nombreSaludo = nombreAdmin.split(' ').slice(0, 2).join(' ');
+
   const fetchData = async (scopedRestaurantId: string | null) => {
     // Nota: no reasignar estas queries con `let x = x.eq(...)` — el builder de
     // Supabase tiene tipos genéricos encadenados tan profundos que TypeScript
@@ -803,30 +843,105 @@ const AdminDashboard = () => {
       is_active: true
     });
   };
-  // Búsqueda simple y determinista sobre los pedidos ya cargados de este
+  // Búsqueda simple y determinista sobre los datos ya cargados de este
   // restaurante — no es un motor de lenguaje natural real todavía, mismo
-  // criterio honesto que "Pregunta a tus datos" de superadmin.
-  const responderPreguntaLocal = (q: string) => {
-    if (!q.trim()) return;
+  // criterio honesto que "Pregunta a tus datos" de superadmin. Las fases de
+  // "pensando" son solo estado de carga (la búsqueda es instantánea), no una
+  // llamada real a un LLM.
+  const FASES_PENSANDO = ['Leyendo tus pedidos…', 'Calculando cifras…', 'Preparando la respuesta…'];
+
+  const responderPreguntaLocal = async (qInput: string) => {
+    const q = qInput.trim();
+    if (!q || pensando) return;
     setHistorialPreguntas((h) => [q, ...h.filter((x) => x !== q)].slice(0, 20));
     setMostrarHistorial(false);
+    setMensajesChat((m) => [...m, { rol: 'usuario', texto: q }]);
+    setPregunta('');
+    setPensando(true);
+    for (const fase of FASES_PENSANDO) {
+      setFasePensando(fase);
+      await new Promise((r) => setTimeout(r, 260));
+    }
+
     const needle = q.toLowerCase();
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
-    if (needle.includes("pendiente")) {
-      setRespuestaPregunta(orders.filter((o) => o.status === 'pending' || o.status === 'preparando'));
-      return;
+    let pedidos: Order[] | undefined;
+    let mostrarGrafica = false;
+    let texto: string;
+
+    if (needle.includes('grafica') || needle.includes('gráfica') || needle.includes('tendencia') || needle.includes('cómo van') || needle.includes('como van')) {
+      mostrarGrafica = true;
+      texto = `Así van tus ventas ${getPeriodLabel()}.`;
+    } else if (needle.includes('pendiente')) {
+      pedidos = orders.filter((o) => o.status !== 'completado' && o.status !== 'entregado');
+      const total = pedidos.reduce((s, o) => s + Number(o.total), 0);
+      texto = pedidos.length > 0
+        ? `Tienes ${pedidos.length} pedido${pedidos.length === 1 ? '' : 's'} pendiente${pedidos.length === 1 ? '' : 's'} por $${total.toLocaleString('es-MX')}.`
+        : 'No tienes pedidos pendientes en este momento.';
+    } else if (needle.includes('entregado') || needle.includes('completado')) {
+      pedidos = orders.filter((o) => o.status === 'completado' || o.status === 'entregado');
+      texto = `${pedidos.length} pedido${pedidos.length === 1 ? '' : 's'} entregado${pedidos.length === 1 ? '' : 's'}.`;
+    } else if (needle.includes('hoy') || needle.includes('vendido') || needle.includes('entraron')) {
+      pedidos = orders.filter((o) => new Date(o.created_at) >= hoy);
+      const total = pedidos.reduce((s, o) => s + Number(o.total), 0);
+      texto = `Hoy entraron ${pedidos.length} pedido${pedidos.length === 1 ? '' : 's'} por $${total.toLocaleString('es-MX')}.`;
+    } else if (needle.includes('producto')) {
+      const activos = products.filter((p) => p.is_available !== false).length;
+      texto = `Tienes ${products.length} producto${products.length === 1 ? '' : 's'} en el menú, ${activos} activo${activos === 1 ? '' : 's'}.`;
+    } else if (needle.includes('usuario') || needle.includes('registrado')) {
+      texto = `Tienes ${profiles.length} usuario${profiles.length === 1 ? '' : 's'} registrado${profiles.length === 1 ? '' : 's'}.`;
+    } else {
+      pedidos = orders.filter((o) => o.customer_name.toLowerCase().includes(needle));
+      texto = pedidos.length > 0
+        ? `Encontré ${pedidos.length} pedido${pedidos.length === 1 ? '' : 's'} de "${q}".`
+        : `No encontré pedidos que coincidan con "${q}". Pregúntame por pendientes, entregados, lo de hoy, tus ventas, o el nombre de un cliente.`;
     }
-    if (needle.includes("hoy") || needle.includes("vendido") || needle.includes("entraron")) {
-      setRespuestaPregunta(orders.filter((o) => new Date(o.created_at) >= hoy));
-      return;
-    }
-    setRespuestaPregunta(orders.filter((o) => o.customer_name.toLowerCase().includes(needle)));
+
+    setMensajesChat((m) => [...m, { rol: 'asistente', texto, pedidos, mostrarGrafica }]);
+    setPensando(false);
   };
-  const preguntasSugeridasRestaurante = [
-    "¿Cuántos pedidos están pendientes?",
-    "¿Qué pedidos entraron hoy?",
+
+  const descargarPdfRespuesta = (preguntaTexto: string, texto: string, pedidos?: Order[]) => {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text('Atiende — Reporte', 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(120);
+    doc.text(restaurantName ?? 'Tu restaurante', 14, 25);
+    doc.text(new Date().toLocaleString('es-MX'), 14, 30);
+    doc.setTextColor(0);
+    doc.setFontSize(11);
+    doc.text(`Pregunta: ${preguntaTexto}`, 14, 40);
+    const textoLineas = doc.splitTextToSize(texto, 180);
+    doc.text(textoLineas, 14, 48);
+    if (pedidos && pedidos.length > 0) {
+      autoTable(doc, {
+        startY: 48 + textoLineas.length * 6 + 6,
+        head: [['Cliente', 'Fecha', 'Total']],
+        body: pedidos.map((o) => [o.customer_name, new Date(o.created_at).toLocaleString('es-MX'), `$${Number(o.total).toLocaleString('es-MX')}`]),
+        headStyles: { fillColor: [37, 99, 235] },
+      });
+    }
+    doc.save(`atiende-reporte-${Date.now()}.pdf`);
+  };
+
+  const categoriasPreguntasRestaurante = [
+    {
+      titulo: 'PEDIDOS Y VENTAS',
+      preguntas: ['¿Qué pedidos entraron hoy?', '¿Cómo van mis ventas?', '¿Cuántos pedidos están pendientes?'],
+    },
+    {
+      titulo: 'OPERACIÓN',
+      preguntas: ['¿Cuántos pedidos están entregados?', '¿Cuántos productos tengo activos?'],
+    },
+    {
+      titulo: 'CLIENTES',
+      preguntas: ['¿Cuántos usuarios tengo registrados?', 'Busca los pedidos de un cliente'],
+    },
   ];
+
+  const historialFiltrado = historialPreguntas.filter((h) => h.toLowerCase().includes(busquedaHistorial.toLowerCase()));
 
   if (loading) {
     return <div className="min-h-screen bg-background flex items-center justify-center" role="status" aria-label="Cargando">
@@ -906,13 +1021,23 @@ const AdminDashboard = () => {
         {/* Dashboard Stats - Only show on dashboard section */}
         {activeSection === 'dashboard' && (
           <>
+            {/* Saludo — horario real + nombre del admin (nombre y primer apellido) */}
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">
+                {saludoHorario()}, {nombreSaludo || 'de vuelta'} 👋
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Todo listo para que sigas administrando tu restaurante.
+              </p>
+            </div>
+
             {/* Date Filter and Last Updated */}
             <div className="flex items-center justify-between">
               <Select value={dateFilter} onValueChange={(value: 'today' | '7' | '30' | '90') => setDateFilter(value)}>
-                <SelectTrigger className="w-auto min-w-[168px] h-auto rounded-full border-border bg-card px-4 py-2 gap-3">
+                <SelectTrigger className="w-auto min-w-[140px] h-auto rounded-full border-border bg-card px-3.5 py-1.5 gap-2 focus:ring-0 focus:ring-offset-0 data-[state=open]:ring-0">
                   <div className="flex flex-col items-start">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Fecha</span>
-                    <span className="text-[13px] font-semibold text-primary">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">Fecha</span>
+                    <span className="text-xs font-semibold text-primary">
                       {dateFilter === 'today' ? 'Hoy' :
                        dateFilter === '7' ? 'Últimos 7 días' :
                        dateFilter === '30' ? 'Últimos 30 días' :
@@ -927,19 +1052,31 @@ const AdminDashboard = () => {
                   <SelectItem value="90">Últimos 90 días</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground">
-                Actualizado {format(new Date(), "EEEE d 'de' MMMM, yyyy h:mm a", {
-                  locale: es
-                })}
-              </p>
+              <div className="flex flex-col items-end gap-1">
+                <p className="text-sm text-muted-foreground">
+                  Actualizado {format(ultimaActualizacion, "EEEE d 'de' MMMM, yyyy h:mm a", {
+                    locale: es
+                  })}
+                </p>
+                <button
+                  onClick={refrescarDatos}
+                  disabled={refrescando}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-70"
+                >
+                  <RefreshCw className={`w-3 h-3 ${refrescando ? 'animate-spin' : ''}`} />
+                  {refrescando ? 'Actualizando…' : 'Actualizar'}
+                </button>
+              </div>
             </div>
 
-            {/* Tus ventas Section — anatomía exacta del StatCard de Likida:
+            {/* Tus ventas Section — el título vive como caption mono/uppercase
+                dentro del mismo recuadro que las tarjetas, igual que "TU MOTOR
+                FISCAL — EJERCICIO 2026" en Likida. Anatomía de cada tarjeta:
                 chip de ícono sólido, cifra grande, pie con hairline punteado
                 (sin píldora de color ni "Ver más" — la tarjeta completa es
                 el link, como en el dashboard real de Likida). */}
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">Tus ventas</h2>
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tus ventas</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button onClick={() => openStatsDialog('revenue')} className="w-full text-left">
                   <StatCard
@@ -969,8 +1106,8 @@ const AdminDashboard = () => {
             </div>
 
             {/* Sales & Orders Trend Charts */}
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">Tendencias</h2>
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tendencias</p>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Ventas Chart */}
                 <Card>
@@ -1068,8 +1205,8 @@ const AdminDashboard = () => {
             </div>
 
             {/* Tu Operación Section */}
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">Tu Operación</h2>
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tu operación</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('products')}>
                   <StatCard icon={Package} label="Total de productos" value={String(stats.products)} />
@@ -1460,9 +1597,9 @@ const AdminDashboard = () => {
 
         {activeSection === 'pregunta' && (
           <div
-            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4"
+            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 overflow-hidden"
             style={{
-              backgroundImage: "radial-gradient(hsl(var(--border)) 1px, transparent 1px)",
+              backgroundImage: "radial-gradient(hsl(var(--primary) / 0.22) 1px, transparent 1px)",
               backgroundSize: "18px 18px",
               backgroundPosition: "-9px -9px",
             }}
@@ -1478,30 +1615,146 @@ const AdminDashboard = () => {
               </button>
             </div>
 
+            {/* Panel de historial — idéntico al de Likida: "Nuevo chat",
+                buscador, etiqueta "RECIENTES", lista o estado vacío. */}
             {mostrarHistorial && (
-              <div className="absolute right-4 top-14 z-20 w-72 max-h-80 overflow-y-auto rounded-xl border border-border bg-card shadow-lg p-2">
-                {historialPreguntas.length === 0 ? (
-                  <p className="text-xs text-muted-foreground p-3">Todavía no has hecho preguntas.</p>
-                ) : (
-                  historialPreguntas.map((h, i) => (
-                    <button
-                      key={i}
-                      onClick={() => { setPregunta(h); responderPreguntaLocal(h); }}
-                      className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate"
-                    >
-                      {h}
-                    </button>
-                  ))
-                )}
+              <div className="absolute right-0 top-0 bottom-0 z-20 w-80 max-w-[85vw] bg-card border-l border-border shadow-xl flex flex-col">
+                <div className="p-3 flex items-center gap-2 border-b border-border shrink-0">
+                  <button
+                    onClick={() => { setMensajesChat([]); setMostrarHistorial(false); }}
+                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border bg-card hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    Nuevo chat
+                  </button>
+                  <button
+                    onClick={() => setMostrarHistorial(false)}
+                    className="p-2 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="p-3 shrink-0">
+                  <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-2">
+                    <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <input
+                      value={busquedaHistorial}
+                      onChange={(e) => setBusquedaHistorial(e.target.value)}
+                      placeholder="Buscar chats"
+                      className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+                </div>
+                <p className="px-4 pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground shrink-0">
+                  Recientes
+                </p>
+                <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-0.5">
+                  {historialFiltrado.length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-2 py-2">
+                      {historialPreguntas.length === 0 ? 'Sin chats recientes.' : 'Sin resultados.'}
+                    </p>
+                  ) : (
+                    historialFiltrado.map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setMostrarHistorial(false); responderPreguntaLocal(h); }}
+                        className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors truncate text-foreground"
+                      >
+                        {h}
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
             <div className="flex flex-col items-center pt-4 pb-16">
-              <AtiendeMark className="h-8 w-auto mb-6" />
-              <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-8">
-                Tu operación, con la cifra que ya calculó el sistema — pregunta por pedidos de {restaurantName ?? "tu restaurante"}.
-              </p>
+              {mensajesChat.length === 0 && (
+                <>
+                  <AtiendeMark className="h-8 w-auto mb-6" />
+                  <h1 className="text-2xl font-semibold text-foreground mb-2">Pregunta a tus datos</h1>
+                  <p className="text-sm text-muted-foreground text-center max-w-md mb-8">
+                    Tu operación, con la cifra que ya calculó el sistema — pregunta por pedidos de {restaurantName ?? "tu restaurante"}.
+                  </p>
+                </>
+              )}
+
+              {/* Hilo de conversación — burbuja del usuario a la derecha,
+                  respuesta del asistente como texto plano + resultado
+                  (tabla de pedidos con hairline punteado, o gráfica),
+                  igual al estilo de respuesta de Likida. */}
+              {mensajesChat.length > 0 && (
+                <div className="w-full max-w-2xl space-y-5 mb-6">
+                  {mensajesChat.map((m, i) => (
+                    m.rol === 'usuario' ? (
+                      <div key={i} className="flex justify-end">
+                        <div className="max-w-[80%] bg-card border border-border rounded-2xl px-4 py-2 text-sm text-foreground shadow-sm">
+                          {m.texto}
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={i} className="space-y-3">
+                        <div className="flex items-start gap-2">
+                          <AtiendeMark className="h-4 w-auto shrink-0 mt-0.5" />
+                          <p className="text-sm text-foreground leading-relaxed">{m.texto}</p>
+                        </div>
+
+                        {m.mostrarGrafica && (
+                          <Card>
+                            <CardContent className="pt-4">
+                              <div className="h-[180px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <LineChart data={salesTrendData}>
+                                    <XAxis dataKey="name" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                                    <YAxis tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, ui-monospace, monospace", fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+                                    <Tooltip
+                                      contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', color: 'hsl(var(--popover-foreground))' }}
+                                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ventas']}
+                                    />
+                                    <Line type="monotone" dataKey="ventas" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {m.pedidos && m.pedidos.length > 0 && (
+                          <Card>
+                            <CardContent className="pt-4">
+                              <ul className="space-y-2 text-sm">
+                                {m.pedidos.slice(0, 10).map((o) => (
+                                  <li key={o.id} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
+                                    <span>{o.customer_name} · {new Date(o.created_at).toLocaleString("es-MX")}</span>
+                                    <span className="font-mono tabular-nums text-muted-foreground">${Number(o.total).toLocaleString("es-MX")}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {(m.mostrarGrafica || (m.pedidos && m.pedidos.length > 0)) && (
+                          <button
+                            onClick={() => descargarPdfRespuesta(mensajesChat[i - 1]?.texto ?? '', m.texto, m.pedidos)}
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors ml-6"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                            Descargar PDF
+                          </button>
+                        )}
+                      </div>
+                    )
+                  ))}
+
+                  {pensando && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <AtiendeMark className="h-4 w-auto atiende-respira shrink-0" />
+                      <span>{fasePensando}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <form
                 onSubmit={(e) => { e.preventDefault(); responderPreguntaLocal(pregunta); }}
@@ -1526,7 +1779,8 @@ const AdminDashboard = () => {
                 <div className="flex items-center justify-between mt-1">
                   <button
                     type="submit"
-                    className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 transition-opacity"
+                    disabled={pensando}
+                    className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
                     <Search className="w-3.5 h-3.5" />
                     Consulta
@@ -1540,53 +1794,40 @@ const AdminDashboard = () => {
                         onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
                       />
                     </label>
-                    <Button type="submit" size="icon" className="rounded-full shrink-0 w-8 h-8">
+                    <Button type="submit" size="icon" disabled={pensando} className="rounded-full shrink-0 w-8 h-8">
                       <ArrowUp className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
               </form>
 
-              <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
-                {preguntasSugeridasRestaurante.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => { setPregunta(p); responderPreguntaLocal(p); }}
-                    className="text-xs border border-border rounded-full px-3 py-1.5 bg-card text-muted-foreground hover:bg-muted transition-colors"
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-
-              <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
-                Responde con cifras ya calculadas en el servidor — búsqueda simple por ahora, no un motor de
-                lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos
-                ni lo analizamos automáticamente.
-              </p>
-
-              {respuestaPregunta && (
-                <div className="w-full max-w-xl mt-8">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">{respuestaPregunta.length} resultado{respuestaPregunta.length === 1 ? "" : "s"}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {respuestaPregunta.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Sin resultados.</p>
-                      ) : (
-                        <ul className="space-y-2 text-sm">
-                          {respuestaPregunta.slice(0, 10).map((o) => (
-                            <li key={o.id} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
-                              <span>{o.customer_name} · {new Date(o.created_at).toLocaleString("es-MX")}</span>
-                              <span className="font-mono tabular-nums text-muted-foreground">${Number(o.total).toLocaleString("es-MX")}</span>
-                            </li>
+              {mensajesChat.length === 0 && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-5">
+                    {categoriasPreguntasRestaurante.map((cat) => (
+                      <div key={cat.titulo} className="rounded-xl border border-border bg-card p-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground mb-2">{cat.titulo}</p>
+                        <div className="space-y-1">
+                          {cat.preguntas.map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => responderPreguntaLocal(p)}
+                              className="w-full text-left text-sm text-foreground rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                            >
+                              {p}
+                            </button>
                           ))}
-                        </ul>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">
+                    Responde con cifras ya calculadas en el servidor — búsqueda simple por ahora, no un motor de
+                    lenguaje natural completo. Adjuntar un archivo lo guarda con tu pregunta; todavía no lo leemos
+                    ni lo analizamos automáticamente.
+                  </p>
+                </>
               )}
             </div>
           </div>
