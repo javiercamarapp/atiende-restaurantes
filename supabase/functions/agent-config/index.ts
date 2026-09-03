@@ -160,14 +160,24 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "voices") {
-      const res = await fetch(
-        "https://api.elevenlabs.io/v1/shared-voices?language=es&page_size=60",
-        { headers: { "xi-api-key": apiKey } },
-      );
-      if (!res.ok) return json({ error: await res.text() }, res.status);
-      const data = await res.json();
+      // Pagina de verdad todo el catálogo compartido en español — antes se
+      // pedía una sola página de 60 y se recortaba ahí, aunque la
+      // biblioteca real de ElevenLabs trae más voces que esas.
       // deno-lint-ignore no-explicit-any
-      const voces = (data.voices ?? []).filter((v: any) => {
+      let todas: any[] = [];
+      for (let pagina = 0; pagina < 10; pagina++) {
+        const url = new URL("https://api.elevenlabs.io/v1/shared-voices");
+        url.searchParams.set("language", "es");
+        url.searchParams.set("page_size", "100");
+        url.searchParams.set("page", String(pagina));
+        const res = await fetch(url, { headers: { "xi-api-key": apiKey } });
+        if (!res.ok) return json({ error: await res.text() }, res.status);
+        const data = await res.json();
+        todas = todas.concat(data.voices ?? []);
+        if (!data.has_more) break;
+      }
+      // deno-lint-ignore no-explicit-any
+      const voces = todas.filter((v: any) => {
         const acento = (v.accent ?? "").toLowerCase();
         return acento.includes("latin") || acento.includes("mexic") || acento.includes("colomb")
           || acento.includes("argentin") || acento.includes("neutral");

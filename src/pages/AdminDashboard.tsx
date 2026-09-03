@@ -481,6 +481,36 @@ function DashboardAgente({
     if (t === 'clonada') return 'clonada';
     return a;
   };
+  // Los nombres del catálogo compartido de ElevenLabs suelen traer un
+  // sufijo descriptivo en inglés pegado con " - " (ej. "Daniela - Warm,
+  // Professional, Persuasive"). Se separa el nombre real del descriptor, y
+  // el descriptor se traduce con un diccionario de los adjetivos que de
+  // verdad se repiten en ese catálogo — nunca se muestra texto en inglés
+  // sin traducir; si una palabra no está en el diccionario, se omite en
+  // vez de dejarla en inglés.
+  const DICCIONARIO_DESCRIPTOR: Record<string, string> = {
+    warm: 'cálida', professional: 'profesional', persuasive: 'persuasiva', calm: 'calmada',
+    friendly: 'amigable', deep: 'profunda', cinematic: 'cinematográfica', storyteller: 'narradora',
+    narrator: 'narradora', conversational: 'conversacional', podcast: 'podcast', executive: 'ejecutiva',
+    approachable: 'cercana', upbeat: 'animada', positive: 'positiva', energetic: 'enérgica',
+    informal: 'informal', tone: 'tono', natural: 'natural', unhurried: 'pausada', confident: 'segura',
+    intimate: 'íntima', sophisticated: 'sofisticada', wise: 'sabia', grounded: 'serena',
+    handsome: 'atractiva', cheerful: 'alegre', smooth: 'suave', elegant: 'elegante',
+    military: 'militar', motivational: 'motivacional', speak: 'discurso', clear: 'clara',
+    studio: 'de estudio', grandpa: 'de abuelo', tales: 'relatos', mysteries: 'misterios',
+    dramatic: 'dramática', trustworthy: 'confiable', articulated: 'clara al hablar',
+    engaging: 'cautivadora', narration: 'narración', spanish: 'en español', drama: 'drama',
+    mexican: 'mexicana', latin: 'latina',
+  };
+  const nombreLimpio = (nombre: string) => nombre.split(' - ')[0].trim();
+  const traducirDescriptor = (nombre: string): string => {
+    const partes = nombre.split(' - ');
+    if (partes.length < 2) return '';
+    const palabras = partes.slice(1).join(' - ').toLowerCase().split(/[\s,&]+/).filter(Boolean);
+    const traducidas = palabras.map((p) => DICCIONARIO_DESCRIPTOR[p.replace(/[^a-záéíóúñ]/g, '')]).filter(Boolean);
+    // Sin repetir la misma palabra traducida dos veces seguidas
+    return Array.from(new Set(traducidas)).slice(0, 3).join(' · ');
+  };
 
   useEffect(() => {
     if (canal !== 'voz' || !agentId) return;
@@ -933,8 +963,11 @@ function DashboardAgente({
                           </span>
                         </button>
                         <div className="min-w-0 flex-1">
-                          <p className="text-[13px] text-foreground truncate">{v.name}</p>
-                          <p className="text-[10.5px] text-muted-foreground truncate">{traducirGenero(v.gender)} · {traducirAcento(v.accent)}</p>
+                          <p className="text-[13px] text-foreground truncate">{nombreLimpio(v.name)}</p>
+                          <p className="text-[10.5px] text-muted-foreground truncate">
+                            {traducirGenero(v.gender)} · {traducirAcento(v.accent)}
+                            {traducirDescriptor(v.name) && ` · ${traducirDescriptor(v.name)}`}
+                          </p>
                         </div>
                         {borrador.voice_id === v.voice_id && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
                       </div>
