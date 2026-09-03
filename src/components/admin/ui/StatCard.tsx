@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, ChevronRight } from "lucide-react";
 
 type IconType = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -12,20 +12,31 @@ export function StatCard({
   label,
   value,
   nota,
+  verMas,
 }: {
   icon: IconType;
   label: string;
   value: string;
   nota?: string;
+  /** Muestra el link "Ver más" del mismo lenguaje que las tarjetas KPI — úsalo
+   *  cuando la tarjeta ya está envuelta en un botón que navega a esa sección. */
+  verMas?: boolean;
 }) {
   return (
     <div className="bg-card border border-border rounded-xl p-2">
       <div className="rounded-lg px-3 py-2.5 bg-muted">
-        <div className="flex items-center gap-2.5 mb-1.5">
-          <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center shrink-0">
-            <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center shrink-0">
+              <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
+            </div>
+            <span className="text-[13px] text-muted-foreground truncate">{label}</span>
           </div>
-          <span className="text-[13px] text-muted-foreground">{label}</span>
+          {verMas && (
+            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground shrink-0">
+              Ver más <ChevronRight className="w-2.5 h-2.5" />
+            </span>
+          )}
         </div>
         <p className="font-display text-xl font-semibold tabular-nums text-foreground">{value}</p>
       </div>

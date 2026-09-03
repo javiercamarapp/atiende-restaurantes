@@ -124,28 +124,28 @@ function TileKpiAgente({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      initial={{ opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.35, delay: indice * 0.06, ease: 'easeOut' }}
-      className="rounded-2xl border border-border bg-card p-4"
+      transition={{ duration: 0.3, delay: indice * 0.05, ease: 'easeOut' }}
+      className="rounded-xl border border-border bg-card p-3"
     >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-sm font-semibold text-foreground truncate">{label}</span>
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="text-[13px] font-medium text-foreground truncate">{label}</span>
           {notaGap && (
             <span title={notaGap} className="shrink-0 text-muted-foreground/60">
-              <Info className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <Info className="w-3 h-3" strokeWidth={1.75} />
             </span>
           )}
         </div>
-        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground shrink-0">
-          Ver más <ChevronRight className="w-3 h-3" />
+        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground shrink-0">
+          Ver más <ChevronRight className="w-2.5 h-2.5" />
         </span>
       </div>
-      <p className="font-display text-3xl font-semibold tabular-nums text-foreground mb-1">
+      <p className="font-display text-xl font-semibold tabular-nums text-foreground mb-0.5">
         {notaGap ? 'N/D' : valor === null ? '—' : `${valor.toFixed(1)}${sufijo}`}
       </p>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[10.5px] text-muted-foreground leading-snug">
         {notaGap ? notaGap : `Tu meta es de: ${meta}`}
       </p>
     </motion.div>
@@ -1430,14 +1430,14 @@ const AdminDashboard = () => {
               <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Tu operación</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('products')}>
-                  <StatCard icon={Package} label="Total de productos" value={String(stats.products)} />
+                  <StatCard icon={Package} label="Total de productos" value={String(stats.products)} verMas />
                 </button>
                 <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('users')}>
-                  <StatCard icon={Users} label="Usuarios registrados" value={String(stats.users)} />
+                  <StatCard icon={Users} label="Usuarios registrados" value={String(stats.users)} verMas />
                 </button>
                 <StatCard icon={Users} label="Clientes únicos" value={String(filteredStats.customers)} />
                 <button className="text-left transition-transform hover:-translate-y-0.5" onClick={() => setActiveSection('categories')}>
-                  <StatCard icon={Tag} label="Categorías" value={String(categories.length)} />
+                  <StatCard icon={Tag} label="Categorías" value={String(categories.length)} verMas />
                 </button>
               </div>
             </div>
@@ -2137,35 +2137,32 @@ const AdminDashboard = () => {
         )}
 
         {activeSection === 'agente-voz' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Agente de voz</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Desempeño real del agente de ElevenLabs — se llena solo con la actividad real, sin datos de ejemplo.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
+              <p className="text-[13px] text-muted-foreground">
+                Desempeño real del agente de ElevenLabs — se llena solo con la actividad real, sin datos de ejemplo.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
                 <a
                   href="https://elevenlabs.io/app/conversational-ai"
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> Abrir en ElevenLabs
+                  <ExternalLink className="w-3 h-3" /> Abrir en ElevenLabs
                 </a>
                 <button
                   onClick={cargarDatosAgentes}
                   disabled={cargandoAgentes}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${cargandoAgentes ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3 h-3 ${cargandoAgentes ? 'animate-spin' : ''}`} />
                   {cargandoAgentes ? 'Actualizando…' : 'Actualizar'}
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <TileKpiAgente
                 indice={0}
                 label="Pedidos completados por voz"
@@ -2207,31 +2204,31 @@ const AdminDashboard = () => {
               />
             </div>
 
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Llamadas recientes</p>
+            <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Llamadas recientes</p>
               {cargandoAgentes ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Cargando…</p>
+                <p className="text-[13px] text-muted-foreground py-4 text-center">Cargando…</p>
               ) : ordenesVoz.length === 0 ? (
-                <div className="py-10 text-center">
-                  <Mic className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">Sin llamadas todavía — en cuanto el agente reciba la primera, aparece aquí.</p>
+                <div className="py-6 text-center">
+                  <Mic className="w-6 h-6 mx-auto mb-2 text-muted-foreground/30" strokeWidth={1.5} />
+                  <p className="text-[13px] text-muted-foreground">Sin llamadas todavía — en cuanto el agente reciba la primera, aparece aquí.</p>
                 </div>
               ) : (
-                <div className="rounded-xl border border-border overflow-hidden">
+                <div className="rounded-lg border border-border overflow-hidden">
                   {ordenesVoz.map((o) => (
-                    <div key={o.id} className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0">
+                    <div key={o.id} className="px-3 py-2 flex items-center justify-between border-b border-dashed border-border last:border-0">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{o.customer_name}</p>
-                        <p className="text-xs text-muted-foreground">{format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es })}</p>
+                        <p className="text-[13px] font-medium text-foreground truncate">{o.customer_name}</p>
+                        <p className="text-[11px] text-muted-foreground">{format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es })}</p>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="font-mono tabular-nums text-sm text-foreground">${Number(o.total).toLocaleString('es-MX')}</span>
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <span className="font-mono tabular-nums text-[13px] text-foreground">${Number(o.total).toLocaleString('es-MX')}</span>
                         {o.call_recording_url ? (
-                          <a href={o.call_recording_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline underline-offset-2">
-                            <PlayCircle className="w-3.5 h-3.5" /> Grabación
+                          <a href={o.call_recording_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] text-primary hover:underline underline-offset-2">
+                            <PlayCircle className="w-3 h-3" /> Grabación
                           </a>
                         ) : (
-                          <span className="text-xs text-muted-foreground/60">Sin grabación</span>
+                          <span className="text-[11px] text-muted-foreground/60">Sin grabación</span>
                         )}
                       </div>
                     </div>
@@ -2243,25 +2240,22 @@ const AdminDashboard = () => {
         )}
 
         {activeSection === 'agente-whatsapp' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Agente de WhatsApp</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Desempeño real del bot de WhatsApp — se llena solo con la actividad real, sin datos de ejemplo.
-                </p>
-              </div>
+              <p className="text-[13px] text-muted-foreground">
+                Desempeño real del bot de WhatsApp — se llena solo con la actividad real, sin datos de ejemplo.
+              </p>
               <button
                 onClick={cargarDatosAgentes}
                 disabled={cargandoAgentes}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70"
+                className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-70 shrink-0"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${cargandoAgentes ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3 h-3 ${cargandoAgentes ? 'animate-spin' : ''}`} />
                 {cargandoAgentes ? 'Actualizando…' : 'Actualizar'}
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <TileKpiAgente
                 indice={0}
                 label="Conversaciones que llegaron a pedido"
@@ -2303,24 +2297,24 @@ const AdminDashboard = () => {
               />
             </div>
 
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-              <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Pedidos recientes por WhatsApp</p>
+            <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Pedidos recientes por WhatsApp</p>
               {cargandoAgentes ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Cargando…</p>
+                <p className="text-[13px] text-muted-foreground py-4 text-center">Cargando…</p>
               ) : ordenesWhatsapp.length === 0 ? (
-                <div className="py-10 text-center">
-                  <MessageCircle className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">Sin pedidos por WhatsApp todavía — en cuanto entre el primero, aparece aquí.</p>
+                <div className="py-6 text-center">
+                  <MessageCircle className="w-6 h-6 mx-auto mb-2 text-muted-foreground/30" strokeWidth={1.5} />
+                  <p className="text-[13px] text-muted-foreground">Sin pedidos por WhatsApp todavía — en cuanto entre el primero, aparece aquí.</p>
                 </div>
               ) : (
-                <div className="rounded-xl border border-border overflow-hidden">
+                <div className="rounded-lg border border-border overflow-hidden">
                   {ordenesWhatsapp.map((o) => (
-                    <div key={o.id} className="p-3 flex items-center justify-between border-b border-dashed border-border last:border-0">
+                    <div key={o.id} className="px-3 py-2 flex items-center justify-between border-b border-dashed border-border last:border-0">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{o.customer_name}</p>
-                        <p className="text-xs text-muted-foreground">{format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es })}</p>
+                        <p className="text-[13px] font-medium text-foreground truncate">{o.customer_name}</p>
+                        <p className="text-[11px] text-muted-foreground">{format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es })}</p>
                       </div>
-                      <span className="font-mono tabular-nums text-sm text-foreground shrink-0">${Number(o.total).toLocaleString('es-MX')}</span>
+                      <span className="font-mono tabular-nums text-[13px] text-foreground shrink-0">${Number(o.total).toLocaleString('es-MX')}</span>
                     </div>
                   ))}
                 </div>

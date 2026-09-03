@@ -124,6 +124,7 @@ const SuperAdminDashboard = () => {
     if (!q || pensando) return;
     setHistorial((h) => [q, ...h.filter((x) => x !== q)].slice(0, 20));
     setMostrarHistorial(false);
+    setMostrarSugerencias(false);
     setMensajesChat((m) => [...m, { rol: 'usuario', texto: q }]);
     setPregunta('');
     setPensando(true);
@@ -413,7 +414,7 @@ const SuperAdminDashboard = () => {
                 </div>
               )}
 
-              <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-4'}`}>
+              <div className={`flex flex-col items-center px-4 pb-8 ${mensajesChat.length > 0 ? 'min-h-[calc(100vh-8rem)] justify-end' : 'pt-16 md:pt-24'}`}>
                 {mensajesChat.length === 0 && (
                   <>
                     <AtiendeWordmark className="mb-6" markClassName="h-9 w-auto" animado />
@@ -569,12 +570,12 @@ const SuperAdminDashboard = () => {
                 </form>
 
                 {mensajesChat.length === 0 && !mostrarSugerencias && (
-                  <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
+                  <div className="flex flex-wrap gap-1.5 justify-center mt-4 max-w-xl">
                     {preguntasSugeridasSAPlano.map((p) => (
                       <button
                         key={p}
                         onClick={() => responderPregunta(p)}
-                        className="text-xs rounded-full px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
+                        className="text-xs rounded-full px-3 py-1 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 transition-colors"
                       >
                         {p}
                       </button>
