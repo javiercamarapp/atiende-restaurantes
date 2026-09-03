@@ -64,7 +64,6 @@ const menuSections = [
       { id: 'contactos', label: 'Contactos', icon: PhoneCall },
       { id: 'historial-ordenes', label: 'Historial de Órdenes', icon: History, disabled: true },
       { id: 'pagos', label: 'Pagos', icon: CreditCard, disabled: true },
-      { id: 'estados-solicitudes', label: 'Estados de solicitudes', icon: Clock, disabled: true },
     ],
   },
   {
@@ -78,30 +77,18 @@ const menuSections = [
     title: 'MARKETING',
     items: [
       { id: 'promos', label: 'Promociones', icon: Percent },
-      { id: 'campanas', label: 'Campañas', icon: LineChart, disabled: true },
-      { id: 'eventos', label: 'Eventos', icon: Calendar, disabled: true },
-      { id: 'anuncios', label: 'Anuncios', icon: Megaphone, disabled: true },
     ],
   },
   {
     title: 'ADMINISTRAR',
     items: [
-      {
-        id: 'products', label: 'Productos', icon: Package,
-        children: ['Catálogo de marca', 'Inventario por tienda'],
-      },
+      { id: 'products', label: 'Productos', icon: Package },
       { id: 'categories', label: 'Categorías', icon: Tag },
       { id: 'users', label: 'Usuarios', icon: Users },
       { id: 'repartidores', label: 'Repartidores', icon: Truck },
-      { id: 'puntos-venta', label: 'Puntos de venta', icon: Store, disabled: true },
+      { id: 'sucursales', label: 'Sucursales', icon: Store },
       { id: 'cuentas-accesos', label: 'Cuentas & Accesos', icon: Lock, disabled: true },
       { id: 'info-cuenta', label: 'Información de cuenta', icon: IdCard, disabled: true },
-    ],
-  },
-  {
-    title: 'SOPORTE',
-    items: [
-      { id: 'capacitacion', label: 'Capacitación', icon: GraduationCap, disabled: true },
     ],
   },
 ];
