@@ -104,6 +104,7 @@ const AdminDashboard = () => {
     name: "",
     slug: ""
   });
+  const [categoriaExpandida, setCategoriaExpandida] = useState<string | null>(null);
   const [promoDialogOpen, setPromoDialogOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promo | null>(null);
   const [promoForm, setPromoForm] = useState({
@@ -1326,45 +1327,74 @@ const AdminDashboard = () => {
               </Card>
             ) : (
               <Card className="overflow-hidden">
-                {categories.map((category, index) => (
-                  <div
-                    key={category.id}
-                    className="p-4 flex items-center justify-between border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Tag className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-foreground">{category.name}</p>
-                        <p className="text-sm text-foreground">{category.slug}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col rounded-lg border border-border overflow-hidden shrink-0">
+                {categories.map((category, index) => {
+                  const productosCategoria = products.filter((p) => p.category_id === category.id);
+                  const expandida = categoriaExpandida === category.id;
+                  return (
+                    <div key={category.id} className="border-b border-dashed border-border last:border-0">
+                      <div className="p-4 flex items-center justify-between transition-colors hover:bg-muted/40">
                         <button
-                          onClick={() => moverCategoria(index, -1)}
-                          disabled={index === 0}
-                          className="p-1 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none border-b border-border"
-                          aria-label="Subir categoría"
+                          onClick={() => setCategoriaExpandida(expandida ? null : category.id)}
+                          className="flex items-center gap-4 text-left flex-1 min-w-0"
                         >
-                          <ChevronUp className="w-3.5 h-3.5" />
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <Tag className="w-6 h-6 text-primary" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-base font-semibold text-foreground truncate">{category.name}</p>
+                            <p className="text-sm text-muted-foreground truncate">{category.slug} · {productosCategoria.length} producto{productosCategoria.length === 1 ? '' : 's'}</p>
+                          </div>
                         </button>
-                        <button
-                          onClick={() => moverCategoria(index, 1)}
-                          disabled={index === categories.length - 1}
-                          className="p-1 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                          aria-label="Bajar categoría"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex flex-col rounded-lg border border-border overflow-hidden shrink-0">
+                            <button
+                              onClick={() => moverCategoria(index, -1)}
+                              disabled={index === 0}
+                              className="p-1 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none border-b border-border"
+                              aria-label="Subir categoría"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => moverCategoria(index, 1)}
+                              disabled={index === categories.length - 1}
+                              className="p-1 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                              aria-label="Bajar categoría"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                            Activa
+                          </span>
+                          <button
+                            onClick={() => setCategoriaExpandida(expandida ? null : category.id)}
+                            className="w-7 h-7 rounded-full border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                            aria-label={expandida ? "Ocultar productos" : "Ver productos"}
+                          >
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expandida ? 'rotate-180' : ''}`} />
+                          </button>
+                        </div>
                       </div>
-                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                        Activa
-                      </span>
+                      {expandida && (
+                        <div className="px-4 pb-4 pl-[4.5rem]">
+                          {productosCategoria.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-2">Esta categoría no tiene productos todavía.</p>
+                          ) : (
+                            <div className="rounded-xl border border-border overflow-hidden">
+                              {productosCategoria.map((p) => (
+                                <div key={p.id} className="flex items-center justify-between px-3 py-2 border-b border-dashed border-border last:border-0 text-sm">
+                                  <span className="text-foreground">{p.name}</span>
+                                  <span className="font-mono tabular-nums text-muted-foreground">${Number(p.price).toLocaleString('es-MX')}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </Card>
             )}
           </div>
@@ -1631,13 +1661,7 @@ const AdminDashboard = () => {
         )}
 
         {activeSection === 'pregunta' && (
-          <div
-            className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 fondo-puntos-animado"
-            style={{
-              backgroundImage: "radial-gradient(hsl(var(--primary) / 0.22) 1px, transparent 1px)",
-              backgroundSize: "18px 18px",
-            }}
-          >
+          <div className="relative min-h-[calc(100vh-8rem)] -m-4 pt-4 px-4 fondo-puntos-animado">
             <div className="flex justify-end mb-6">
               <button
                 onClick={() => setMostrarHistorial((v) => !v)}

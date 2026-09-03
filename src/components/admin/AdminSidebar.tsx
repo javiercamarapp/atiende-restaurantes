@@ -8,8 +8,8 @@ import {
   BarChart3,
   HelpCircle,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   Percent,
   Truck,
   Bell,
@@ -66,9 +66,9 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
         {!collapsed ? <AtiendeWordmark className="scale-90 origin-left" /> : <AtiendeMark className="h-6 w-auto" />}
         <button
           onClick={() => setCollapsed((v) => !v)}
-          className="w-6 h-6 rounded-md border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+          className="w-6 h-6 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
         >
-          {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+          {collapsed ? <PanelLeftOpen className="w-3.5 h-3.5" strokeWidth={1.75} /> : <PanelLeftClose className="w-3.5 h-3.5" strokeWidth={1.75} />}
         </button>
       </div>
 

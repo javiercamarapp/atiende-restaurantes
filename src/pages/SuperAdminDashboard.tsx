@@ -8,7 +8,7 @@ import { StatCard } from "@/components/admin/ui/StatCard";
 import {
   LayoutGrid, Store, Users, LogOut, TrendingUp, Receipt, MessageCircle,
   LifeBuoy, Bell, UserRound, CreditCard, Settings, Send, Search, Paperclip,
-  History, X, ArrowUp, ChevronLeft, ChevronRight,
+  History, X, ArrowUp, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 
 interface Restaurant {
@@ -143,9 +143,9 @@ const SuperAdminDashboard = () => {
           {!collapsed ? <AtiendeWordmark className="scale-90 origin-left" /> : <AtiendeMark className="h-6 w-auto" />}
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="w-6 h-6 rounded-md border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+            className="w-6 h-6 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
           >
-            {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+            {collapsed ? <PanelLeftOpen className="w-3.5 h-3.5" strokeWidth={1.75} /> : <PanelLeftClose className="w-3.5 h-3.5" strokeWidth={1.75} />}
           </button>
         </div>
         <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
@@ -222,7 +222,7 @@ const SuperAdminDashboard = () => {
           <div className="flex items-center gap-2 text-sm text-foreground">
             <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
             <span className="font-medium">
-              {section === "resumen" && "Consola de atiende.ai"}
+              {section === "resumen" && "Consola de Atiende Restaurantes"}
               {section === "pregunta" && "Pregunta a tus datos"}
               {section === "restaurantes" && "Restaurantes"}
               {section === "clientes" && "Clientes"}
