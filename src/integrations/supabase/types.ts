@@ -7,13 +7,54 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
+      api_rate_limits: {
+        Row: {
+          actor_hash: string
+          request_count: number
+          scope: string
+          window_started_at: string
+        }
+        Insert: {
+          actor_hash: string
+          request_count: number
+          scope: string
+          window_started_at: string
+        }
+        Update: {
+          actor_hash?: string
+          request_count?: number
+          scope?: string
+          window_started_at?: string
+        }
+        Relationships: []
+      }
       branch_products: {
         Row: {
           branch_id: string
@@ -64,7 +105,6 @@ export type Database = {
           address: string | null
           created_at: string
           display_order: number | null
-          elevenlabs_agent_id: string | null
           hours: string | null
           id: string
           is_active: boolean
@@ -82,7 +122,6 @@ export type Database = {
           address?: string | null
           created_at?: string
           display_order?: number | null
-          elevenlabs_agent_id?: string | null
           hours?: string | null
           id?: string
           is_active?: boolean
@@ -100,7 +139,6 @@ export type Database = {
           address?: string | null
           created_at?: string
           display_order?: number | null
-          elevenlabs_agent_id?: string | null
           hours?: string | null
           id?: string
           is_active?: boolean
@@ -161,14 +199,28 @@ export type Database = {
           restaurant_id?: string
           source?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "callback_requests_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "callback_requests_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       categories: {
         Row: {
           created_at: string | null
           display_order: number | null
           id: string
-          image_url: string | null
           name: string
           restaurant_id: string
           slug: string
@@ -178,7 +230,6 @@ export type Database = {
           created_at?: string | null
           display_order?: number | null
           id?: string
-          image_url?: string | null
           name: string
           restaurant_id: string
           slug: string
@@ -188,7 +239,6 @@ export type Database = {
           created_at?: string | null
           display_order?: number | null
           id?: string
-          image_url?: string | null
           name?: string
           restaurant_id?: string
           slug?: string
@@ -241,11 +291,8 @@ export type Database = {
       }
       customers: {
         Row: {
-          address: string | null
-          branch_id: string | null
           created_at: string
           id: string
-          is_demo: boolean
           last_order_at: string | null
           name: string | null
           order_count: number
@@ -254,11 +301,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          address?: string | null
-          branch_id?: string | null
           created_at?: string
           id?: string
-          is_demo?: boolean
           last_order_at?: string | null
           name?: string | null
           order_count?: number
@@ -267,11 +311,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          address?: string | null
-          branch_id?: string | null
           created_at?: string
           id?: string
-          is_demo?: boolean
           last_order_at?: string | null
           name?: string | null
           order_count?: number
@@ -280,13 +321,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "customers_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "customers_restaurant_id_fkey"
             columns: ["restaurant_id"]
@@ -326,11 +360,12 @@ export type Database = {
           customer_id: string | null
           customer_name: string
           customer_phone: string
+          dedupe_fingerprint: string | null
           delivered_at: string | null
           estimated_delivery_at: string | null
           id: string
+          idempotency_key: string | null
           incident_note: string | null
-          is_demo: boolean
           items: Json
           notes: string | null
           order_number: number
@@ -352,11 +387,12 @@ export type Database = {
           customer_id?: string | null
           customer_name: string
           customer_phone: string
+          dedupe_fingerprint?: string | null
           delivered_at?: string | null
           estimated_delivery_at?: string | null
           id?: string
+          idempotency_key?: string | null
           incident_note?: string | null
-          is_demo?: boolean
           items: Json
           notes?: string | null
           order_number?: number
@@ -378,11 +414,12 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string
           customer_phone?: string
+          dedupe_fingerprint?: string | null
           delivered_at?: string | null
           estimated_delivery_at?: string | null
           id?: string
+          idempotency_key?: string | null
           incident_note?: string | null
-          is_demo?: boolean
           items?: Json
           notes?: string | null
           order_number?: number
@@ -475,6 +512,7 @@ export type Database = {
           name: string
           price: number
           restaurant_id: string
+          search_keywords: string[]
           updated_at: string | null
         }
         Insert: {
@@ -489,6 +527,7 @@ export type Database = {
           name: string
           price: number
           restaurant_id: string
+          search_keywords?: string[]
           updated_at?: string | null
         }
         Update: {
@@ -503,6 +542,7 @@ export type Database = {
           name?: string
           price?: number
           restaurant_id?: string
+          search_keywords?: string[]
           updated_at?: string | null
         }
         Relationships: [
@@ -683,7 +723,7 @@ export type Database = {
           notify_programado_por_vencer?: boolean
           notify_queja?: boolean
           restaurant_id: string
-          role: string
+          role?: string
           user_id: string
         }
         Update: {
@@ -798,6 +838,35 @@ export type Database = {
           },
         ]
       }
+      whatsapp_conversation_leases: {
+        Row: {
+          locked_until: string
+          owner_message_id: string
+          phone_hash: string
+          restaurant_id: string
+        }
+        Insert: {
+          locked_until: string
+          owner_message_id: string
+          phone_hash: string
+          restaurant_id: string
+        }
+        Update: {
+          locked_until?: string
+          owner_message_id?: string
+          phone_hash?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversation_leases_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_conversations: {
         Row: {
           branch_id: string | null
@@ -834,13 +903,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "whatsapp_conversations_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "whatsapp_conversations_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
@@ -854,6 +916,54 @@ export type Database = {
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_conversations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_inbound_events: {
+        Row: {
+          attempts: number
+          claimed_at: string
+          last_error_class: string | null
+          message_id: string
+          phone_hash: string
+          processed_at: string | null
+          restaurant_id: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          claimed_at?: string
+          last_error_class?: string | null
+          message_id: string
+          phone_hash: string
+          processed_at?: string | null
+          restaurant_id: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          claimed_at?: string
+          last_error_class?: string | null
+          message_id?: string
+          phone_hash?: string
+          processed_at?: string | null
+          restaurant_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_inbound_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -865,12 +975,51 @@ export type Database = {
         Args: { p_customer_id: string; p_restaurant_id: string }
         Returns: Json
       }
-      get_order_status: { Args: { _order_id: string }; Returns: string }
-      get_secret: { Args: { secret_name: string }; Returns: string }
-      has_restaurant_role: {
-        Args: { _restaurant_id: string; _role: string; _user_id: string }
+      claim_whatsapp_conversation: {
+        Args: {
+          p_lease_seconds?: number
+          p_message_id: string
+          p_phone_hash: string
+          p_restaurant_id: string
+        }
         Returns: boolean
       }
+      claim_whatsapp_message: {
+        Args: {
+          p_message_id: string
+          p_phone_hash: string
+          p_restaurant_id: string
+        }
+        Returns: boolean
+      }
+      consume_api_rate_limit: {
+        Args: {
+          p_actor_hash: string
+          p_max_requests: number
+          p_scope: string
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
+      create_order_idempotent: {
+        Args: {
+          p_dedupe_fingerprint: string
+          p_idempotency_key?: string
+          p_order: Json
+        }
+        Returns: Json
+      }
+      finish_whatsapp_message: {
+        Args: {
+          p_error_class?: string
+          p_message_id: string
+          p_phone_hash: string
+          p_restaurant_id: string
+          p_status: string
+        }
+        Returns: undefined
+      }
+      get_order_status: { Args: { _order_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -883,10 +1032,6 @@ export type Database = {
         Returns: boolean
       }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
-      shares_restaurant: {
-        Args: { _target: string; _viewer: string }
-        Returns: boolean
-      }
       orders_bucketed_stats: {
         Args: {
           p_bucket_ends: string[]
@@ -900,6 +1045,10 @@ export type Database = {
           revenue: number
         }[]
       }
+      shares_restaurant: {
+        Args: { _target: string; _viewer: string }
+        Returns: boolean
+      }
       sucursal_mas_cercana: {
         Args: { p_colonia: string; p_restaurant_id: string }
         Returns: {
@@ -909,7 +1058,6 @@ export type Database = {
           distancia_km: number
         }[]
       }
-      unaccent: { Args: { "": string }; Returns: string }
       whatsapp_append_turn: {
         Args: {
           p_branch_id?: string
@@ -966,8 +1114,7 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -991,8 +1138,7 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1016,8 +1162,7 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
   EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1049,6 +1194,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "user", "repartidor", "superadmin"],
