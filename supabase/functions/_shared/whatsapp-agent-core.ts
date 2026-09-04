@@ -16,14 +16,16 @@
 //
 // Setup needed (Supabase project secrets):
 //   OPENROUTER_API_KEY                   - de openrouter.ai
-//   OPENROUTER_MODEL (opcional)          - default: google/gemini-2.5-flash-lite
-//   OPENROUTER_MODEL_ESCALADO (opcional) - default: openai/gpt-5.4-mini
+//   OPENROUTER_MODEL (opcional)          - default: openai/gpt-5.6-luna
+//   OPENROUTER_MODEL_ESCALADO (opcional) - default: openai/gpt-5.6-terra
+//   OPENROUTER_MODEL_RESPALDO (opcional) - default: google/gemini-3.6-flash
 
 // deno-lint-ignore-file no-explicit-any
 import {
   buscarProductosCore,
   createOrderCore,
   OrderValidationError,
+  quoteOrderCore,
   vipNote,
 } from "./create-order-core.ts"
 import { fetchWithTimeout } from "./fetch-timeout.ts"
@@ -45,9 +47,11 @@ async function getOpenRouterKey(supabase: any): Promise<string | null> {
 }
 
 export const MODEL_DEFAULT =
-  Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash-lite"
+  Deno.env.get("OPENROUTER_MODEL") ?? "openai/gpt-5.6-luna"
 export const MODEL_ESCALADO =
-  Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "openai/gpt-5.4-mini"
+  Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "openai/gpt-5.6-terra"
+export const MODEL_RESPALDO =
+  Deno.env.get("OPENROUTER_MODEL_RESPALDO") ?? "google/gemini-3.6-flash"
 export const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298"
 
 // Los 4 estilos de tono reales que ofrece el selector del admin — deben
@@ -72,6 +76,39 @@ export type WhatsAppAgentConfig = {
   tone_style: string
   llm_model: string
   temperature: number
+}
+
+// Estas reglas se agregan DESPUÉS del prompt editable del admin: una edición
+// de tono o personalidad nunca puede borrar por accidente la semántica de
+// venta ni volver a delegar la aritmética al modelo.
+export const ORDER_QUANTITY_RULES = `REGLAS DURAS DE CANTIDADES Y TOTAL:
+- Si el producto es individual (pack_size 1), se puede pedir cualquier cantidad entera positiva. "Individual" significa precio por una pieza, NO un máximo de una pieza. Ejemplo obligatorio: 8 tacos al pastor son válidos y se cobran como 8 por el precio individual.
+- Siempre que mencionen tacos de bistec, explica de inmediato que se venden únicamente en órdenes de 3 y que el precio de menú corresponde a la orden completa. Hazlo incluso si la cantidad pedida ya es válida: 3 tacos son 1 orden; 6 tacos son 2 órdenes; 9 tacos son 3 órdenes.
+- Para cualquier producto con pack_size mayor a 1, solo acepta múltiplos exactos. Si piden 1, 2, 4, 5 u otro no múltiplo, explica la presentación y ofrece el múltiplo inferior válido y/o el siguiente.
+- Para CADA estilo o renglón de tacos, individual o por orden, pregunta por separado si lo quiere con tortilla de maíz o de harina. Ejemplo: pregunta una vez por los de pastor y otra por los de bistec. Solo puedes aplicar una misma elección a todos si el cliente dice explícitamente "todos de maíz" o "todos de harina". Guarda la elección como tortilla: "maiz" o "harina" en cada item. No cotices ni avances al pago mientras falte esta elección para cualquier taco.
+- Si buscar_producto devuelve requires_adult_confirmation: true, pregunta directamente si quien recibirá el pedido es mayor de edad y espera un sí claro. Solo entonces manda adult_confirmed: true tanto a cotizar_pedido como a crear_pedido. Nunca lo infieras por el tono, el nombre, la voz o una respuesta ambigua. Las bebidas marcadas false (por ejemplo, "sin alcohol" o 0.0) no requieren esta confirmación.
+- Nunca cierres un turno diciendo solo "voy a revisar", "déjame buscar" o "voy a calcular". Ejecuta la herramienta necesaria en ese mismo turno y después responde con el resultado, o termina con una pregunta concreta que el cliente sí deba contestar.
+- Está prohibido preguntar efectivo/tarjeta antes de que cotizar_pedido responda con éxito, incluso si es un pedido de un solo producto o una bebida. Después de que el cliente elija la forma de pago, llama inmediatamente a crear_pedido: no pidas una confirmación redundante. Emite cada respuesta una sola vez; nunca dupliques un párrafo.
+- Conserva en requested_quantity la cantidad de piezas/unidades que dijo y confirmó el cliente. Nunca conviertas tú las piezas a órdenes ni mandes quantity: cotizar_pedido y crear_pedido hacen esa conversión de forma determinista.
+- Antes de decir cualquier total o preguntar la forma de pago, llama siempre a cotizar_pedido. Repite exactamente el total y los renglones devueltos; nunca hagas aritmética mental ni recalcules el resultado.`
+
+export function enforceBistecPackNotice(
+  reply: string,
+  messages: Array<{ role?: string; content?: unknown }>,
+): string {
+  const latestUserText = [...messages].reverse().find((message) =>
+    message.role === "user" && typeof message.content === "string"
+  )?.content
+  if (
+    typeof latestUserText !== "string" ||
+    !/\bbistec(?:es)?\b/i.test(latestUserText) ||
+    /\b[oó]rdenes?\s+de\s+(?:3|tres)\b/i.test(reply)
+  ) {
+    return reply
+  }
+  const notice =
+    "Los tacos de bistec se venden únicamente en órdenes de 3; cada precio del menú corresponde a la orden completa."
+  return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice
 }
 
 // Bug real confirmado 4-sep-2026: el agente saludaba con "Buenas tardes" fijo
@@ -128,12 +165,12 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si la colonia no es clara, pregunta la colonia o una referencia cercana ANTES de llamar la herramienta. Si responde encontrada:false, pide otra referencia (colonia vecina, cruce de calles, plaza conocida) e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien. Si el cliente prefiere que se lo mandes desde otra sucursal (por ejemplo, porque le queda mejor otra zona que conoce), no insistas en que sea forzosamente la más cercana — acepta con gusto cualquiera de las sucursales reales de la lista de arriba que el cliente prefiera, y sigue con esa.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal que ya confirmaste en el paso 3 — el precio real varía por sucursal). Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
-   - IMPORTANTE, revísalo ANTES de confirmar cantidad con el cliente, no después al calcular el total: cada resultado de buscar_producto trae un campo pack_size. Si pack_size es un número mayor a 1 (ej. 3 para "Tacos de Bistec de Res (orden de 3)"), es un paquete fijo indivisible de esa cantidad de piezas — no piezas sueltas — y el precio mostrado ya es el del paquete completo. Si el cliente pidió una cantidad de ese sabor que no es múltiplo exacto de pack_size (incluido pedir solo 1), DILO EXACTAMENTE ASÍ, en cuanto lo detectes, sin dar vueltas y sin esperar a que llegue el momento de dar el total: "ese taco solo se vende en órdenes de [pack_size] tacos" (usa el número real de pack_size), da el precio real del paquete completo, y ofrécele ajustar a un múltiplo de pack_size o cambiar a un sabor con pack_size 1 (ese sí se vende por pieza suelta). Si pack_size es 1, ese sabor se vende individual, sin restricción. Si pack_size es null, no aplica esta restricción (bebidas, platillos completos, kilos, etc.).
+   - IMPORTANTE, revísalo ANTES de confirmar cantidad con el cliente: cada resultado trae pack_size. "Individual" (pack_size 1) significa que el precio es por pieza y puede comprar todas las piezas que quiera; jamás lo interpretes como máximo una. Los tacos de bistec (pack_size 3) solo se venden en órdenes de 3: siempre que los mencionen, dilo de inmediato, aunque hayan pedido una cantidad válida. Si piden 3, confirma 1 orden; si piden 6, confirma 2 órdenes. Si piden 1, 2, 4, 5 u otro no múltiplo, ofrece ajustar al múltiplo válido más cercano. El precio mostrado es el del paquete completo.
    - Si buscar_producto devuelve más de un producto real parecido a lo que pidió el cliente (ej. "Guacamole" el platillo completo vs. "Extra Guacamole" la porción chica) y no está claro cuál quiere, no elijas tú solo — dile los nombres y precios de las opciones y que el cliente escoja.
    - Si el cliente pide alguna instrucción especial para algún producto o para el pedido (ej. "sin cebolla", "que no pique", "toca el timbre y no el interfón"), guárdala tal cual la dijo en el parámetro notes de crear_pedido — no basta con repetirla en el chat, tiene que quedar en el pedido para que cocina/repartidor la vean. Confírmale al cliente que la anotaste.
 5. Antes de cerrar: pregunta si quiere agregar algo extra — frijoles charros, guacamole, tortillas, ensalada o alguna salsa en específico. Ninguno de estos viene incluido gratis con los tacos, son productos aparte con su propio costo (confirma nombre y precio real con buscar_producto si el cliente quiere alguno). La única excepción son los "kilos a domicilio": esos SÍ incluyen salsa roja, salsa verde, limones y tortillas sin costo extra — no lo confundas con los pedidos de tacos normales.
-6. Da el total final del pedido, y pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos a alguien con terminal física al momento de la entrega.
-7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los product_id reales (no nombres), el branch_slug de la sucursal que confirmaste en el paso 3, el parámetro payment_method con exactamente "efectivo" o "tarjeta" según lo que confirmó el cliente en este mismo paso, y el parámetro notes si el cliente dio alguna instrucción especial — este es el paso más importante, un pedido no existe hasta que la herramienta responde con éxito. No llames a crear_pedido si todavía falta nombre, dirección, sucursal o confirmación del cliente.
+6. Llama a cotizar_pedido con los product_id reales y requested_quantity tal como la confirmó el cliente. Solo si responde con éxito, di exactamente el resumen y total devueltos; nunca calcules tú. Luego pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos terminal física al momento de la entrega.
+7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los mismos product_id y requested_quantity usados en la cotización, el branch_slug confirmado, payment_method y notes si aplica. Nunca mandes quantity ni conviertas piezas a paquetes tú — el servidor lo hace. Este es el paso más importante: un pedido no existe hasta que la herramienta responde con éxito. No llames si todavía falta nombre, dirección, sucursal o confirmación del cliente.
 8. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige — no sigas adelante sin que haya quedado creado con éxito.
 9. Solo hasta que el pedido ya quedó creado con éxito: confirma que ya se mandó a cocina y da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).`
 
@@ -145,7 +182,7 @@ export const FALLBACK_CONFIG: WhatsAppAgentConfig = {
   system_prompt: BASE_SYSTEM_PROMPT,
   tone_style: "calido_cercano",
   llm_model: MODEL_DEFAULT,
-  temperature: 0.7,
+  temperature: 0,
 }
 
 export async function getAgentConfig(
@@ -217,7 +254,7 @@ export const TOOLS = [
     function: {
       name: "buscar_producto",
       description:
-        "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal (el precio varía por sucursal), y pack_size (número de piezas del paquete si se vende en orden fija, 1 si es individual, null si no aplica — ver instrucciones del paso 4 sobre qué hacer con pack_size antes de confirmar cantidad). Lista vacía significa que ese producto no existe en el menú, no que esté agotado.",
+        "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal (el precio varía por sucursal), pack_size y requires_adult_confirmation. Si este último es true debes obtener un sí explícito de mayoría de edad antes de cotizar. Lista vacía significa que ese producto no existe en el menú, no que esté agotado.",
       parameters: {
         type: "object",
         properties: {
@@ -232,6 +269,52 @@ export const TOOLS = [
           },
         },
         required: ["query", "branch_slug"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cotizar_pedido",
+      description:
+        "Valida cantidades/presentaciones y calcula el total exacto con precios reales. Debes llamarla antes de decir el total o preguntar la forma de pago. Si devuelve error por una orden fija, explícalo y ajusta con el cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          branch_slug: {
+            type: "string",
+            description: "Sucursal ya confirmada con el cliente.",
+          },
+          items: {
+            type: "array",
+            description:
+              "Productos confirmados. requested_quantity es la cantidad de piezas/unidades que pidió el cliente, no el número de paquetes.",
+            items: {
+              type: "object",
+              properties: {
+                product_id: { type: "string" },
+                requested_quantity: {
+                  type: "integer",
+                  description:
+                    "Cantidad de piezas/unidades pedidas: 8 para ocho pastor, 3 para una orden de tres bistec, 10 para diez refrescos.",
+                },
+                tortilla: {
+                  type: "string",
+                  enum: ["maiz", "harina"],
+                  description:
+                    "Obligatorio para cada producto de tacos: elección confirmada de tortilla. Omitir únicamente si el producto no es taco.",
+                },
+              },
+              required: ["product_id", "requested_quantity"],
+            },
+          },
+          adult_confirmed: {
+            type: "boolean",
+            description:
+              "Enviar true únicamente si el pedido incluye alcohol y el cliente confirmó explícitamente que quien recibe es mayor de edad. Omitir en pedidos sin alcohol.",
+          },
+        },
+        required: ["branch_slug", "items"],
       },
     },
   },
@@ -257,9 +340,19 @@ export const TOOLS = [
               type: "object",
               properties: {
                 product_id: { type: "string" },
-                quantity: { type: "integer" },
+                requested_quantity: {
+                  type: "integer",
+                  description:
+                    "Cantidad de piezas/unidades confirmadas por el cliente, igual que en cotizar_pedido; 3 tacos de bistec se manda como 3 y el servidor lo convierte a 1 orden.",
+                },
+                tortilla: {
+                  type: "string",
+                  enum: ["maiz", "harina"],
+                  description:
+                    "Obligatorio para cada producto de tacos y debe coincidir con la cotización. Omitir únicamente si no es taco.",
+                },
               },
-              required: ["product_id", "quantity"],
+              required: ["product_id", "requested_quantity"],
             },
           },
           notes: {
@@ -272,6 +365,11 @@ export const TOOLS = [
             enum: ["efectivo", "tarjeta"],
             description:
               "Forma de pago que confirmó el cliente en el paso 6 — efectivo o tarjeta.",
+          },
+          adult_confirmed: {
+            type: "boolean",
+            description:
+              "Debe ser true si hay alcohol, después de un sí explícito de mayoría de edad; debe coincidir con la cotización.",
           },
         },
         required: [
@@ -369,17 +467,23 @@ export function customerContextBlock(customer: any): string {
 
 export async function runAgentTurn(
   supabase: any,
-  messages: any[],
+  inputMessages: any[],
   phone: string,
   customer: any,
   restaurantId: string,
   idempotencyKey?: string,
 ): Promise<{
   reply: string
-  updatedMessages: typeof messages
+  updatedMessages: typeof inputMessages
   orderId: string | null
   branchId: string | null
 }> {
+  // Keep the caller's snapshot immutable. Both WhatsApp entry points use its
+  // original length to persist only the assistant/tool messages produced in
+  // this turn. Mutating it here made that slice empty and silently erased the
+  // agent's context between messages.
+  const messages = structuredClone(inputMessages)
+  const safeReply = (reply: string) => enforceBistecPackNotice(reply, messages)
   // A complete agent turn may invoke the provider more than once after tool
   // calls. Bound the whole turn, not only each individual HTTP request.
   const turnDeadline = Date.now() + 45_000
@@ -390,7 +494,7 @@ export async function runAgentTurn(
   // fila no existe todavía o falla la lectura) — prompt, tono, modelo y
   // temperatura, todos editables desde el admin sin tocar código.
   const agentConfig = await getAgentConfig(supabase, restaurantId)
-  const systemPrompt = `${agentConfig.system_prompt}\n\nTONO DE VOZ REQUERIDO: ${
+  const systemPrompt = `${agentConfig.system_prompt}\n\n${ORDER_QUANTITY_RULES}\n\nTONO DE VOZ REQUERIDO: ${
     TONE_INSTRUCTIONS[agentConfig.tone_style] ??
     TONE_INSTRUCTIONS.calido_cercano
   }\n\nSALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHoraMerida()}"\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(
@@ -399,8 +503,9 @@ export async function runAgentTurn(
   const openRouterKey = await getOpenRouterKey(supabase)
   if (!openRouterKey) {
     return {
-      reply:
+      reply: safeReply(
         "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
+      ),
       updatedMessages: messages,
       orderId,
       branchId,
@@ -419,54 +524,80 @@ export async function runAgentTurn(
     if (remainingMs <= 0) {
       console.error("OpenRouter turn deadline exhausted")
       return {
-        reply:
+        reply: safeReply(
           "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
+        ),
         updatedMessages: messages,
         orderId,
         branchId,
       }
     }
-    const res = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${openRouterKey}`,
-        "HTTP-Referer": "https://atiende-restaurantes.vercel.app",
-        // "atiende.ai — Los Taquitos de PM" (con em dash) rompía CADA llamada
-        // real a OpenRouter: los headers HTTP deben ser ByteString ASCII, y
-        // el "—" no lo es — fetch() lanzaba "not a valid ByteString" antes
-        // de siquiera salir la petición (bug real, ya estaba en el código
-        // anterior de whatsapp-webhook; se descubrió aquí al probar el
-        // widget de punta a punta). Guion normal, sin acentos ni rayas.
-        "X-Title": "atiende.ai - Los Taquitos de PM",
-      },
-      body: JSON.stringify({
-        model: modeloDeEsteTurno,
-        max_tokens: 1024,
-        temperature: agentConfig.temperature,
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        tools: TOOLS,
-      }),
-    }, Math.min(30_000, remainingMs))
-
-    if (!res.ok) {
-      console.error("OpenRouter API error:", await res.text())
-      return {
-        reply:
-          "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
-        updatedMessages: messages,
-        orderId,
-        branchId,
+    // Escalera acotada por costo y proveedor:
+    // 1) modelo principal barato (Luna por defecto),
+    // 2) si una tool falló, modelo de razonamiento Terra,
+    // 3) si el proveedor elegido cae/limita o devuelve una respuesta rota,
+    //    un único respaldo cross-provider Gemini. Nunca reintenta en loop.
+    const candidateModels = [...new Set([
+      modeloDeEsteTurno,
+      MODEL_RESPALDO,
+    ])]
+    let data: any = null
+    let providerFailure = ""
+    for (let candidateIndex = 0; candidateIndex < candidateModels.length; candidateIndex++) {
+      const model = candidateModels[candidateIndex]
+      const requestRemainingMs = turnDeadline - Date.now()
+      if (requestRemainingMs <= 0) break
+      try {
+        const res = await fetchWithTimeout(
+          "https://openrouter.ai/api/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${openRouterKey}`,
+              "HTTP-Referer": "https://atiende-restaurantes.vercel.app",
+              // Los headers HTTP deben quedarse en ASCII.
+              "X-Title": "atiende.ai - Los Taquitos de PM",
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: 1024,
+              temperature: agentConfig.temperature,
+              messages: [{ role: "system", content: systemPrompt }, ...messages],
+              tools: TOOLS,
+            }),
+          },
+          Math.min(30_000, requestRemainingMs),
+        )
+        if (!res.ok) {
+          providerFailure = `HTTP ${res.status}: ${await res.text()}`
+          const retryable = res.status === 408 || res.status === 429 ||
+            res.status >= 500
+          if (retryable && candidateIndex + 1 < candidateModels.length) continue
+          break
+        }
+        const parsed = await res.json()
+        if (!parsed?.choices?.[0]?.message) {
+          providerFailure = "respuesta sin choices"
+          if (candidateIndex + 1 < candidateModels.length) continue
+          break
+        }
+        data = parsed
+        break
+      } catch (error) {
+        providerFailure = error instanceof Error ? error.message : String(error)
+        if (candidateIndex + 1 < candidateModels.length) continue
+        break
       }
     }
 
-    const data = await res.json()
-    const msg = data.choices?.[0]?.message
+    const msg = data?.choices?.[0]?.message
     if (!msg) {
-      console.error("OpenRouter respuesta sin choices:", JSON.stringify(data))
+      console.error("OpenRouter cascade exhausted:", providerFailure)
       return {
-        reply:
+        reply: safeReply(
           "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
+        ),
         updatedMessages: messages,
         orderId,
         branchId,
@@ -482,8 +613,10 @@ export async function runAgentTurn(
       | Array<{ id: string; function: { name: string; arguments: string } }>
       | undefined
     if (!toolCalls || toolCalls.length === 0) {
+      const reply = safeReply(msg.content || "¿Me puedes repetir tu pedido?")
+      messages[messages.length - 1].content = reply
       return {
-        reply: msg.content || "¿Me puedes repetir tu pedido?",
+        reply,
         updatedMessages: messages,
         orderId,
         branchId,
@@ -550,17 +683,34 @@ export async function runAgentTurn(
                 query: String(input.query ?? ""),
               })
             }
+          } else if (call.function.name === "cotizar_pedido") {
+            const quote = await quoteOrderCore(supabase, {
+              branch_slug: input.branch_slug as string,
+              items: input.items as Array<{
+                product_id: string
+                requested_quantity: number
+                tortilla?: "maiz" | "harina"
+              }>,
+              adult_confirmed: input.adult_confirmed === true,
+            })
+            branchId = quote.branch_id
+            result = { quote }
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
               branch_slug: input.branch_slug as string,
               customer_name: input.customer_name as string,
               customer_phone: phone,
               customer_address: input.customer_address as string,
-              items: input.items as { product_id: string; quantity: number }[],
+              items: input.items as Array<{
+                product_id: string
+                requested_quantity: number
+                tortilla?: "maiz" | "harina"
+              }>,
               source: "whatsapp",
               notes: (input.notes as string) || undefined,
               payment_method:
                 (input.payment_method as "efectivo" | "tarjeta") || undefined,
+              adult_confirmed: input.adult_confirmed === true,
               idempotency_key: idempotencyKey,
             })
             orderId = order.id
@@ -629,15 +779,16 @@ export async function runAgentTurn(
   // decimos con éxito en vez de sonar a error.
   if (orderId) {
     return {
-      reply:
+      reply: safeReply(
         "¡Listo! Tu pedido ya quedó registrado y se mandó a cocina. Tiempo estimado: 40-50 minutos (1h-1h20 si llueve).",
+      ),
       updatedMessages: messages,
       orderId,
       branchId,
     }
   }
   return {
-    reply: "Se me complicó procesar tu pedido, un momento por favor.",
+    reply: safeReply("Se me complicó procesar tu pedido, un momento por favor."),
     updatedMessages: messages,
     orderId,
     branchId,

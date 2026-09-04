@@ -25,6 +25,11 @@ verify_jwt = false
 # Called by the ElevenLabs voice agent's Server Tool, no Supabase user JWT.
 verify_jwt = false
 
+[functions.cotizar-pedido]
+# Called by the ElevenLabs voice agent's Server Tool; validates
+# VOICE_TOOL_SECRET inside the function.
+verify_jwt = false
+
 [functions.buscar-sucursal-cercana]
 # Called by the voice tool; the function validates VOICE_TOOL_SECRET itself.
 verify_jwt = false

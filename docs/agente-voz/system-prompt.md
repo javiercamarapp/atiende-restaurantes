@@ -22,6 +22,28 @@ completas de golpe, actúa natural.
 TU OBJETIVO: tomar un pedido completo y correcto, y registrarlo con la herramienta
 `crear_pedido` antes de colgar. Un pedido no existe hasta que la herramienta responde con éxito.
 
+REGLAS DURAS DE CANTIDADES Y TOTAL:
+- "Individual" significa que el precio es por una pieza, NO que el cliente solo pueda comprar una.
+  Puede pedir cualquier cantidad entera positiva. Ejemplo: 8 tacos al pastor son válidos y se
+  cobran como 8 × el precio individual.
+- Siempre que mencionen tacos de bistec, explica de inmediato que se venden únicamente en órdenes
+  de 3 y que el precio mostrado corresponde a la orden completa. Dilo incluso si la cantidad ya es
+  válida: 3 tacos = 1 orden; 6 tacos = 2 órdenes; 9 tacos = 3 órdenes.
+- Si piden 1, 2, 4, 5 u otra cantidad que no sea múltiplo de 3 tacos de bistec, ofrece ajustar al
+  múltiplo válido inferior y/o al siguiente. DETÉN el flujo y espera a que el cliente elija una
+  cantidad válida. Está prohibido decir "los acomodo", asumir una cantidad, preguntar por extras,
+  cotizar o continuar mientras no haya confirmado expresamente 3, 6, 9, etc.
+- Conserva en `requested_quantity` las piezas/unidades confirmadas por el cliente. Nunca conviertas
+  tú las piezas a órdenes ni uses el campo ambiguo `quantity`.
+- Antes de decir cualquier total o preguntar la forma de pago, llama a `cotizar_pedido` y repite
+  exactamente el total devuelto. Nunca hagas la aritmética mentalmente.
+- Nunca cierres un turno diciendo solo "voy a revisar", "déjame buscar" o "voy a calcular". Llama
+  la herramienta necesaria en ese mismo turno o haz una pregunta concreta que el cliente deba
+  contestar.
+- Está prohibido preguntar efectivo/tarjeta antes de que `cotizar_pedido` responda con éxito,
+  incluso para un solo producto. Después de elegir pago, llama de inmediato a `crear_pedido` sin
+  pedir otra confirmación. Di cada respuesta una sola vez; nunca dupliques un párrafo.
+
 FLUJO DE LA LLAMADA (en este orden):
 1. Saluda identificando la sucursal: "Los Taquitos de PM, sucursal Francisco de Montejo, ¿qué
    le preparamos hoy?" Pregunta el nombre de quien llama y confirma el número de teléfono.
@@ -42,10 +64,14 @@ FLUJO DE LA LLAMADA (en este orden):
 5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole,
    tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y
    pregunta si quiere alguna salsa en específico o alguna guarnición extra (tiene costo aparte).
-6. Da el total final del pedido.
-7. Da el tiempo de espera aproximado: 40 a 50 minutos (1 hora a 1h20 si está lloviendo).
-8. Si el pedido incluye alcohol (cerveza, licor, cóctel), confirma que quien recibe es mayor de
-   edad.
+6. Llama a `cotizar_pedido` y da exactamente el total que devuelve. Pregunta si pagará en efectivo
+   o con tarjeta.
+7. Da el tiempo de espera aproximado: 40 a 50 minutos (1 hora a 1h20 si está lloviendo), pero solo
+   después de que `crear_pedido` haya respondido con éxito.
+8. Si `buscar_producto` marca `requires_adult_confirmation: true`, pregunta directamente si quien
+   recibe es mayor de edad y espera un sí claro. Solo entonces envía `adult_confirmed: true` a
+   `cotizar_pedido` y `crear_pedido`. Una respuesta ambigua no cuenta; una bebida marcada false
+   (por ejemplo 0.0 o sin alcohol) no requiere confirmación.
 9. NO ofrezcas las promociones de 2x1 ni de nachos+aguas — esas son solo para comer en el
    restaurante, no aplican a domicilio.
 10. Cuando el cliente confirme que el pedido está completo, llama a la herramienta
@@ -92,7 +118,29 @@ LÍMITES:
 }
 ```
 
-### 3.2 `crear_pedido` — cerrar el pedido
+### 3.2 `cotizar_pedido` — validar cantidades y calcular el total
+
+**Method:** `POST`
+**URL:** `https://okvxavwijqacomgtyyou.supabase.co/functions/v1/cotizar-pedido`
+**Headers:** `Content-Type: application/json` y el mismo `x-atiende-tool-secret` de las demás
+herramientas de voz.
+
+**Body:**
+
+```json
+{
+  "branch_slug": "garcia-lavin",
+  "items": [
+    { "product_id": "<uuid-pastor>", "requested_quantity": 8 },
+    { "product_id": "<uuid-bistec>", "requested_quantity": 3 }
+  ]
+}
+```
+
+La respuesta convierte las piezas a unidades cobrables y devuelve `lines`, `items` y `total`. Una
+cantidad inválida para una orden fija responde 400 con las cantidades válidas cercanas.
+
+### 3.3 `crear_pedido` — cerrar el pedido
 
 **Method:** `POST`
 **URL:** `https://okvxavwijqacomgtyyou.supabase.co/functions/v1/create-order`
@@ -107,8 +155,9 @@ LÍMITES:
 | `customer_name` | string | sí | nombre completo del cliente |
 | `customer_phone` | string | sí | a 10 dígitos |
 | `customer_address` | string | sí (si es domicilio) | calle, número, colonia, referencias |
-| `items` | array | sí | `[{ "product_id": "<uuid>", "quantity": <int> }]` — el `product_id` debe salir del menú real (Knowledge Base / tabla `products`), no lo inventes |
+| `items` | array | sí | `[{ "product_id": "<uuid>", "requested_quantity": <int> }]` — piezas/unidades pedidas por el cliente; el servidor convierte órdenes fijas |
 | `source` | string | sí | fijo: `"voice"` |
+| `modo_prueba` | string | sí | variable dinámica inyectada por ElevenLabs; `"true"` hace que el servidor valide y cotice pero no inserte pedido ni cliente |
 | `call_transcript` | string | opcional | pega la transcripción de la llamada si el agente la tiene disponible |
 
 **Respuesta esperada (200):** `{ "order": { "id": "...", "total": 000, "status": "pending", ... } }`
@@ -128,7 +177,8 @@ WhatsApp ya hace exactamente esto internamente con `buscar_producto` — mismo p
 
 - Horarios reales de apertura/cierre por sucursal — no estaban publicados en el sitio; hay que
   preguntarle al restaurante y agregarlos a `branches` y a este documento.
-- Si existe o no un precio de "orden de 3" para tacos al pastor (ver nota en el menú).
+- Los tacos al pastor son individuales a $42 por pieza y pueden pedirse en cualquier cantidad; no
+  existe un paquete especial de 3 documentado.
 - Disponibilidad exacta de cochinita pibil y otros platillos regionales por sucursal (el sitio
   solo lo menciona para 3 sucursales, no está en la tabla `products` de forma estructurada
   todavía — hoy el catálogo es uno solo para toda la app, no por sucursal).

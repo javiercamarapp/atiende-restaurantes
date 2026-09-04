@@ -17,7 +17,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import {
   createOrderCore,
   CreateOrderPayload,
+  isTrustedVoicePreview,
   OrderValidationError,
+  quoteOrderCore,
 } from "../_shared/create-order-core.ts";
 import {
   consumeRateLimit,
@@ -72,6 +74,41 @@ Deno.serve(async (req: Request) => {
     if (!limited.allowed) {
       return jsonResponse(req, { error: "Demasiadas solicitudes" }, 429, {
         "Retry-After": "60",
+      });
+    }
+    if (isTrustedVoicePreview(toolAuthorized, incoming.modo_prueba)) {
+      if (!payload.branch_slug) {
+        throw new OrderValidationError(
+          "branch_slug es requerido para una simulación",
+        );
+      }
+      const quote = await quoteOrderCore(supabase, {
+        branch_slug: payload.branch_slug,
+        adult_confirmed: payload.adult_confirmed,
+        items: payload.items.map((item) => ({
+          product_id: item.product_id,
+          requested_quantity: item.requested_quantity as number,
+          tortilla: item.tortilla,
+        })),
+      });
+      return jsonResponse(req, {
+        order: {
+          id: `preview-${crypto.randomUUID()}`,
+          status: "simulated",
+          simulated: true,
+          branch_id: quote.branch_id,
+          branch: quote.branch_name,
+          total: quote.total,
+          source: "voice",
+          payment_method: payload.payment_method ?? null,
+          items: quote.lines.map((line) => ({
+            id: line.product_id,
+            name: line.name,
+            price: line.price,
+            quantity: line.quantity,
+            ...(line.tortilla ? { tortilla: line.tortilla } : {}),
+          })),
+        },
       });
     }
     const order = await createOrderCore(supabase, payload);
