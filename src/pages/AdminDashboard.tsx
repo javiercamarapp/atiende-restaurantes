@@ -2121,11 +2121,21 @@ const AdminDashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Se refresca solo cada 60s mientras se ve el dashboard, además del
-  // refresco manual — el botón bajo "Actualizado" refleja el estado real de
-  // la recarga (no es decorativo).
+  // Se refresca cada 60s mientras se ve el dashboard, además del refresco
+  // manual — el botón bajo "Actualizado" refleja el estado real de la
+  // recarga (no es decorativo).
+  //
+  // Bug real confirmado 4-sep-2026: Javier hizo unas llamadas de prueba
+  // reales desde "Agente de voz" (3 pedidos reales, $1,441) y al volver a
+  // "dashboard" seguía viendo $0/0 órdenes — el efecto de abajo SOLO
+  // arrancaba el temporizador de 60s al entrar a la sección, nunca refrescaba
+  // de inmediato, así que si no se quedaba parado en "dashboard" un minuto
+  // completo sin cambiar de sección, nunca veía datos nuevos. Ahora refresca
+  // YA al entrar a la sección (o al resolverse restaurantId), y de ahí en
+  // adelante cada 60s como antes.
   useEffect(() => {
     if (activeSection !== 'dashboard' || !restaurantId) return;
+    refrescarDatos();
     const intervalo = setInterval(() => {
       refrescarDatos();
     }, 60000);
