@@ -16,17 +16,18 @@ import { ReactNode } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AtiendeMark } from "@/components/AtiendeLogo";
-import { LucideIcon } from "lucide-react";
+import { LucideIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ModalFormularioLateralProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
-   * Ícono en el riel izquierdo, en un círculo bg-primary/10 — mismo
-   * tratamiento que el ícono de ModalFormularioElegante, pero en el riel
-   * en vez de centrado arriba. Si se omite, usa AtiendeMark (igual que
-   * ModalClonarVoz).
+   * @deprecated Todos los popups usan el logo (AtiendeMark) en el riel,
+   * nunca un ícono por-recuadro — pedido real de Javier el 4-sep-2026
+   * ("ponle el icono del logo como el de clonar voz a todos los pops ups
+   * unificalos quitale eso"). Se ignora si se pasa; queda en la interfaz
+   * solo para no romper los call sites existentes.
    */
   icono?: LucideIcon;
   /** Título en el riel izquierdo (font-display, bold) — "Clonación instantánea de voz" en el original. */
@@ -65,7 +66,6 @@ interface ModalFormularioLateralProps {
 export function ModalFormularioLateral({
   open,
   onOpenChange,
-  icono: Icono,
   titulo,
   subtitulo,
   pasos,
@@ -84,22 +84,28 @@ export function ModalFormularioLateral({
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onOpenChange(false); }}>
       <DialogContent
+        hideDefaultClose
         className={cn(anchoClase, "p-0 gap-0 overflow-hidden")}
         onInteractOutside={bloquearCierre ? (e) => e.preventDefault() : undefined}
         onEscapeKeyDown={bloquearCierre ? (e) => e.preventDefault() : undefined}
       >
         <div className="h-1 bg-gradient-to-r from-primary to-secondary" />
 
+        {!bloquearCierre && (
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            aria-label="Cerrar"
+            className="absolute right-3 top-4 z-10 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <X className="w-4 h-4" strokeWidth={1.75} />
+          </button>
+        )}
+
         <div className={cn("grid", altoMinimoClase)} style={{ gridTemplateColumns: `${anchoRiel} 1fr` }}>
-          {/* Riel izquierdo: marca/ícono + título/subtítulo (+ pasos si aplica) */}
+          {/* Riel izquierdo: marca (siempre el logo, nunca un ícono por-recuadro) + título/subtítulo (+ pasos si aplica) */}
           <div className="border-r border-border p-6 flex flex-col gap-6 bg-muted/30">
-            {Icono ? (
-              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <Icono className="w-4 h-4 text-primary" strokeWidth={1.75} />
-              </div>
-            ) : (
-              <AtiendeMark className="h-7 w-auto" />
-            )}
+            <AtiendeMark className="h-7 w-auto" />
             <div>
               <p className="font-display text-base font-semibold text-foreground mb-1">{titulo}</p>
               {subtitulo && <p className="text-[13px] text-muted-foreground leading-snug">{subtitulo}</p>}
