@@ -20,3 +20,4 @@ for test_file in "${tests[@]}"; do
 done
 
 bash supabase/tests/order_idempotency_concurrency.sh "$database_url"
+bash supabase/tests/messaging_outbox_concurrency.sh "$database_url"

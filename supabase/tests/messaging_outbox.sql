@@ -1,4 +1,5 @@
 -- Contrato local: no llama proveedores; solo prueba el ledger y sus fences.
+begin;
 do $$
 declare r uuid := '51000000-0000-0000-0000-000000000001';
   first_id uuid; second_id uuid; j public.messaging_outbox; stale boolean;
@@ -21,3 +22,4 @@ begin
   end loop;
   if (select status from public.messaging_outbox where dedupe_key = 'test:dead') <> 'dead' then raise exception 'DLQ not reached'; end if;
 end $$;
+rollback;

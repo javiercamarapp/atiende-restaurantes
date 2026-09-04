@@ -32,6 +32,7 @@ import { RESTAURANT_ID, runAgentTurn } from "../_shared/whatsapp-agent-core.ts"
 import { actorHash, constantTimeEqual } from "../_shared/http-security.ts"
 import { verifyMetaSignature } from "../_shared/meta-signature.ts"
 import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts"
+import { extractMetaTextMessages } from "../_shared/meta-batch.ts"
 import {
   correlationHeaders,
   correlationId,
@@ -143,11 +144,7 @@ Deno.serve(async (req: Request) => {
     // ignoramos con un 200 vacío en vez de tratarlos como error.
     // Meta puede agrupar varios entry/changes/messages. Se conserva el orden
     // del payload y se procesa cada mensaje; nunca se selecciona solo [0].
-    const incomingMessages = (Array.isArray(payload?.entry) ? payload.entry : []).flatMap((entry: any) =>
-      (entry?.changes ?? []).flatMap((change: any) =>
-        Array.isArray(change?.value?.messages) ? change.value.messages : []
-      )
-    )
+    const incomingMessages = extractMetaTextMessages(payload)
     if (incomingMessages.length === 0) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json" },
@@ -155,14 +152,10 @@ Deno.serve(async (req: Request) => {
     }
 
     for (const message of incomingMessages) {
-      if (message?.type !== "text") continue
-      if (typeof message.id !== "string" || message.id.length > 255 ||
-        !/^\d{7,20}$/.test(String(message.from ?? ""))) continue
       const currentMessageId = message.id
       messageId = currentMessageId
       const phone = `+${message.from}`
       const body = String(message.text?.body ?? "").trim()
-      if (!body || body.length > 4000) continue
       try {
     phoneHash = await actorHash(phone)
     const { data: claimed, error: claimError } = await supabase.rpc(
