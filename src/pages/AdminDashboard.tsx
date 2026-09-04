@@ -1928,64 +1928,56 @@ const AdminDashboard = () => {
       const filtroSucursalWhatsapp = branchIdWhatsapp && branchIdWhatsapp !== 'global' ? { branch_id: branchIdWhatsapp } : null;
       const conFiltroWhatsapp = (q: any) => (filtroSucursalWhatsapp ? q.eq('branch_id', filtroSucursalWhatsapp.branch_id) : q);
 
-      const [{ count: totalOrdenes }, { count: vozTotal }, { count: vozCompletados }, { count: vozCancelados },
-        { count: waTotal }, { count: waCompletados }, { count: waCancelados },
-        { data: vozRecientes }, { data: waRecientes }, { data: sucursales },
-        { data: todasLasOrdenes }, { data: ordenesWhatsappIngreso }] = await Promise.all([
-        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId)),
-        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice")),
-        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").in("status", ["completado", "entregado"])),
-        conFiltro(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "voice").eq("status", "cancelado")),
-        conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
-        conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").in("status", ["completado", "entregado"])),
-        conFiltroWhatsapp(sb.from("orders").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId).eq("source", "whatsapp").eq("status", "cancelado")),
+      const voiceBranchId = filtroSucursal?.branch_id ?? null;
+      const whatsappBranchId = filtroSucursalWhatsapp?.branch_id ?? null;
+      const [
+        { data: voiceStatsRows, error: voiceStatsError },
+        { data: whatsappStatsRows, error: whatsappStatsError },
+        { data: conversationStatsRows, error: conversationStatsError },
+        { data: vozRecientes },
+        { data: waRecientes },
+        { data: sucursales },
+      ] = await Promise.all([
+        sb.rpc("orders_channel_stats", { p_restaurant_id: restaurantId, p_branch_id: voiceBranchId }),
+        sb.rpc("orders_channel_stats", { p_restaurant_id: restaurantId, p_branch_id: whatsappBranchId }),
+        sb.rpc("whatsapp_conversation_stats", { p_restaurant_id: restaurantId, p_branch_id: whatsappBranchId }),
         conFiltro(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "voice").order("created_at", { ascending: false }).limit(8)),
         conFiltroWhatsapp(sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("source", "whatsapp").order("created_at", { ascending: false }).limit(8)),
         sb.from("branches").select("id, name, elevenlabs_agent_id").eq("restaurant_id", restaurantId).order("display_order"),
-        // Ingreso real por canal — se necesita el total de cada pedido, no solo
-        // el conteo, así que aquí sí se trae `total` y `source` de todas las
-        // filas (a diferencia de los counts de arriba, que no bajan datos).
-        conFiltro(sb.from("orders").select("total, source").eq("restaurant_id", restaurantId)),
-        // Ingreso de WhatsApp acotado a su propio filtro de sucursal (puede
-        // ser distinto al de voz), separado del combinado de arriba.
-        conFiltroWhatsapp(sb.from("orders").select("total").eq("restaurant_id", restaurantId).eq("source", "whatsapp")),
       ]);
 
-      setSucursalesAgente(sucursales ?? []);
+      if (voiceStatsError || whatsappStatsError || conversationStatsError) {
+        throw voiceStatsError ?? whatsappStatsError ?? conversationStatsError;
+      }
 
-      const filasIngreso: { total: number; source: string | null }[] = todasLasOrdenes ?? [];
-      const ingresoTotal = filasIngreso.reduce((s, o) => s + Number(o.total), 0);
-      const ingresoVoz = filasIngreso.filter((o) => o.source === 'voice').reduce((s, o) => s + Number(o.total), 0);
-      const ingresoWhatsapp = (ordenesWhatsappIngreso ?? []).reduce((s: number, o: { total: number }) => s + Number(o.total), 0);
+      setSucursalesAgente(sucursales ?? []);
+      const voiceStats = voiceStatsRows?.[0];
+      const whatsappStats = whatsappStatsRows?.[0];
+      const conversationStats = conversationStatsRows?.[0];
 
       setStatsAgentes({
-        totalOrdenes: totalOrdenes ?? 0,
-        ingresoTotal,
-        voz: { total: vozTotal ?? 0, completados: vozCompletados ?? 0, cancelados: vozCancelados ?? 0, ingreso: ingresoVoz },
-        whatsapp: { total: waTotal ?? 0, completados: waCompletados ?? 0, cancelados: waCancelados ?? 0, ingreso: ingresoWhatsapp },
+        totalOrdenes: Number(voiceStats?.total_orders ?? 0),
+        ingresoTotal: Number(voiceStats?.total_revenue ?? 0),
+        voz: {
+          total: Number(voiceStats?.voice_orders ?? 0),
+          completados: Number(voiceStats?.voice_completed ?? 0),
+          cancelados: Number(voiceStats?.voice_cancelled ?? 0),
+          ingreso: Number(voiceStats?.voice_revenue ?? 0),
+        },
+        whatsapp: {
+          total: Number(whatsappStats?.whatsapp_orders ?? 0),
+          completados: Number(whatsappStats?.whatsapp_completed ?? 0),
+          cancelados: Number(whatsappStats?.whatsapp_cancelled ?? 0),
+          ingreso: Number(whatsappStats?.whatsapp_revenue ?? 0),
+        },
       });
       setOrdenesVoz(vozRecientes ?? []);
       setOrdenesWhatsapp(waRecientes ?? []);
-
-      const idsSucursales = filtroSucursalWhatsapp
-        ? [filtroSucursalWhatsapp.branch_id]
-        : (sucursales ?? []).map((s: { id: string }) => s.id);
-      if (idsSucursales.length > 0) {
-        const { data: conversaciones } = await sb
-          .from("whatsapp_conversations")
-          .select("id, messages, order_id")
-          .in("branch_id", idsSucursales);
-        const lista = conversaciones ?? [];
-        const conPedido = lista.filter((c: { order_id: string | null }) => c.order_id).length;
-        const totalMensajes = lista.reduce((suma: number, c: { messages: unknown }) => suma + (Array.isArray(c.messages) ? c.messages.length : 0), 0);
-        setConversacionesWhatsapp({
-          total: lista.length,
-          conPedido,
-          promedioMensajes: lista.length > 0 ? totalMensajes / lista.length : 0,
-        });
-      } else {
-        setConversacionesWhatsapp({ total: 0, conPedido: 0, promedioMensajes: 0 });
-      }
+      setConversacionesWhatsapp({
+        total: Number(conversationStats?.total ?? 0),
+        conPedido: Number(conversationStats?.with_order ?? 0),
+        promedioMensajes: Number(conversationStats?.average_messages ?? 0),
+      });
     } catch (err) {
       console.error("No se pudieron cargar los datos de agentes:", err);
     } finally {

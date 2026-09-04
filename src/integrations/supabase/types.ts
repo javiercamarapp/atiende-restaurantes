@@ -1045,6 +1045,21 @@ export type Database = {
           revenue: number
         }[]
       }
+      orders_channel_stats: {
+        Args: { p_branch_id?: string; p_restaurant_id: string }
+        Returns: {
+          total_orders: number
+          total_revenue: number
+          voice_cancelled: number
+          voice_completed: number
+          voice_orders: number
+          voice_revenue: number
+          whatsapp_cancelled: number
+          whatsapp_completed: number
+          whatsapp_orders: number
+          whatsapp_revenue: number
+        }[]
+      }
       shares_restaurant: {
         Args: { _target: string; _viewer: string }
         Returns: boolean
@@ -1068,6 +1083,14 @@ export type Database = {
           p_status?: string
         }
         Returns: Json
+      }
+      whatsapp_conversation_stats: {
+        Args: { p_branch_id?: string; p_restaurant_id: string }
+        Returns: {
+          average_messages: number
+          total: number
+          with_order: number
+        }[]
       }
     }
     Enums: {
