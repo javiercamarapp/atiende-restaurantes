@@ -31,6 +31,7 @@ import {
 import { RESTAURANT_ID, runAgentTurn } from "../_shared/whatsapp-agent-core.ts"
 import { actorHash, constantTimeEqual } from "../_shared/http-security.ts"
 import { verifyMetaSignature } from "../_shared/meta-signature.ts"
+import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts"
 
 const GRAPH_API_VERSION = "v25.0" // misma versión real que trae el panel de Meta de Javier
 

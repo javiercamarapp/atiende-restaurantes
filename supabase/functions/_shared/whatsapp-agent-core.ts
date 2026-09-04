@@ -26,6 +26,7 @@ import {
   OrderValidationError,
   vipNote,
 } from "./create-order-core.ts"
+import { fetchWithTimeout as fetch } from "./fetch-timeout.ts"
 
 // OPENROUTER_API_KEY vive en Supabase Vault (mismo mecanismo real que
 // ELEVENLABS_API_KEY y las credenciales de WhatsApp Cloud API) — no como

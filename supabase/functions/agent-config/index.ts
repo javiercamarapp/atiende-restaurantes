@@ -47,6 +47,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAgentConfig } from "../_shared/agent-config-auth.ts";
+import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts";
 
 // La cuenta real de ElevenLabs es de Javier — ya tenía voces clonadas
 // personales suyas antes de este proyecto (Javier Cámara, Omar, Papá, etc.),

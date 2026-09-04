@@ -20,6 +20,7 @@ import {
   requestActor,
   secretMatches,
 } from "../_shared/http-security.ts";
+import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ??
