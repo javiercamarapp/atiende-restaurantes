@@ -20,11 +20,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Package, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Package, Loader2, Tags } from "lucide-react";
 
 interface Categoria {
   id: string;
@@ -186,69 +188,77 @@ export function ModalCategoria({ open, onOpenChange, restaurantId, editingCatego
   };
 
   return (
-    <ModalFormularioElegante
+    <ModalFormularioLateral
       open={open}
       onOpenChange={onOpenChange}
+      icono={Tags}
       titulo={editando ? "Editar categoría" : "Agregar categoría"}
       subtitulo="Así se agrupan los productos en el menú de voz y WhatsApp."
-      onGuardar={handleGuardar}
-      guardando={guardando}
-      textoBotonGuardar={editando ? "Guardar cambios" : "Agregar categoría"}
-      guardarDeshabilitado={subiendoImagen}
-      anchoClase="max-w-xl"
+      anchoClase="max-w-5xl"
+      footer={
+        <Button
+          className="rounded-full px-6"
+          onClick={handleGuardar}
+          disabled={guardando || subiendoImagen}
+        >
+          {guardando ? "Guardando…" : editando ? "Guardar cambios" : "Agregar categoría"}
+        </Button>
+      }
     >
-      <CampoFormulario id="categoria-nombre" label="Nombre" error={errorNombre}>
-        <Input id="categoria-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
-      </CampoFormulario>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CampoFormulario id="categoria-nombre" label="Nombre" error={errorNombre}>
+          <Input id="categoria-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
+        </CampoFormulario>
 
-      <CampoFormulario
-        id="categoria-imagen"
-        label="Imagen"
-        hint={subiendoImagen ? "Subiendo imagen…" : "Opcional — JPG o PNG, hasta 5MB."}
-      >
-        <div className="flex items-center gap-3">
-          {imageUrl && (
-            <img src={imageUrl} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-border" />
-          )}
-          <Input id="categoria-imagen" type="file" accept="image/*" onChange={handleImageUpload} disabled={subiendoImagen} />
-        </div>
-      </CampoFormulario>
+        <CampoFormulario
+          id="categoria-imagen"
+          label="Imagen"
+          hint={subiendoImagen ? "Subiendo imagen…" : "Opcional — JPG o PNG, hasta 5MB."}
+        >
+          <div className="flex items-center gap-3">
+            {imageUrl && (
+              <img src={imageUrl} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-border" />
+            )}
+            <Input id="categoria-imagen" type="file" accept="image/*" onChange={handleImageUpload} disabled={subiendoImagen} />
+          </div>
+        </CampoFormulario>
 
-      {editando && (
-        <div className="space-y-2">
-          <p className="text-[12.5px] font-medium text-foreground">Productos en esta categoría</p>
-          <p className="text-[11.5px] text-muted-foreground -mt-1">Marca los productos del restaurante que pertenecen aquí.</p>
+        {editando && (
+          <div className="space-y-2 md:col-span-2">
+            <p className="text-[12.5px] font-medium text-foreground">Productos en esta categoría</p>
+            <p className="text-[11.5px] text-muted-foreground -mt-1">Marca los productos del restaurante que pertenecen aquí.</p>
 
-          {cargandoProductos ? (
-            <div className="flex items-center gap-2 text-[12.5px] text-muted-foreground py-4 justify-center">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando productos…
-            </div>
-          ) : productos.length === 0 ? (
-            <p className="text-[12.5px] text-muted-foreground py-3 text-center">Este restaurante todavía no tiene productos.</p>
-          ) : (
-            <ScrollArea className="h-48 rounded-lg border border-border">
-              <div className="p-1.5 space-y-1">
-                {productos.map((p) => (
-                  <label
-                    key={p.id}
-                    className="flex items-center justify-between gap-2 rounded-md px-2.5 py-2 cursor-pointer hover:bg-muted/60 transition-colors"
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
-                      <span className="text-[12.5px] text-foreground truncate">{p.name}</span>
-                    </span>
-                    <span className="flex items-center gap-2.5 shrink-0">
-                      <span className="font-mono tabular-nums text-[11.5px] text-muted-foreground">${Number(p.price).toLocaleString("es-MX")}</span>
-                      <Checkbox checked={!!asignaciones[p.id]} onCheckedChange={(v) => alternarProducto(p.id, v === true)} />
-                    </span>
-                  </label>
-                ))}
+            {cargandoProductos ? (
+              <div className="flex items-center gap-2 text-[12.5px] text-muted-foreground py-4 justify-center">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando productos…
               </div>
-            </ScrollArea>
-          )}
-        </div>
-      )}
-    </ModalFormularioElegante>
+            ) : productos.length === 0 ? (
+              <p className="text-[12.5px] text-muted-foreground py-3 text-center">Este restaurante todavía no tiene productos.</p>
+            ) : (
+              <ScrollArea className="h-48 rounded-lg border border-border">
+                <div className="p-1.5 space-y-1">
+                  {productos.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex items-center justify-between gap-2 rounded-md px-2.5 py-2 cursor-pointer hover:bg-muted/60 transition-colors"
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
+                        <span className="text-[12.5px] text-foreground truncate">{p.name}</span>
+                      </span>
+                      <span className="flex items-center gap-2.5 shrink-0">
+                        <span className="font-mono tabular-nums text-[11.5px] text-muted-foreground">${Number(p.price).toLocaleString("es-MX")}</span>
+                        <Checkbox checked={!!asignaciones[p.id]} onCheckedChange={(v) => alternarProducto(p.id, v === true)} />
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        )}
+      </div>
+    </ModalFormularioLateral>
   );
 }
 

@@ -21,9 +21,10 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
 import {
-  MessageCircle, Loader2, Maximize2, CheckCircle2, Sparkles, Cpu,
+  MessageCircle, Loader2, Maximize2, CheckCircle2, Sparkles, Cpu, MessageSquare,
 } from "lucide-react";
 
 type WhatsAppAgentConfigRow = {
@@ -82,6 +83,7 @@ const WhatsAppAgenteConfigSection = ({ restaurantId }: Props) => {
   const [guardando, setGuardando] = useState(false);
   const [guardadoOk, setGuardadoOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mensajeAbierto, setMensajeAbierto] = useState(false);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -271,25 +273,37 @@ const WhatsAppAgenteConfigSection = ({ restaurantId }: Props) => {
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-[13px] font-medium text-foreground">Mensaje del sistema</p>
-            <Dialog>
-              <DialogTrigger asChild>
-                <button className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors">
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-              </DialogTrigger>
-              <DialogContent className="flex flex-col p-5 gap-3" style={{ width: "75vw", height: "75vh", maxWidth: "75vw", maxHeight: "75vh" }}>
-                <DialogHeader className="space-y-0">
-                  <DialogTitle className="text-[14px] font-medium tracking-normal">Mensaje del sistema — agente de WhatsApp</DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-primary/40 overflow-hidden">
-                  <textarea
-                    value={borrador.system_prompt}
-                    onChange={(e) => setBorrador({ ...borrador, system_prompt: e.target.value })}
-                    className="flex-1 p-4 text-[13px] text-foreground bg-transparent resize-none leading-relaxed"
-                  />
-                </div>
-              </DialogContent>
-            </Dialog>
+            <button
+              onClick={() => setMensajeAbierto(true)}
+              className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+            <ModalFormularioLateral
+              open={mensajeAbierto}
+              onOpenChange={setMensajeAbierto}
+              icono={MessageSquare}
+              titulo="Mensaje del sistema"
+              subtitulo="Prompt del agente de WhatsApp"
+              altoMinimoClase="min-h-[70vh]"
+              footer={
+                <Button
+                  variant="outline"
+                  className="rounded-full px-6"
+                  onClick={() => setMensajeAbierto(false)}
+                >
+                  Cerrar
+                </Button>
+              }
+            >
+              <div className="h-full flex flex-col rounded-xl border border-primary/40 overflow-hidden">
+                <textarea
+                  value={borrador.system_prompt}
+                  onChange={(e) => setBorrador({ ...borrador, system_prompt: e.target.value })}
+                  className="flex-1 p-4 text-[13px] text-foreground bg-transparent resize-none leading-relaxed"
+                />
+              </div>
+            </ModalFormularioLateral>
           </div>
           <textarea
             value={borrador.system_prompt}

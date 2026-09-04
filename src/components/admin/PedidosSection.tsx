@@ -21,7 +21,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
 import PedidoDetalleSection from "@/components/admin/PedidoDetalleSection";
 import {
   ShoppingCart, MapPin, Bike, Clock, User, Package, Truck, CheckCircle2,
@@ -571,16 +572,17 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
       )}
 
       {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba.
-          Unificado al mismo lenguaje visual que ModalClonarVoz.tsx (barra de
-          gradiente, ícono circular arriba, título/subtítulo centrados) vía
-          ModalFormularioElegante, pedido real de Javier el 4-sep-2026: "que
-          se corrijan y se unifiquen como el recuadro de clona tu voz". */}
-      <ModalFormularioElegante
+          Unificado al esqueleto real de ModalClonarVoz.tsx (riel izquierdo
+          con ícono/marca + título/subtítulo, columna derecha con el
+          contenido y los botones al pie) vía ModalFormularioLateral, el
+          esqueleto vigente en toda la app. */}
+      <ModalFormularioLateral
         open={!!incidenciaAbierta}
         onOpenChange={(v) => { if (!v) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}
         icono={AlertTriangle}
         titulo="Reportar incidencia"
         subtitulo={incidenciaAbierta ? `#${incidenciaAbierta.order_number} — ${incidenciaAbierta.customer_name}` : undefined}
+        anchoClase="max-w-5xl"
         footer={
           <div className="flex gap-2">
             <Button variant="outline" className="rounded-full flex-1" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>
@@ -605,7 +607,7 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
             rows={4}
           />
         </CampoFormulario>
-      </ModalFormularioElegante>
+      </ModalFormularioLateral>
 
       {/* Confirmación de "Cancelar pedido" — ver confirmarCancelacion() arriba */}
       <AlertDialog open={!!cancelarConfirm} onOpenChange={(v) => !v && setCancelarConfirm(null)}>

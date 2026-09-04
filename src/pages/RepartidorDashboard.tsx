@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
 import {
   Package,
   MapPin,
@@ -907,16 +908,17 @@ const RepartidorDashboard = () => {
       </div>
 
       {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba.
-          Unificado al mismo lenguaje visual que ModalClonarVoz.tsx (barra
-          de gradiente, ícono circular arriba, título/subtítulo centrados)
-          vía ModalFormularioElegante, pedido real de Javier el 4-sep-2026:
-          "que se corrijan y se unifiquen como el recuadro de clona tu voz". */}
-      <ModalFormularioElegante
+          Unificado al esqueleto real de ModalClonarVoz.tsx (riel izquierdo
+          con ícono/marca + título/subtítulo, columna derecha con el
+          contenido y los botones al pie) vía ModalFormularioLateral, el
+          esqueleto vigente en toda la app. */}
+      <ModalFormularioLateral
         open={!!incidenciaAbierta}
         onOpenChange={(v) => { if (!v) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}
         icono={AlertTriangle}
         titulo="Reportar incidencia"
         subtitulo={incidenciaAbierta ? `Pedido de ${incidenciaAbierta.clienteNombre} — administración lo verá de inmediato` : undefined}
+        anchoClase="max-w-5xl"
         footer={
           <div className="flex gap-2">
             <Button variant="outline" className="rounded-full flex-1" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>
@@ -941,7 +943,7 @@ const RepartidorDashboard = () => {
             rows={4}
           />
         </CampoFormulario>
-      </ModalFormularioElegante>
+      </ModalFormularioLateral>
     </div>
   );
 };

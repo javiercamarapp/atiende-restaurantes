@@ -1,4 +1,4 @@
-// Formulario "Agregar repartidor" sobre el shell ModalFormularioElegante.
+// Formulario "Agregar repartidor" sobre el shell ModalFormularioLateral.
 // Hoy no existe ningún alta de repartidor desde el admin — la sección
 // Repartidores de AdminDashboard.tsx solo lista profiles con
 // role='repartidor' que llegaron por auto-registro público. Este modal crea
@@ -10,10 +10,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Bike } from "lucide-react";
 
 interface ModalRepartidorProps {
   open: boolean;
@@ -133,16 +136,19 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
   };
 
   return (
-    <ModalFormularioElegante
+    <ModalFormularioLateral
       open={open}
       onOpenChange={onOpenChange}
+      icono={Bike}
       titulo="Agregar repartidor"
       subtitulo="Crea su cuenta real de acceso y su perfil operativo — podrá iniciar sesión de inmediato con Google o un enlace mágico a su correo."
-      onGuardar={handleGuardar}
-      guardando={guardando}
-      textoBotonGuardar="Agregar repartidor"
-      anchoClase="max-w-3xl"
+      anchoClase="max-w-5xl"
       bloquearCierre={guardando}
+      footer={
+        <Button className="rounded-full px-6" onClick={handleGuardar} disabled={guardando}>
+          {guardando ? "Guardando…" : "Agregar repartidor"}
+        </Button>
+      }
     >
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         <CampoFormulario id="rep-nombre" label="Nombre completo" error={errores.nombre_completo} className="col-span-2">
@@ -195,7 +201,7 @@ export function ModalRepartidor({ open, onOpenChange, onGuardado }: ModalReparti
           <Input id="rep-contacto-telefono" type="tel" value={form.contacto_emergencia_telefono} onChange={(ev) => set("contacto_emergencia_telefono", ev.target.value)} />
         </CampoFormulario>
       </div>
-    </ModalFormularioElegante>
+    </ModalFormularioLateral>
   );
 }
 

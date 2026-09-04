@@ -29,6 +29,7 @@ import NotificacionesSection from "@/components/admin/NotificacionesSection";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
 import { ModalClonarVoz } from "@/components/ModalClonarVoz";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CampoPixeles } from "@/components/CampoPixeles";
 import SucursalesSection from "@/components/admin/SucursalesSection";
@@ -727,6 +728,7 @@ function DashboardAgente({
   ];
   const PESTANAS = canal === 'voz' ? PESTANAS_VOZ : PESTANAS_WHATSAPP;
   const [pestana, setPestana] = useState<'general' | 'audio' | 'herramientas' | 'conocimiento' | 'comportamiento' | 'voces' | 'mensaje'>('general');
+  const [mensajeSistemaAbierto, setMensajeSistemaAbierto] = useState(false);
 
   const datos = canal === 'voz' ? statsAgentes?.voz : statsAgentes?.whatsapp;
   const tasaExito = datos && datos.total > 0 ? (datos.completados / datos.total) * 100 : null;
@@ -1309,29 +1311,44 @@ function DashboardAgente({
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-[13px] font-medium text-foreground">Mensaje del sistema</p>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <button className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors">
-                          <Maximize2 className="w-3.5 h-3.5" />
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent className="flex flex-col p-5 gap-3" style={{ width: '75vw', height: '75vh', maxWidth: '75vw', maxHeight: '75vh' }}>
-                        <DialogHeader className="space-y-0">
-                          <DialogTitle className="text-[14px] font-medium tracking-normal">Mensaje del sistema</DialogTitle>
-                        </DialogHeader>
-                        <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-primary/40 overflow-hidden">
-                          <textarea
-                            value={borrador.prompt}
-                            onChange={(e) => setBorrador({ ...borrador, prompt: e.target.value })}
-                            className="flex-1 p-4 text-[13px] text-foreground bg-transparent resize-none leading-relaxed"
-                          />
-                          <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/40">
-                            <span className="text-[12px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
+                    <button
+                      onClick={() => setMensajeSistemaAbierto(true)}
+                      className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                    <ModalFormularioLateral
+                      open={mensajeSistemaAbierto}
+                      onOpenChange={setMensajeSistemaAbierto}
+                      icono={FileText}
+                      titulo="Mensaje del sistema"
+                      subtitulo="El prompt del agente de voz"
+                      anchoClase="max-w-5xl"
+                      altoMinimoClase="min-h-[70vh]"
+                      footer={
+                        <div className="w-full flex items-center justify-between gap-3">
+                          <span className="text-[12px] text-muted-foreground">Escribe <code className="font-mono">{'{{'}</code> para añadir variables</span>
+                          <div className="flex items-center gap-2">
                             <BotonZonaHoraria />
+                            <Button
+                              variant="outline"
+                              className="rounded-full px-6"
+                              onClick={() => setMensajeSistemaAbierto(false)}
+                            >
+                              Cerrar
+                            </Button>
                           </div>
                         </div>
-                      </DialogContent>
-                    </Dialog>
+                      }
+                    >
+                      <div className="h-full flex flex-col rounded-xl border border-primary/40 overflow-hidden">
+                        <textarea
+                          value={borrador.prompt}
+                          onChange={(e) => setBorrador({ ...borrador, prompt: e.target.value })}
+                          className="flex-1 p-4 text-[13px] text-foreground bg-transparent resize-none leading-relaxed"
+                        />
+                      </div>
+                    </ModalFormularioLateral>
                   </div>
                   <textarea
                     value={borrador.prompt}
@@ -3516,25 +3533,31 @@ const AdminDashboard = () => {
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{promos.length} en total</p>
-              <Dialog open={promoDialogOpen} onOpenChange={setPromoDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => { setEditingPromo(null); setPromoForm({ title: '', description: '', image_url: '', discount_text: '', is_active: true }); }} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
-                    <Plus className="w-3.5 h-3.5" /> Agregar
+              <Button onClick={() => { setEditingPromo(null); setPromoForm({ title: '', description: '', image_url: '', discount_text: '', is_active: true }); setPromoDialogOpen(true); }} size="sm" className="h-8 px-3 rounded-full text-[12.5px]">
+                <Plus className="w-3.5 h-3.5" /> Agregar
+              </Button>
+              <ModalFormularioLateral
+                open={promoDialogOpen}
+                onOpenChange={setPromoDialogOpen}
+                icono={Percent}
+                titulo={editingPromo ? 'Editar promoción' : 'Agregar promoción'}
+                anchoClase="max-w-4xl"
+                footer={
+                  <Button type="submit" form="promo-form" className="rounded-full px-6">
+                    {editingPromo ? 'Guardar cambios' : 'Agregar promoción'}
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>{editingPromo ? 'Editar promoción' : 'Agregar promoción'}</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handlePromoSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="promo-title">Título</Label>
-                      <Input id="promo-title" required value={promoForm.title} onChange={(e) => setPromoForm({ ...promoForm, title: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="promo-desc">Descripción</Label>
-                      <Textarea id="promo-desc" value={promoForm.description} onChange={(e) => setPromoForm({ ...promoForm, description: e.target.value })} />
-                    </div>
+                }
+              >
+                <form id="promo-form" onSubmit={handlePromoSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="promo-title">Título</Label>
+                    <Input id="promo-title" required value={promoForm.title} onChange={(e) => setPromoForm({ ...promoForm, title: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="promo-desc">Descripción</Label>
+                    <Textarea id="promo-desc" value={promoForm.description} onChange={(e) => setPromoForm({ ...promoForm, description: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="promo-discount">Texto del descuento</Label>
                       <Input id="promo-discount" placeholder="Ej. 2x1, 20% off" value={promoForm.discount_text} onChange={(e) => setPromoForm({ ...promoForm, discount_text: e.target.value })} />
@@ -3544,16 +3567,13 @@ const AdminDashboard = () => {
                       <Input id="promo-image" placeholder="https://…" value={promoForm.image_url} onChange={(e) => setPromoForm({ ...promoForm, image_url: e.target.value })} />
                       {promoForm.image_url && <img src={promoForm.image_url} alt="" className="w-16 h-16 rounded-lg object-cover mt-1" />}
                     </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="promo-active">Activa</Label>
-                      <Switch id="promo-active" checked={promoForm.is_active} onCheckedChange={(v) => setPromoForm({ ...promoForm, is_active: v })} />
-                    </div>
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
-                      {editingPromo ? 'Guardar cambios' : 'Agregar promoción'}
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="promo-active">Activa</Label>
+                    <Switch id="promo-active" checked={promoForm.is_active} onCheckedChange={(v) => setPromoForm({ ...promoForm, is_active: v })} />
+                  </div>
+                </form>
+              </ModalFormularioLateral>
             </div>
             
             {promos.length === 0 ? (

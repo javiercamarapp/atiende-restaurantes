@@ -1,23 +1,25 @@
-// Formulario "Agregar/Editar producto" reconstruido sobre el shell
-// ModalFormularioElegante — mismos campos, validación y lógica de guardado
-// (insert/update en `products`, validación de restaurant_id al crear) que
-// la versión inline anterior en AdminDashboard.tsx, solo con la
-// presentación nueva. Campos en grid de 2 columnas (Nombre+Precio,
-// Descripción+Categoría, Imagen a lo ancho, los dos toggles lado a lado)
-// para que el modal se lea ancho/corto en vez de angosto/alto — mismo
-// ancho (max-w-xl) que ModalRepartidor. Autocontenido: trae su propio
-// estado de formulario, subida de imagen y submit — el padre solo pasa
-// qué producto se edita (o null para crear) y qué hacer al terminar de
-// guardar.
+// Formulario "Agregar/Editar producto" sobre el shell ModalFormularioLateral
+// (riel izquierdo con ícono/título + columna derecha con el formulario) —
+// mismos campos, validación y lógica de guardado (insert/update en
+// `products`, validación de restaurant_id al crear) que la versión
+// anterior sobre ModalFormularioElegante, solo con la presentación nueva.
+// Campos en grid de 2 columnas (Nombre+Precio, Descripción+Categoría,
+// Imagen a lo ancho, los dos toggles lado a lado) dentro de la columna
+// derecha del riel. Autocontenido: trae su propio estado de formulario,
+// subida de imagen y submit — el padre solo pasa qué producto se edita (o
+// null para crear) y qué hacer al terminar de guardar.
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { UtensilsCrossed } from "lucide-react";
 
 interface Product {
   id: string;
@@ -159,18 +161,24 @@ export function ModalProducto({ open, onOpenChange, editingProduct, categories, 
   };
 
   return (
-    <ModalFormularioElegante
+    <ModalFormularioLateral
       open={open}
       onOpenChange={onOpenChange}
+      icono={UtensilsCrossed}
       titulo={editingProduct ? "Editar producto" : "Agregar producto"}
       subtitulo="Así se ve y se ofrece en el menú de voz y WhatsApp."
-      onGuardar={handleGuardar}
-      guardando={guardando}
-      textoBotonGuardar={editingProduct ? "Guardar cambios" : "Agregar producto"}
-      guardarDeshabilitado={subiendoImagen}
-      anchoClase="max-w-xl"
+      anchoClase="max-w-5xl"
+      footer={
+        <Button
+          className="rounded-full px-6"
+          onClick={handleGuardar}
+          disabled={guardando || subiendoImagen}
+        >
+          {guardando ? "Guardando…" : editingProduct ? "Guardar cambios" : "Agregar producto"}
+        </Button>
+      }
     >
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <CampoFormulario id="producto-nombre" label="Nombre" error={errorNombre}>
           <Input id="producto-nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
         </CampoFormulario>
@@ -196,7 +204,7 @@ export function ModalProducto({ open, onOpenChange, editingProduct, categories, 
           id="producto-imagen"
           label="Imagen"
           hint={subiendoImagen ? "Subiendo imagen…" : "Opcional — JPG o PNG, hasta 5MB."}
-          className="col-span-2"
+          className="md:col-span-2"
         >
           <div className="flex items-center gap-3">
             {form.image_url && (
@@ -215,7 +223,7 @@ export function ModalProducto({ open, onOpenChange, editingProduct, categories, 
           <Switch id="producto-disponible" checked={form.is_available} onCheckedChange={(v) => setForm({ ...form, is_available: v })} />
         </div>
       </div>
-    </ModalFormularioElegante>
+    </ModalFormularioLateral>
   );
 }
 

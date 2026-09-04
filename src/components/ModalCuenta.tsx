@@ -1,4 +1,4 @@
-// Formulario "Agregar cuenta" sobre el shell ModalFormularioElegante — da de
+// Formulario "Agregar cuenta" sobre el shell ModalFormularioLateral — da de
 // alta un usuario real de staff/admin: crea el usuario de auth (vía la Edge
 // Function crear-cuenta-staff, que usa la API admin de Supabase Auth con el
 // service role — el navegador nunca puede hacer esto por sí solo), le asigna
@@ -10,9 +10,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserPlus } from "lucide-react";
 
 interface ModalCuentaProps {
   open: boolean;
@@ -119,59 +122,65 @@ export function ModalCuenta({ open, onOpenChange, restaurantId, onCuentaCreada }
   };
 
   return (
-    <ModalFormularioElegante
+    <ModalFormularioLateral
       open={open}
       onOpenChange={onOpenChange}
+      icono={UserPlus}
       titulo="Agregar cuenta"
       subtitulo="Da de alta a una persona de tu equipo para que entre al panel."
-      onGuardar={handleGuardar}
-      guardando={guardando}
-      textoBotonGuardar="Crear cuenta"
-      anchoClase="max-w-xl"
+      anchoClase="max-w-5xl"
+      footer={
+        <Button className="rounded-full px-6" onClick={handleGuardar} disabled={guardando}>
+          {guardando ? "Guardando…" : "Crear cuenta"}
+        </Button>
+      }
     >
-      <div className="grid grid-cols-2 gap-4">
-        <CampoFormulario id="cuenta-nombre" label="Nombre" error={errores.nombre}>
-          <Input id="cuenta-nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
-        </CampoFormulario>
-        <CampoFormulario id="cuenta-apellidos" label="Apellidos" error={errores.apellidos}>
-          <Input id="cuenta-apellidos" value={form.apellidos} onChange={(e) => setForm({ ...form, apellidos: e.target.value })} />
-        </CampoFormulario>
-      </div>
-
-      <CampoFormulario id="cuenta-email" label="Correo electrónico" error={errores.email}>
-        <Input id="cuenta-email" type="email" placeholder="persona@correo.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-      </CampoFormulario>
-
-      <CampoFormulario id="cuenta-telefono" label="Teléfono" error={errores.telefono}>
-        <div className="flex gap-2">
-          <Select value={form.codigoPais} onValueChange={(v) => setForm({ ...form, codigoPais: v })}>
-            <SelectTrigger className="w-[168px] shrink-0"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CODIGOS_PAIS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Input
-            id="cuenta-telefono"
-            inputMode="numeric"
-            placeholder="9991234567"
-            value={form.telefono}
-            onChange={(e) => setForm({ ...form, telefono: e.target.value.replace(/[^\d]/g, "") })}
-          />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <CampoFormulario id="cuenta-nombre" label="Nombre" error={errores.nombre}>
+            <Input id="cuenta-nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
+          </CampoFormulario>
+          <CampoFormulario id="cuenta-apellidos" label="Apellidos" error={errores.apellidos}>
+            <Input id="cuenta-apellidos" value={form.apellidos} onChange={(e) => setForm({ ...form, apellidos: e.target.value })} />
+          </CampoFormulario>
+          <CampoFormulario id="cuenta-email" label="Correo electrónico" error={errores.email}>
+            <Input id="cuenta-email" type="email" placeholder="persona@correo.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </CampoFormulario>
         </div>
-      </CampoFormulario>
 
-      <CampoFormulario label="Rol" error={errores.role} hint={ROLES.find((r) => r.value === form.role)?.descripcion}>
-        <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as typeof form.role })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </CampoFormulario>
-      <p className="text-[11.5px] text-muted-foreground -mt-2">
-        No pide contraseña — inicia sesión con Google o un enlace mágico a este correo, igual que el resto del panel.
-      </p>
-    </ModalFormularioElegante>
+        <div className="space-y-4">
+          <CampoFormulario id="cuenta-telefono" label="Teléfono" error={errores.telefono}>
+            <div className="flex gap-2">
+              <Select value={form.codigoPais} onValueChange={(v) => setForm({ ...form, codigoPais: v })}>
+                <SelectTrigger className="w-[168px] shrink-0"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CODIGOS_PAIS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input
+                id="cuenta-telefono"
+                inputMode="numeric"
+                placeholder="9991234567"
+                value={form.telefono}
+                onChange={(e) => setForm({ ...form, telefono: e.target.value.replace(/[^\d]/g, "") })}
+              />
+            </div>
+          </CampoFormulario>
+
+          <CampoFormulario label="Rol" error={errores.role} hint={ROLES.find((r) => r.value === form.role)?.descripcion}>
+            <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as typeof form.role })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </CampoFormulario>
+          <p className="text-[11.5px] text-muted-foreground">
+            No pide contraseña — inicia sesión con Google o un enlace mágico a este correo, igual que el resto del panel.
+          </p>
+        </div>
+      </div>
+    </ModalFormularioLateral>
   );
 }
 
