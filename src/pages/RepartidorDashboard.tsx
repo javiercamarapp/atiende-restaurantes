@@ -596,7 +596,7 @@ const RepartidorDashboard = () => {
           </div>
         );
 
-      case 'today-delivered':
+      case 'today-delivered': {
         const todayDeliveredOrders = todayOrders.filter(o => o.status === 'entregado');
         return (
           <div className="space-y-4">
@@ -623,8 +623,9 @@ const RepartidorDashboard = () => {
             )}
           </div>
         );
+      }
 
-      case 'cash-received':
+      case 'cash-received': {
         const cashOrders = todayOrders.filter(o => o.status === 'entregado');
         const cashTotal = cashOrders.reduce((sum, o) => sum + Number(o.total), 0);
         return (
@@ -662,6 +663,7 @@ const RepartidorDashboard = () => {
             )}
           </div>
         );
+      }
 
       case 'history':
         return (

@@ -8,6 +8,11 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:edge",
+    "test:edge": "deno test --allow-env --no-check supabase/functions/_shared/*.test.ts",
+    "test:db": "bash supabase/tests/run-local.sh",
+    "quality": "npm run lint && npm run typecheck && npm run test:edge && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -102,7 +102,7 @@ export function ModalClonarVoz({ open, onOpenChange, onVozClonada }: Props) {
   const detenerTodoElAudio = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    grabadorRef.current?.state === "recording" && grabadorRef.current.stop();
+    if (grabadorRef.current?.state === "recording") grabadorRef.current.stop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioCtxRef.current?.close().catch(() => {});
     streamRef.current = null;

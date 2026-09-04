@@ -2529,7 +2529,7 @@ const AdminDashboard = () => {
     const now = new Date();
     let startDate: Date;
     let groupFormat: string;
-    let intervals: Date[] = [];
+    const intervals: Date[] = [];
     switch (timePeriod) {
       case 'day':
         startDate = subDays(now, 24);
