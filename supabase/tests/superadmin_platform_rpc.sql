@@ -24,10 +24,17 @@ insert into public.restaurants(id,name,slug) values
 insert into public.orders(restaurant_id,customer_name,customer_phone,total,items,status,created_at)
 select '67100000-0000-0000-0000-000000000001','C' || i::text,'999' || lpad(i::text,7,'0'),10,'[]','pending',now()
 from generate_series(1,101) i;
+insert into public.customers(restaurant_id,phone,name,order_count,last_order_at)
+select '67100000-0000-0000-0000-000000000001','998' || lpad(i::text,7,'0'),'Recent ' || i,1,now()
+from generate_series(1,60) i;
+insert into public.customers(restaurant_id,phone,name,order_count,last_order_at) values
+ ('67100000-0000-0000-0000-000000000001','9970000000','Global champion',999,now()-interval '1 year');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','67000000-0000-0000-0000-000000000001',true);
-do $$ declare n bigint; amount numeric; begin
+do $$ declare n bigint; amount numeric; top_name text; begin
   select order_count,order_total into n,amount from public.superadmin_orders_summary('pending',null,null);
   if n < 101 or amount < 1010 then raise exception 'summary truncated: %, %', n, amount; end if;
+  select name into top_name from public.superadmin_top_customers(10) limit 1;
+  if top_name <> 'Global champion' then raise exception 'top customers ranks only a recent page'; end if;
 end $$;
 rollback;

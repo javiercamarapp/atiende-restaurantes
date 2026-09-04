@@ -9,13 +9,17 @@ insert into public.restaurant_staff(restaurant_id,user_id,role) values
  ('66100000-0000-0000-0000-000000000001','66000000-0000-0000-0000-000000000001','owner');
 insert into public.customers(id,restaurant_id,phone,name) values
  ('66200000-0000-0000-0000-000000000001','66100000-0000-0000-0000-000000000001','+529999000001','Persona privada'),
- ('66200000-0000-0000-0000-000000000002','66100000-0000-0000-0000-000000000002','+529999000002','Otra persona');
+ ('66200000-0000-0000-0000-000000000002','66100000-0000-0000-0000-000000000002','+529999000002','Otra persona'),
+ ('66200000-0000-0000-0000-000000000003','66100000-0000-0000-0000-000000000001','foo','Legacy foo'),
+ ('66200000-0000-0000-0000-000000000004','66100000-0000-0000-0000-000000000001','bar','Legacy bar');
 insert into public.customer_addresses(customer_id,address) values
  ('66200000-0000-0000-0000-000000000001','Dirección privada 1');
-insert into public.orders(id,restaurant_id,customer_id,customer_name,customer_phone,customer_address,total,items,status)
- values ('66300000-0000-0000-0000-000000000001','66100000-0000-0000-0000-000000000001','66200000-0000-0000-0000-000000000001','Persona privada','+529999000001','Dirección privada 1',10,'[]','entregado');
+insert into public.orders(id,restaurant_id,customer_id,customer_name,customer_phone,customer_address,total,items,status,call_transcript,call_recording_url,notes,incident_note)
+ values ('66300000-0000-0000-0000-000000000001','66100000-0000-0000-0000-000000000001','66200000-0000-0000-0000-000000000001','Persona privada','+529999000001','Dirección privada 1',10,'[]','entregado','transcript privado','https://recording.invalid/private','nota privada','incidente privado');
 insert into public.whatsapp_conversations(restaurant_id,phone,messages) values
- ('66100000-0000-0000-0000-000000000001','+5219999000001','[{"role":"user","content":"dato privado"}]');
+ ('66100000-0000-0000-0000-000000000001','+5219999000001','[{"role":"user","content":"dato privado"}]'),
+ ('66100000-0000-0000-0000-000000000001','foo','[]'),
+ ('66100000-0000-0000-0000-000000000001','bar','[]');
 select public.enqueue_messaging_outbox(
  '66100000-0000-0000-0000-000000000001','whatsapp','reply','privacy:1',
  '{"to":"5219999000001","body":"respuesta privada"}');
@@ -32,13 +36,15 @@ do $$ declare payload jsonb; begin
     raise exception 'cross-tenant export succeeded';
   exception when insufficient_privilege then null; end;
   perform public.erase_customer_data('66100000-0000-0000-0000-000000000001','66200000-0000-0000-0000-000000000001');
+  perform public.erase_customer_data('66100000-0000-0000-0000-000000000001','66200000-0000-0000-0000-000000000003');
 end $$;
 reset role;
 do $$ begin
   if exists(select 1 from public.customers where id='66200000-0000-0000-0000-000000000001') then raise exception 'customer survived'; end if;
-  if exists(select 1 from public.orders where id='66300000-0000-0000-0000-000000000001' and (customer_id is not null or customer_name <> 'Cliente eliminado' or customer_address is not null)) then raise exception 'PII survived'; end if;
-  if exists(select 1 from public.whatsapp_conversations where restaurant_id='66100000-0000-0000-0000-000000000001') then raise exception 'conversation PII survived'; end if;
+  if exists(select 1 from public.orders where id='66300000-0000-0000-0000-000000000001' and (customer_id is not null or customer_name <> 'Cliente eliminado' or customer_address is not null or call_transcript is not null or call_recording_url is not null or notes is not null or incident_note is not null)) then raise exception 'PII survived'; end if;
+  if exists(select 1 from public.whatsapp_conversations where restaurant_id='66100000-0000-0000-0000-000000000001' and phone in ('+5219999000001','foo')) then raise exception 'conversation PII survived'; end if;
+  if not exists(select 1 from public.whatsapp_conversations where restaurant_id='66100000-0000-0000-0000-000000000001' and phone='bar') then raise exception 'invalid phone normalization collided'; end if;
   if exists(select 1 from public.messaging_outbox where restaurant_id='66100000-0000-0000-0000-000000000001' and payload ?| array['to','body']) then raise exception 'outbox PII survived'; end if;
-  if (select count(*) from public.privacy_requests where restaurant_id='66100000-0000-0000-0000-000000000001') <> 2 then raise exception 'audit missing'; end if;
+  if (select count(*) from public.privacy_requests where restaurant_id='66100000-0000-0000-0000-000000000001') <> 3 then raise exception 'audit missing'; end if;
 end $$;
 rollback;

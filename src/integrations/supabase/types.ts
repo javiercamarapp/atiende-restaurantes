@@ -1412,6 +1412,16 @@ export type Database = {
           slug: string
         }[]
       }
+      superadmin_top_customers: {
+        Args: { p_limit?: number }
+        Returns: {
+          last_order_at: string
+          name: string
+          order_count: number
+          phone: string
+          restaurant_id: string
+        }[]
+      }
       update_assigned_order_status: {
         Args: { p_incident_note?: string; p_order_id: string; p_status: string }
         Returns: boolean

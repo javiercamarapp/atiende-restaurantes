@@ -166,8 +166,10 @@ const SuperAdminDashboard = () => {
       p_search: needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas')) ? null : needle,
       p_page_size: 50, p_page: 0,
     });
+    const { data: topCustomers } = await supabase.rpc('superadmin_top_customers', { p_limit: 10 });
     const remoteOrders = (queriedOrders ?? []) as OrderRow[];
     const remoteCustomers = (queriedCustomers ?? []) as CustomerRow[];
+    const remoteTopCustomers = (topCustomers ?? []) as CustomerRow[];
     const globalOrderCount = Number(orderSummary?.[0]?.order_count ?? 0);
     const globalOrderTotal = Number(orderSummary?.[0]?.order_total ?? 0);
     let filas: (CustomerRow | OrderRow)[] | undefined;
@@ -186,7 +188,7 @@ const SuperAdminDashboard = () => {
     } else if (needle.includes('restaurante') || needle.includes('activo')) {
       texto = `Tienes ${platformStats.restaurant_count} restaurante${platformStats.restaurant_count === 1 ? '' : 's'} dado${platformStats.restaurant_count === 1 ? '' : 's'} de alta, ${platformStats.active_restaurant_count} activo${platformStats.active_restaurant_count === 1 ? '' : 's'}.`;
     } else if (needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas'))) {
-      filas = [...remoteCustomers].sort((a, b) => b.order_count - a.order_count).slice(0, 10);
+      filas = remoteTopCustomers;
       texto = `Estos son tus clientes con más pedidos en toda la plataforma.`;
     } else {
       filas = remoteCustomers;
