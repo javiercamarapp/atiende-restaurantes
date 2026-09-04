@@ -88,6 +88,16 @@ Deno.serve(async (req: Request) => {
     if (!esSuperadmin && !esAdminDelRestaurante) {
       return json({ error: "No tienes permiso para dar de alta cuentas" }, 403);
     }
+    // Bug real crítico confirmado 4-sep-2026 (auditoría de seguridad): este
+    // check nunca validaba que el ROL PEDIDO ("role", ya validado arriba
+    // contra ROLES_VALIDOS) coincidiera con el nivel real de quien llama —
+    // un admin/dueño de SU PROPIO restaurante (esAdminDelRestaurante=true,
+    // esSuperadmin=false) podía pedir role:"superadmin" y la función se lo
+    // otorgaba: acceso a TODA la plataforma, no solo a su restaurante. Solo
+    // un superadmin real puede crear otra cuenta superadmin.
+    if (role === "superadmin" && !esSuperadmin) {
+      return json({ error: "Solo un superadmin puede crear otra cuenta superadmin" }, 403);
+    }
 
     const nombreCompleto = `${nombre.trim()} ${apellidos.trim()}`.trim();
     const emailLimpio = email.trim().toLowerCase();

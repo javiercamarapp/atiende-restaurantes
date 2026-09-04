@@ -68,6 +68,17 @@ const SuperAdminDashboard = () => {
         navigate("/admin/login");
         return;
       }
+      // Bug real crítico confirmado 4-sep-2026 (auditoría de seguridad):
+      // esta pantalla solo comprobaba que hubiera sesión — CUALQUIER cuenta
+      // autenticada (un repartidor, un admin de un solo restaurante) podía
+      // navegar aquí y ver datos de TODA la plataforma (todos los
+      // restaurantes, todos los clientes) sin ser superadmin de verdad.
+      const { data: rolesDelUsuario } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
+      const esSuperadminReal = (rolesDelUsuario ?? []).some((r) => r.role === "superadmin");
+      if (!esSuperadminReal) {
+        navigate("/admin");
+        return;
+      }
       setUserEmail(session.user.email ?? "");
 
       const [{ data: r }, { data: o }, { data: c }, { data: profile }] = await Promise.all([

@@ -791,8 +791,8 @@ Deno.serve(async (req: Request) => {
       const {
         agent_id, name, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost,
         background_sound_id, background_sound_volume, background_sound_crossfade, first_message_interruptible,
-        llm, backup_llm, reasoning_effort,
-      } = body;
+        llm, backup_llm, reasoning_effort, dynamic_variable_placeholders,
+      } = body as { dynamic_variable_placeholders?: Record<string, string> } & Record<string, unknown>;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
       if (voice_id && voice_public_owner_id) {
@@ -812,6 +812,27 @@ Deno.serve(async (req: Request) => {
       if (first_message !== undefined) agentPatch.first_message = first_message;
       if (language !== undefined) agentPatch.language = language;
       if (first_message_interruptible !== undefined) agentPatch.disable_first_message_interruptions = !first_message_interruptible;
+      // Bug real confirmado 4-sep-2026: first_message con una variable
+      // {{saludo}} sin default rompe CUALQUIER llamada real que no la mande
+      // explícita (ej. el widget <elevenlabs-convai> embebido, que nunca
+      // manda dynamic_variables propias) con "Missing required dynamic
+      // variables in first message" — la llamada ni siquiera arranca. Fix:
+      // declarar un default a nivel de agente (dynamic_variable_placeholders,
+      // mismo mecanismo ya usado para modo_prueba) para que CUALQUIER llamada
+      // que no mande la variable use ese default en vez de tronar. Se
+      // MERGEA con los placeholders existentes (nunca se pisa modo_prueba)
+      // trayendo primero el estado real del agente.
+      if (dynamic_variable_placeholders !== undefined) {
+        const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
+          headers: { "xi-api-key": apiKey },
+        });
+        if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+        const current = await getRes.json();
+        const existentes = current?.conversation_config?.agent?.dynamic_variables?.dynamic_variable_placeholders ?? {};
+        agentPatch.dynamic_variables = {
+          dynamic_variable_placeholders: { ...existentes, ...dynamic_variable_placeholders },
+        };
+      }
       if (prompt !== undefined || temperature !== undefined || llm !== undefined || backup_llm !== undefined || reasoning_effort !== undefined) {
         agentPatch.prompt = {};
         if (prompt !== undefined) agentPatch.prompt.prompt = prompt;
