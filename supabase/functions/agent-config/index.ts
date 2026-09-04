@@ -64,7 +64,23 @@ import {
 // panel se etiqueta con el restaurante que la creó — mis_voces solo
 // devuelve las que traen esa etiqueta exacta, nunca todas las clonadas de
 // la cuenta.
-const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Agent-scoped operations derive their tenant from our own branches table;
+// account-scoped operations must state a tenant explicitly. Never trust an
+// arbitrary restaurant id when an agent id supplies the authoritative link.
+// deno-lint-ignore no-explicit-any
+async function resolveRestaurantId(supabase: any, body: Record<string, unknown>): Promise<string | null> {
+  const requested = typeof body.restaurant_id === "string" && UUID_PATTERN.test(body.restaurant_id)
+    ? body.restaurant_id
+    : null;
+  if (typeof body.agent_id !== "string") return requested;
+  const { data, error } = await supabase.from("branches").select("restaurant_id")
+    .eq("elevenlabs_agent_id", body.agent_id).limit(2);
+  if (error || data?.length !== 1) return null;
+  const derived = data[0].restaurant_id as string;
+  return requested && requested !== derived ? null : derived;
+}
 
 // The generated database type is not imported in Edge Functions; this client
 // is still scoped by the authorization check that runs before Vault access.
@@ -95,6 +111,8 @@ Deno.serve(async (req: Request) => {
     );
     const body = await readJson<Record<string, unknown>>(req, 512 * 1024);
     const { action } = body;
+    const restaurantId = await resolveRestaurantId(supabase, body);
+    if (!restaurantId) return json({ error: "Tenant o agente inválido" }, 400);
     // Authenticate and scope before touching Vault or any ElevenLabs API.
     // The service-role client is intentionally used for the upstream calls,
     // so this check is the actual tenant boundary for the public function.
@@ -102,7 +120,7 @@ Deno.serve(async (req: Request) => {
       supabase,
       req.headers.get("Authorization"),
       body,
-      RESTAURANT_ID,
+      restaurantId,
     );
     if (authz.status !== 200) return json({ error: authz.error }, authz.status);
     const apiKey = await getApiKey(supabase);
@@ -269,7 +287,6 @@ Deno.serve(async (req: Request) => {
       const { agent_id } = body as { agent_id?: string };
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
-      const restaurantId = RESTAURANT_ID;
       const ahora = new Date();
       const fechaTexto = ahora.toLocaleString("es-MX", { dateStyle: "long", timeStyle: "short", timeZone: "America/Merida" });
       const formatoMXN = (n: number) =>
@@ -285,7 +302,6 @@ Deno.serve(async (req: Request) => {
         { data: productos },
         { count: overridesSucursal },
         { data: staffRows },
-        { data: repartidores },
         { count: totalClientes },
         { data: topClientes },
         { data: ordenesResumen },
@@ -296,16 +312,8 @@ Deno.serve(async (req: Request) => {
         supabase.from("branches").select("id, name, address, phone, hours, is_active, voice_agent_active, whatsapp_agent_active, lat, lng").eq("restaurant_id", restaurantId).order("display_order"),
         supabase.from("categories").select("id, name, display_order").eq("restaurant_id", restaurantId).order("display_order"),
         supabase.from("products").select("id, name, description, price, category_id, is_available, is_popular").eq("restaurant_id", restaurantId).order("display_order"),
-        // Sin filtro por restaurante (branch_products no tiene restaurant_id
-        // propio) — correcto mientras la app sea de un solo restaurante,
-        // igual que repartidor_perfil más abajo; si hay más de uno algún
-        // día, esto necesita acotarse por los ids reales de sus sucursales.
-        supabase.from("branch_products").select("id", { count: "exact", head: true }),
+        supabase.from("branch_products").select("id, branches!inner(restaurant_id)", { count: "exact", head: true }).eq("branches.restaurant_id", restaurantId),
         supabase.from("restaurant_staff").select("role, user_id").eq("restaurant_id", restaurantId),
-        // repartidor_perfil no tiene restaurant_id (la app hoy es de un solo
-        // restaurante) — si algún día hay más de uno, esta consulta necesita
-        // acotarse igual que las demás.
-        supabase.from("repartidor_perfil").select("nombre_completo, telefono, tipo_vehiculo, placas, fecha_alta"),
         supabase.from("customers").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId),
         supabase.from("customers").select("name, order_count, last_order_at").eq("restaurant_id", restaurantId).order("order_count", { ascending: false }).limit(10),
         // Agregados reales de TODO el histórico — columnas angostas nada más
@@ -323,6 +331,12 @@ Deno.serve(async (req: Request) => {
 
       // deno-lint-ignore no-explicit-any
       const staffUserIds = (staffRows ?? []).map((s: any) => s.user_id);
+      const { data: repartidoresTenant } = staffUserIds.length
+        ? await supabase.from("repartidor_perfil")
+          .select("user_id, nombre_completo, tipo_vehiculo, fecha_alta")
+          .in("user_id", staffUserIds)
+        : { data: [] as { user_id: string; nombre_completo: string; tipo_vehiculo: string; fecha_alta: string }[] };
+      const repartidoresDelTenant = repartidoresTenant ?? [];
       const { data: staffPerfiles } = staffUserIds.length
         ? await supabase.from("profiles").select("user_id, nombre, email, telefono").in("user_id", staffUserIds)
         : { data: [] as { user_id: string; nombre: string | null; email: string; telefono: string | null }[] };
@@ -467,12 +481,12 @@ Deno.serve(async (req: Request) => {
         textoPersonal += `\n`;
       }
       textoPersonal += `## Repartidores\n`;
-      if ((repartidores ?? []).length === 0) {
+      if (repartidoresDelTenant.length === 0) {
         textoPersonal += `Actualmente no hay repartidores dados de alta en el sistema (repartidor_perfil está vacía). Cuando se registre uno real, este documento lo reflejará la próxima vez que se sincronice la base de conocimiento — no hay datos de repartidores que mostrar hoy.\n`;
       } else {
         // deno-lint-ignore no-explicit-any
-        for (const r of (repartidores ?? []) as any[]) {
-          textoPersonal += `- ${r.nombre_completo} — vehículo: ${r.tipo_vehiculo}${r.placas ? ` (placas ${r.placas})` : ""} — teléfono: ${r.telefono} — de alta desde ${new Date(r.fecha_alta).toLocaleDateString("es-MX")}\n`;
+        for (const r of repartidoresDelTenant as any[]) {
+          textoPersonal += `- ${r.nombre_completo} — vehículo: ${r.tipo_vehiculo} — de alta desde ${new Date(r.fecha_alta).toLocaleDateString("es-MX")}\n`;
         }
       }
 
@@ -784,7 +798,7 @@ Deno.serve(async (req: Request) => {
       // las voces personales de Javier ni las de otro restaurante que
       // comparta la misma cuenta de ElevenLabs.
       // deno-lint-ignore no-explicit-any
-      const voces = (data.voices ?? []).filter((v: any) => v.category === "cloned" && v.labels?.restaurant_id === RESTAURANT_ID).map((v: any) => ({
+      const voces = (data.voices ?? []).filter((v: any) => v.category === "cloned" && v.labels?.restaurant_id === restaurantId).map((v: any) => ({
         voice_id: v.voice_id,
         public_owner_id: "",
         name: v.name,
@@ -805,7 +819,7 @@ Deno.serve(async (req: Request) => {
 
       const form = new FormData();
       form.append("name", name);
-      form.append("labels", JSON.stringify({ restaurant_id: RESTAURANT_ID }));
+      form.append("labels", JSON.stringify({ restaurant_id: restaurantId }));
       if (remove_background_noise !== undefined) form.append("remove_background_noise", String(remove_background_noise));
       samples.forEach((s, i) => {
         const binario = Uint8Array.from(atob(s.audio_base64), (c) => c.charCodeAt(0));

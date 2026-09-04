@@ -34,12 +34,13 @@ type Paso = "subir" | "info" | "terminar";
 type VistaSubir = "elegir" | "grabando";
 
 interface Props {
+  restaurantId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onVozClonada: (voiceId: string, nombre: string) => void;
 }
 
-export function ModalClonarVoz({ open, onOpenChange, onVozClonada }: Props) {
+export function ModalClonarVoz({ restaurantId, open, onOpenChange, onVozClonada }: Props) {
   const [paso, setPaso] = useState<Paso>("subir");
   const [vistaSubir, setVistaSubir] = useState<VistaSubir>("elegir");
   const [grabaciones, setGrabaciones] = useState<Grabacion[]>([]);
@@ -271,7 +272,7 @@ export function ModalClonarVoz({ open, onOpenChange, onVozClonada }: Props) {
         })),
       );
       const { data, error: fnError } = await supabase.functions.invoke("agent-config", {
-        body: { action: "clone_voice", name: nombreVoz.trim(), samples, remove_background_noise: quitarRuido },
+        body: { action: "clone_voice", restaurant_id: restaurantId, name: nombreVoz.trim(), samples, remove_background_noise: quitarRuido },
       });
       if (fnError || data?.error || !data?.voice_id) {
         throw new Error(data?.error || fnError?.message || "No se pudo clonar la voz");

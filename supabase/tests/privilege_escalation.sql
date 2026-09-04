@@ -14,6 +14,10 @@ insert into public.orders(id, restaurant_id, customer_name, customer_phone, tota
   ('55000000-0000-0000-0000-000000000014', '55000000-0000-0000-0000-000000000010', 'Other', '9990000002', 200, '[]', 'admin', 'preparando', null);
 insert into public.categories(id, restaurant_id, name, slug) values
   ('55000000-0000-0000-0000-000000000015', '55000000-0000-0000-0000-000000000010', 'Protected', 'protected');
+insert into public.branches(id, restaurant_id, name, slug) values
+  ('55000000-0000-0000-0000-000000000017', '55000000-0000-0000-0000-000000000010', 'Protected branch', 'protected-branch');
+insert into public.products(id, restaurant_id, category_id, name, price) values
+  ('55000000-0000-0000-0000-000000000016', '55000000-0000-0000-0000-000000000010', '55000000-0000-0000-0000-000000000015', 'Protected product', 100);
 insert into public.whatsapp_agent_config(restaurant_id, system_prompt) values
   ('55000000-0000-0000-0000-000000000010', 'Protected prompt');
 
@@ -53,6 +57,11 @@ begin
   update public.categories set name = 'Courier takeover' where id = '55000000-0000-0000-0000-000000000015';
   get diagnostics v_count = row_count;
   if v_count <> 0 then raise exception 'courier changed catalog'; end if;
+  update public.branch_products set price = 0, is_available = false
+    where branch_id = '55000000-0000-0000-0000-000000000017'
+      and product_id = '55000000-0000-0000-0000-000000000016';
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'courier changed branch price or availability'; end if;
   update public.whatsapp_agent_config set system_prompt = 'Courier prompt' where restaurant_id = '55000000-0000-0000-0000-000000000010';
   get diagnostics v_count = row_count;
   if v_count <> 0 then raise exception 'courier changed agent config'; end if;

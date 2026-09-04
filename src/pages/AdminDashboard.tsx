@@ -404,6 +404,7 @@ function BarraComparativa({ completados, cancelados }: { completados: number; ca
 }
 
 function DashboardAgente({
+  restaurantId,
   canal,
   onCerrar,
   nombreAgente,
@@ -417,6 +418,7 @@ function DashboardAgente({
   onCambiarPreset,
   agentId,
 }: {
+  restaurantId: string;
   canal: 'voz' | 'whatsapp';
   onCerrar: () => void;
   nombreAgente: string;
@@ -586,8 +588,8 @@ function DashboardAgente({
     setErrorConfig(null);
     Promise.all([
       supabase.functions.invoke('agent-config', { body: { action: 'get', agent_id: agentId } }),
-      supabase.functions.invoke('agent-config', { body: { action: 'voices' } }),
-      supabase.functions.invoke('agent-config', { body: { action: 'mis_voces' } }),
+      supabase.functions.invoke('agent-config', { body: { action: 'voices', restaurant_id: restaurantId } }),
+      supabase.functions.invoke('agent-config', { body: { action: 'mis_voces', restaurant_id: restaurantId } }),
     ]).then(([getRes, vocesRes, misVocesRes]) => {
       if (getRes.error || getRes.data?.error) throw getRes.error ?? new Error(getRes.data.error);
       const c: ConfigAgente = getRes.data;
@@ -599,7 +601,7 @@ function DashboardAgente({
       console.error('No se pudo cargar la configuración real del agente:', err);
       setErrorConfig('No se pudo conectar con ElevenLabs para leer la configuración real.');
     }).finally(() => setCargandoConfig(false));
-  }, [canal, agentId]);
+  }, [canal, agentId, restaurantId]);
 
   const hayCambios = config && borrador && JSON.stringify(config) !== JSON.stringify(borrador);
 
@@ -678,7 +680,7 @@ function DashboardAgente({
     try {
       const base64 = await archivoABase64(file);
       const { data: subida, error: errorSubida } = await supabase.functions.invoke('agent-config', {
-        body: { action: 'upload_knowledge_base_file', file_base64: base64, file_name: file.name, mime_type: file.type },
+        body: { action: 'upload_knowledge_base_file', restaurant_id: restaurantId, file_base64: base64, file_name: file.name, mime_type: file.type },
       });
       if (errorSubida || subida?.error) throw errorSubida ?? new Error(subida.error);
 
@@ -1395,7 +1397,7 @@ function DashboardAgente({
           </div>
         )
       )}
-      <ModalClonarVoz open={modalClonarVozAbierto} onOpenChange={setModalClonarVozAbierto} onVozClonada={onVozClonada} />
+      <ModalClonarVoz restaurantId={restaurantId} open={modalClonarVozAbierto} onOpenChange={setModalClonarVozAbierto} onVozClonada={onVozClonada} />
     </div>
   );
 }
@@ -4207,6 +4209,7 @@ const AdminDashboard = () => {
 
         {activeSection === 'agente-voz-dashboard' && (
           <DashboardAgente
+            restaurantId={restaurantId}
             canal="voz"
             onCerrar={() => setActiveSection('agente-voz')}
             nombreAgente={sucursalSeleccionada === 'global' ? 'Todas las sucursales' : (sucursalConAgente?.name ?? 'tu sucursal')}
@@ -4223,6 +4226,7 @@ const AdminDashboard = () => {
 
         {activeSection === 'agente-whatsapp-dashboard' && (
           <DashboardAgente
+            restaurantId={restaurantId}
             canal="whatsapp"
             onCerrar={() => setActiveSection('agente-whatsapp')}
             nombreAgente={sucursalSeleccionadaWhatsapp === 'global' ? (restaurantName ?? 'Todas las sucursales') : (sucursalesAgente.find((s) => s.id === sucursalSeleccionadaWhatsapp)?.name ?? 'tu sucursal')}

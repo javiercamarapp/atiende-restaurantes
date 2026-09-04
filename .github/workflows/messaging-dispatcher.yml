@@ -1,0 +1,30 @@
+name: Messaging outbox dispatcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: messaging-outbox-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Dispatch bounded outbox batch
+        env:
+          DISPATCH_URL: ${{ secrets.ATIENDE_SUPABASE_URL }}/functions/v1/messaging-dispatcher
+          INTERNAL_SECRET: ${{ secrets.ATIENDE_INTERNAL_WEBHOOK_SECRET }}
+        run: |
+          test -n "$INTERNAL_SECRET"
+          test -n "$DISPATCH_URL"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors --max-time 180 \
+            -X POST "$DISPATCH_URL" \
+            -H "content-type: application/json" \
+            -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
+            -H "x-atiende-worker: github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --data '{}'

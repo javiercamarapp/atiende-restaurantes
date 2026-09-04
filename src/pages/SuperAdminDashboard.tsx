@@ -154,12 +154,22 @@ const SuperAdminDashboard = () => {
     const { data: queriedOrders } = await supabase.rpc('superadmin_orders_page', {
       p_status: status, p_since: since, p_search: null, p_page_size: 100, p_page: 0,
     });
+    const { data: orderSummary, error: orderSummaryError } = await supabase.rpc('superadmin_orders_summary', {
+      p_status: status, p_since: since, p_search: null,
+    });
+    if (orderSummaryError) {
+      setMensajesChat((m) => [...m, { rol: 'asistente', texto: 'No pude calcular las cifras globales en este momento.' }]);
+      setPensando(false);
+      return;
+    }
     const { data: queriedCustomers } = await supabase.rpc('superadmin_customers_page', {
       p_search: needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas')) ? null : needle,
       p_page_size: 50, p_page: 0,
     });
     const remoteOrders = (queriedOrders ?? []) as OrderRow[];
     const remoteCustomers = (queriedCustomers ?? []) as CustomerRow[];
+    const globalOrderCount = Number(orderSummary?.[0]?.order_count ?? 0);
+    const globalOrderTotal = Number(orderSummary?.[0]?.order_total ?? 0);
     let filas: (CustomerRow | OrderRow)[] | undefined;
     let texto: string;
 
@@ -167,14 +177,12 @@ const SuperAdminDashboard = () => {
       texto = 'Todavía no rastreamos MRR, gastos ni costo de IA en este panel — sólo pedidos, restaurantes y clientes. En cuanto haya una fuente real (facturación, uso de LLM), se agrega aquí.';
     } else if (needle.includes('pendiente')) {
       filas = remoteOrders;
-      const total = filas.reduce((s, o) => s + Number((o as OrderRow).total), 0);
-      texto = filas.length > 0
-        ? `Hay ${filas.length} pedido${filas.length === 1 ? '' : 's'} pendiente${filas.length === 1 ? '' : 's'} en toda la plataforma, por $${total.toLocaleString('es-MX')}.`
+      texto = globalOrderCount > 0
+        ? `Hay ${globalOrderCount} pedido${globalOrderCount === 1 ? '' : 's'} pendiente${globalOrderCount === 1 ? '' : 's'} en toda la plataforma, por $${globalOrderTotal.toLocaleString('es-MX')}. Se muestran hasta ${remoteOrders.length} filas recientes.`
         : 'No hay pedidos pendientes en ningún restaurante en este momento.';
     } else if (needle.includes('hoy') || needle.includes('vendido') || needle.includes('ingreso')) {
       filas = remoteOrders;
-      const total = filas.reduce((s, o) => s + Number((o as OrderRow).total), 0);
-      texto = `Hoy entraron ${filas.length} pedido${filas.length === 1 ? '' : 's'} en toda la plataforma, por $${total.toLocaleString('es-MX')}.`;
+      texto = `Hoy entraron ${globalOrderCount} pedido${globalOrderCount === 1 ? '' : 's'} en toda la plataforma, por $${globalOrderTotal.toLocaleString('es-MX')}. Se muestran hasta ${remoteOrders.length} filas recientes.`;
     } else if (needle.includes('restaurante') || needle.includes('activo')) {
       texto = `Tienes ${platformStats.restaurant_count} restaurante${platformStats.restaurant_count === 1 ? '' : 's'} dado${platformStats.restaurant_count === 1 ? '' : 's'} de alta, ${platformStats.active_restaurant_count} activo${platformStats.active_restaurant_count === 1 ? '' : 's'}.`;
     } else if (needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas'))) {

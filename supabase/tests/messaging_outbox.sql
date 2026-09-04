@@ -22,4 +22,18 @@ begin
   end loop;
   if (select status from public.messaging_outbox where dedupe_key = 'test:dead') <> 'dead' then raise exception 'DLQ not reached'; end if;
 end $$;
+
+do $$ declare r uuid := 'be3fbdeb-80e7-4e7b-9b44-22b476c08298'; o uuid := gen_random_uuid(); begin
+  insert into public.orders(id,restaurant_id,customer_name,customer_phone,total,items,status)
+    values(o,r,'Outbox customer','9990000000',10,'[]','pending');
+  if not exists(select 1 from public.messaging_outbox where restaurant_id=r
+      and dedupe_key='order:' || o::text || ':status:nuevo'
+      and payload->>'evento'='nuevo') then
+    raise exception 'initial order did not enqueue nuevo email';
+  end if;
+  if exists(select 1 from public.messaging_outbox where restaurant_id=r
+      and dedupe_key='order:' || o::text || ':status:pending') then
+    raise exception 'initial order enqueued unhandled pending email';
+  end if;
+end $$;
 rollback;

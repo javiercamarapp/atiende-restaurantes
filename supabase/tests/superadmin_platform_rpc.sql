@@ -14,4 +14,20 @@ do $$ begin
   perform public.superadmin_platform_stats();
   raise exception 'unauthorized call unexpectedly succeeded';
 exception when insufficient_privilege then null; end $$;
+
+insert into auth.users(id, aud, role, email, encrypted_password) values
+ ('67000000-0000-0000-0000-000000000001','authenticated','authenticated','sa@test.invalid','');
+insert into public.user_roles(user_id,role) values
+ ('67000000-0000-0000-0000-000000000001','superadmin');
+insert into public.restaurants(id,name,slug) values
+ ('67100000-0000-0000-0000-000000000001','Scale','scale');
+insert into public.orders(restaurant_id,customer_name,customer_phone,total,items,status,created_at)
+select '67100000-0000-0000-0000-000000000001','C' || i::text,'999' || lpad(i::text,7,'0'),10,'[]','pending',now()
+from generate_series(1,101) i;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','67000000-0000-0000-0000-000000000001',true);
+do $$ declare n bigint; amount numeric; begin
+  select order_count,order_total into n,amount from public.superadmin_orders_summary('pending',null,null);
+  if n < 101 or amount < 1010 then raise exception 'summary truncated: %, %', n, amount; end if;
+end $$;
 rollback;

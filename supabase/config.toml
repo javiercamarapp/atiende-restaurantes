@@ -14,7 +14,11 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-order-notification]
-# Called by the notificar_cambio_pedido() DB trigger via pg_net, no Supabase user JWT.
+# Called by the authenticated internal outbox dispatcher, no Supabase user JWT.
+verify_jwt = false
+
+[functions.messaging-dispatcher]
+# Called by the versioned scheduler; validates INTERNAL_WEBHOOK_SECRET itself.
 verify_jwt = false
 
 [functions.buscar-producto]

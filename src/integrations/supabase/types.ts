@@ -1378,6 +1378,17 @@ export type Database = {
           total: number
         }[]
       }
+      superadmin_orders_summary: {
+        Args: {
+          p_search?: string
+          p_since?: string
+          p_status?: string
+        }
+        Returns: {
+          order_count: number
+          order_total: number
+        }[]
+      }
       superadmin_platform_stats: {
         Args: never
         Returns: {
