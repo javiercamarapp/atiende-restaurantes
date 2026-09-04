@@ -12,9 +12,18 @@ import {
   correoPedidoProblema,
   type PedidoCorreo,
 } from "../_shared/emails/plantillas.ts";
+import {
+  consumeRateLimit,
+  HttpInputError,
+  jsonResponse,
+  readJson,
+  requestActor,
+  secretMatches,
+} from "../_shared/http-security.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "atiende.ai <notificaciones@useatiende.ai>";
+const RESEND_FROM = Deno.env.get("RESEND_FROM") ??
+  "atiende.ai <notificaciones@useatiende.ai>";
 
 const EVENTO_A_COLUMNA: Record<string, string> = {
   nuevo: "notify_nuevo",
@@ -32,25 +41,59 @@ const EVENTO_A_COLUMNA: Record<string, string> = {
 
 Deno.serve(async (req) => {
   try {
-    const { order_id, evento } = await req.json();
+    if (req.method !== "POST") {
+      return jsonResponse(req, { error: "Método no permitido" }, 405);
+    }
+    if (
+      !secretMatches(
+        req,
+        "x-atiende-internal-secret",
+        "INTERNAL_WEBHOOK_SECRET",
+      )
+    ) return jsonResponse(req, { error: "No autorizado" }, 401);
+    const { order_id, evento } = await readJson<
+      { order_id?: unknown; evento?: unknown }
+    >(req, 4 * 1024);
+    if (
+      typeof order_id !== "string" || order_id.length > 64 ||
+      typeof evento !== "string" || evento.length > 40
+    ) {
+      return jsonResponse(req, { error: "Payload inválido" }, 400);
+    }
     const columna = EVENTO_A_COLUMNA[evento as string];
-    if (!order_id || !columna) {
+    if (!columna) {
       // Evento sin plantilla (ej. status "pending" en un update) — no es
       // un error, simplemente no hay nada que mandar.
-      return new Response(JSON.stringify({ skipped: true }), { status: 200 });
+      return jsonResponse(req, { skipped: true });
     }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const limited = await consumeRateLimit(
+      supabase,
+      "send-order-notification",
+      requestActor(req, order_id),
+      120,
+      60,
+    );
+    if (!limited.allowed) {
+      return jsonResponse(req, { error: "Demasiadas solicitudes" }, 429, {
+        "Retry-After": "60",
+      });
+    }
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, customer_name, customer_phone, customer_address, total, source, items, restaurant_id, branch_id, incident_note, branches(name), restaurants(name)")
+      .select(
+        "id, customer_name, customer_phone, customer_address, total, source, items, restaurant_id, branch_id, incident_note, branches(name), restaurants(name)",
+      )
       .eq("id", order_id)
       .single();
-    if (orderError || !order) throw orderError ?? new Error("Pedido no encontrado");
+    if (orderError || !order) {
+      throw orderError ?? new Error("Pedido no encontrado");
+    }
 
     const { data: destinatarios, error: staffError } = await supabase
       .from("restaurant_staff")
@@ -64,11 +107,20 @@ Deno.serve(async (req) => {
       .filter((email: string | undefined): email is string => !!email);
 
     if (correos.length === 0 || !RESEND_API_KEY) {
-      return new Response(JSON.stringify({ sent: 0, reason: !RESEND_API_KEY ? "RESEND_API_KEY no configurada" : "sin destinatarios" }), { status: 200 });
+      return jsonResponse(req, {
+        sent: 0,
+        reason: !RESEND_API_KEY
+          ? "RESEND_API_KEY no configurada"
+          : "sin destinatarios",
+      });
     }
 
     const itemsTexto = Array.isArray(order.items)
-      ? order.items.map((it: any) => `${it.quantity ?? it.cantidad ?? 1}x ${it.name ?? it.nombre ?? "Producto"}`).join(", ")
+      ? order.items.map((it: any) =>
+        `${it.quantity ?? it.cantidad ?? 1}x ${
+          it.name ?? it.nombre ?? "Producto"
+        }`
+      ).join(", ")
       : "";
 
     const pedido: PedidoCorreo = {
@@ -96,7 +148,10 @@ Deno.serve(async (req) => {
       problema: correoPedidoProblema,
     }[evento as string]!;
 
-    const { asunto, html, texto } = correoBuilder(pedido, order.incident_note ?? undefined);
+    const { asunto, html, texto } = correoBuilder(
+      pedido,
+      order.incident_note ?? undefined,
+    );
 
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -118,9 +173,12 @@ Deno.serve(async (req) => {
       throw new Error(`Resend respondió ${resp.status}: ${body}`);
     }
 
-    return new Response(JSON.stringify({ sent: correos.length }), { status: 200 });
+    return jsonResponse(req, { sent: correos.length });
   } catch (err) {
     console.error("send-order-notification error", err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    const status = err instanceof HttpInputError ? err.status : 500;
+    return jsonResponse(req, {
+      error: err instanceof HttpInputError ? err.message : "Error interno",
+    }, status);
   }
 });

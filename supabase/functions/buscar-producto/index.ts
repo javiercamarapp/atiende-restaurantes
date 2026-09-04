@@ -19,15 +19,23 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buscarProductosCore } from "../_shared/create-order-core.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import {
+  consumeRateLimit,
+  HttpInputError,
+  jsonResponse,
+  preflightResponse,
+  readJson,
+  requestActor,
+  secretMatches,
+} from "../_shared/http-security.ts";
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflightResponse(req);
+  if (req.method !== "POST") {
+    return jsonResponse(req, { error: "Método no permitido" }, 405);
+  }
+  if (!secretMatches(req, "x-atiende-tool-secret", "VOICE_TOOL_SECRET")) {
+    return jsonResponse(req, { error: "No autorizado" }, 401);
   }
 
   try {
@@ -36,17 +44,31 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { query, branch_slug } = (await req.json()) as { query: string; branch_slug?: string };
-    if (!query) {
-      return new Response(JSON.stringify({ error: "query es requerido" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const { query, branch_slug } = await readJson<
+      { query?: unknown; branch_slug?: unknown }
+    >(req, 8 * 1024);
+    if (typeof query !== "string" || !query.trim() || query.length > 160) {
+      return jsonResponse(req, { error: "query es requerido" }, 400);
     }
-    if (!branch_slug) {
-      return new Response(JSON.stringify({ error: "branch_slug es requerido — confirma la sucursal antes de buscar productos" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (
+      typeof branch_slug !== "string" || !branch_slug.trim() ||
+      branch_slug.length > 100
+    ) {
+      return jsonResponse(req, {
+        error:
+          "branch_slug es requerido — confirma la sucursal antes de buscar productos",
+      }, 400);
+    }
+    const limited = await consumeRateLimit(
+      supabase,
+      "buscar-producto",
+      requestActor(req, branch_slug),
+      120,
+      60,
+    );
+    if (!limited.allowed) {
+      return jsonResponse(req, { error: "Demasiadas solicitudes" }, 429, {
+        "Retry-After": "60",
       });
     }
 
@@ -62,10 +84,9 @@ Deno.serve(async (req: Request) => {
       .eq("slug", branch_slug)
       .maybeSingle();
     if (!branch) {
-      return new Response(JSON.stringify({ error: `Sucursal '${branch_slug}' no encontrada` }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, {
+        error: `Sucursal '${branch_slug}' no encontrada`,
+      }, 400);
     }
 
     // Búsqueda compartida con WhatsApp (whatsapp-agent-core.ts) — ver
@@ -78,14 +99,12 @@ Deno.serve(async (req: Request) => {
       query,
     });
 
-    return new Response(JSON.stringify({ productos }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(req, { productos });
   } catch (err) {
     console.error("buscar-producto error:", err);
-    return new Response(JSON.stringify({ error: "Error interno" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const status = err instanceof HttpInputError ? err.status : 500;
+    return jsonResponse(req, {
+      error: err instanceof HttpInputError ? err.message : "Error interno",
+    }, status);
   }
 });

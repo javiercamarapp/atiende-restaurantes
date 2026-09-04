@@ -11,6 +11,15 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { lookupCustomer, vipNote } from "../_shared/create-order-core.ts";
+import {
+  consumeRateLimit,
+  HttpInputError,
+  jsonResponse,
+  preflightResponse,
+  readJson,
+  requestActor,
+  secretMatches,
+} from "../_shared/http-security.ts";
 
 // Mismo restaurant_id real que usan whatsapp-webhook/index.ts y
 // create-order-core.ts (las 7 sucursales del piloto comparten el mismo
@@ -21,14 +30,13 @@ import { lookupCustomer, vipNote } from "../_shared/create-order-core.ts";
 // podía devolver null y tronar con "branch.restaurant_id" sobre null.
 const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflightResponse(req);
+  if (req.method !== "POST") {
+    return jsonResponse(req, { error: "Método no permitido" }, 405);
+  }
+  if (!secretMatches(req, "x-atiende-tool-secret", "VOICE_TOOL_SECRET")) {
+    return jsonResponse(req, { error: "No autorizado" }, 401);
   }
 
   try {
@@ -37,11 +45,20 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { phone } = (await req.json()) as { phone: string };
-    if (!phone) {
-      return new Response(JSON.stringify({ error: "phone es requerido" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const { phone } = await readJson<{ phone?: unknown }>(req, 4 * 1024);
+    if (typeof phone !== "string" || !phone.trim() || phone.length > 64) {
+      return jsonResponse(req, { error: "phone es requerido" }, 400);
+    }
+    const limited = await consumeRateLimit(
+      supabase,
+      "customer-lookup",
+      requestActor(req, phone),
+      30,
+      60,
+    );
+    if (!limited.allowed) {
+      return jsonResponse(req, { error: "Demasiadas solicitudes" }, 429, {
+        "Retry-After": "60",
       });
     }
 
@@ -58,19 +75,21 @@ Deno.serve(async (req: Request) => {
       const nota = vipNote(customer.tier ?? null);
       if (nota) notas.push(nota);
       if (customer.frequent_items?.length) {
-        const items = customer.frequent_items.map((i: { name: string; quantity: number }) => i.name).join(", ");
-        notas.push(`Lo que más pide across todo su historial real (no solo su último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`);
+        const items = customer.frequent_items.map((
+          i: { name: string; quantity: number },
+        ) => i.name).join(", ");
+        notas.push(
+          `Lo que más pide across todo su historial real (no solo su último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`,
+        );
       }
     }
 
-    return new Response(JSON.stringify({ ...customer, agent_notes: notas }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(req, { ...customer, agent_notes: notas });
   } catch (err) {
     console.error("customer-lookup error:", err);
-    return new Response(JSON.stringify({ error: "Error interno" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const status = err instanceof HttpInputError ? err.status : 500;
+    return jsonResponse(req, {
+      error: err instanceof HttpInputError ? err.message : "Error interno",
+    }, status);
   }
 });
