@@ -510,17 +510,21 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   };
 
   const marcarTodasComoLeidas = async () => {
+    if (!fila || !userId) return;
     setMarcandoTodas(true);
     try {
-      await persistirLeidas([
-        ...recibidosPorLectura.pendientes.map(({ id }) => ({ categoria: "recibidos" as const, id })),
-        ...entregadosPorLectura.pendientes.map(({ id }) => ({ categoria: "entregados" as const, id })),
-        ...reclamosPorLectura.pendientes.map(({ id }) => ({ categoria: "reclamos" as const, id })),
-        ...tardiasPorLectura.pendientes.map(({ id }) => ({ categoria: "entrega_tardia" as const, id })),
-        ...programadosPorLectura.pendientes.map(({ id }) => ({ categoria: "programados" as const, id })),
-        ...quejasPorLectura.pendientes.map(({ id }) => ({ categoria: "quejas" as const, id })),
-        ...escalarPorLectura.pendientes.map(({ id }) => ({ categoria: "escalar" as const, id })),
-      ]);
+      const { error } = await supabase.rpc("mark_all_notifications_read" as never, {
+        p_restaurant_id: fila.restaurant_id,
+      } as never);
+      if (error) throw error;
+      await cargarListas(fila.restaurant_id);
+      window.dispatchEvent(new CustomEvent("atiende:notifications-read"));
+    } catch (err) {
+      toast({
+        title: "No se pudieron marcar todas como leídas",
+        description: err instanceof Error ? err.message : "Intenta nuevamente.",
+        variant: "destructive",
+      });
     } finally {
       setMarcandoTodas(false);
     }

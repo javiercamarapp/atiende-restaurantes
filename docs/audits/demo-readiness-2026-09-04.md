@@ -40,6 +40,7 @@ observados, ensayo de backup/restore alojado y cerrar el enlace externo del domi
 | UI-01 | alto | Detalle y listas muestran error/reintento en vez de spinner infinito o pantalla silenciosa. |
 | UI-02 | alto | Notificaciones, contadores de pestaña y campana comparten estado leído en tiempo real; se conservan las últimas 200 por rubro. |
 | UI-03 | medio | La recuperación global limpia caches/sesión y reporta el error real; ya no atribuye todos los fallos a una versión antigua. |
+| UI-04 | alto | “Marcar todas” se calcula atómicamente en PostgreSQL con las mismas siete categorías que la campana; incluye estado vacío y evita diferencias por paginación o carreras del navegador. |
 
 ## Evidencia reproducible
 
@@ -48,6 +49,9 @@ observados, ensayo de backup/restore alojado y cerrar el enlace externo del domi
 - Budgets: AdminDashboard 346,837/400,000 bytes; SuperAdmin 25,471/30,000;
   chunk de voz 569,086/600,000.
 - `git diff --check`: verde.
+- Restauración completa desde esquema vacío y contratos SQL verdes, incluyendo que
+  “Marcar todas” lleva a cero el mismo contador usado por la campana y que otro tenant
+  no puede ejecutar la operación.
 - Migraciones remotas aplicadas: endurecimiento de sesiones de vista previa y conflicto
   idempotente de pedidos.
 - Funciones remotas desplegadas: `agent-config`, `create-order`, `cotizar-pedido`,
