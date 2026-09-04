@@ -47,17 +47,21 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
         <section role="alert" className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
           <h1 className="text-lg font-semibold text-foreground">No se pudo cargar el panel</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            La versión guardada en el navegador no coincide con la versión actual.
+            Ocurrió un error al mostrar esta pantalla. Puede ser una versión anterior guardada en el navegador o un fallo temporal de carga.
           </p>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               sessionStorage.clear();
+              if ("caches" in window) {
+                const keys = await window.caches.keys();
+                await Promise.all(keys.map((key) => window.caches.delete(key)));
+              }
               window.location.reload();
             }}
             className="mt-5 rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground"
           >
-            Recuperar panel
+            Limpiar caché y recargar
           </button>
         </section>
       </main>

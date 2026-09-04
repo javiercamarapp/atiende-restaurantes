@@ -84,6 +84,8 @@ export default function PedidoDetalleSection({
 }) {
   const [detalle, setDetalle] = useState<PedidoDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [errorDetalle, setErrorDetalle] = useState<string | null>(null);
+  const [reintento, setReintento] = useState(0);
   const [recientes, setRecientes] = useState<PedidoReciente[]>([]);
   const [cargandoRecientes, setCargandoRecientes] = useState(false);
 
@@ -91,19 +93,33 @@ export default function PedidoDetalleSection({
     let cancelado = false;
     setCargando(true);
     setDetalle(null);
+    setErrorDetalle(null);
     supabase
       .from("orders")
       .select("id, order_number, customer_name, customer_phone, customer_address, total, status, created_at, source, branch, branch_id, restaurant_id, incident_note, items, notes, payment_method, delivered_at")
       .eq("id", orderId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelado) return;
         setCargando(false);
+        if (error) {
+          setErrorDetalle(error.message);
+          return;
+        }
+        if (!data) {
+          setErrorDetalle("El pedido no existe o ya no tienes acceso a él.");
+          return;
+        }
         setDetalle(data as unknown as PedidoDetalle | null);
+      })
+      .catch((error: unknown) => {
+        if (cancelado) return;
+        setCargando(false);
+        setErrorDetalle(error instanceof Error ? error.message : "No fue posible consultar el pedido.");
       });
     return () => { cancelado = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId]);
+  }, [orderId, reintento]);
 
   // "Otros pedidos recientes": mismo restaurante, excluyendo el pedido
   // actual — carga aparte una vez que se conoce el restaurant_id real del
@@ -138,8 +154,17 @@ export default function PedidoDetalleSection({
         Volver
       </button>
 
-      {cargando || !detalle ? (
+      {cargando ? (
         <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : errorDetalle || !detalle ? (
+        <div role="alert" className="w-full rounded-2xl border border-destructive/30 bg-card p-6 text-center">
+          <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-destructive" />
+          <p className="text-sm font-medium text-foreground">No se pudo cargar el pedido</p>
+          <p className="mt-1 text-xs text-muted-foreground">{errorDetalle ?? "Pedido no encontrado."}</p>
+          <Button className="mt-4" variant="outline" onClick={() => setReintento((valor) => valor + 1)}>
+            Volver a intentar
+          </Button>
+        </div>
       ) : (
         <>
           <div className="rounded-2xl border border-border bg-card p-5 space-y-4">

@@ -1444,6 +1444,7 @@ function VistaPreviaAgentePantallaCompleta({
   const [mensajes, setMensajes] = useState<{ texto: string; propio: boolean }[]>([]);
   const videoOrbeRef = useRef<HTMLVideoElement>(null);
   const conversacionRef = useRef<{ endSession: () => Promise<void> } | null>(null);
+  const proteccionPreviewFallidaRef = useRef(false);
 
   // El video de 4s generado con Higgsfield no cierra en loop perfecto (se
   // nota el corte al reiniciar) — en vez de eso lo reproducimos como
@@ -1501,6 +1502,7 @@ function VistaPreviaAgentePantallaCompleta({
     }
     if (!agentId || conectando) return;
     setConectando(true);
+    proteccionPreviewFallidaRef.current = false;
     try {
       // El SDK de voz es pesado y solo hace falta cuando el administrador
       // inicia una llamada de prueba; no debe penalizar la carga del panel.
@@ -1512,13 +1514,29 @@ function VistaPreviaAgentePantallaCompleta({
 
       const conversacion = await Conversation.startSession({
         signedUrl: data.signed_url,
-        // Esta llamada sale del panel interno de Javier, no de un cliente
-        // real — el agente sabe (por el prompt) que con esta variable NO
-        // debe registrar el pedido de verdad, sólo simular el flujo
-        // completo. La llamada real desde el widget público en producción
-        // nunca manda esta variable, así que ahí SÍ registra de verdad.
+        // Esta llamada sale del panel interno. La variable guía el diálogo,
+        // pero la seguridad no depende de que el LLM la copie: onConnect
+        // registra el conversation_id en una tabla service-role-only. Así
+        // create-order simula únicamente sesiones autenticadas del panel.
         dynamicVariables: { modo_prueba: 'true', saludo: saludoSegunHoraMerida() },
-        onConnect: () => setLlamadaActiva(true),
+        onConnect: ({ conversationId }) => {
+          void supabase.functions.invoke('agent-config', {
+            body: {
+              action: 'mark_preview_conversation',
+              agent_id: agentId,
+              conversation_id: conversationId,
+            },
+          }).then(({ error: previewError }) => {
+            if (previewError) {
+              proteccionPreviewFallidaRef.current = true;
+              console.error('No se pudo proteger la vista previa:', previewError);
+              void conversacionRef.current?.endSession();
+              setLlamadaActiva(false);
+              return;
+            }
+            setLlamadaActiva(true);
+          });
+        },
         onDisconnect: () => { setLlamadaActiva(false); conversacionRef.current = null; },
         onMessage: ({ message, role }) => {
           setMensajes((prev) => [...prev, { texto: message, propio: role === 'user' }]);
@@ -1526,6 +1544,11 @@ function VistaPreviaAgentePantallaCompleta({
         onError: (msg) => console.error('Conversación ElevenLabs:', msg),
       });
       conversacionRef.current = conversacion;
+      if (proteccionPreviewFallidaRef.current) {
+        await conversacion.endSession();
+        conversacionRef.current = null;
+        throw new Error('No se pudo autorizar la vista previa de forma segura');
+      }
       setMensajes([]);
     } catch (err) {
       console.error('No se pudo iniciar la llamada real:', err);
@@ -1698,15 +1721,19 @@ const AdminDashboard = () => {
 
     const alLeer = () => { void refrescarContadorNotificaciones(); };
     window.addEventListener("atiende:notifications-read", alLeer);
+    window.addEventListener("atiende:notifications-changed", alLeer);
 
     const canal = supabase
       .channel(`notification-bell-${restaurantId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `restaurant_id=eq.${restaurantId}` }, alLeer)
       .on("postgres_changes", { event: "*", schema: "public", table: "callback_requests", filter: `restaurant_id=eq.${restaurantId}` }, alLeer)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notification_reads", filter: `restaurant_id=eq.${restaurantId}` }, alLeer)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "restaurant_staff", filter: `user_id=eq.${user.id}` }, alLeer)
       .subscribe();
 
     return () => {
       window.removeEventListener("atiende:notifications-read", alLeer);
+      window.removeEventListener("atiende:notifications-changed", alLeer);
       void supabase.removeChannel(canal);
     };
   }, [restaurantId, user?.id, refrescarContadorNotificaciones]);

@@ -272,6 +272,8 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   const { toast } = useToast();
   const [fila, setFila] = useState<PreferenciasRow | null>(null);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
+  const [errorPrefs, setErrorPrefs] = useState<string | null>(null);
+  const [reintentoPrefs, setReintentoPrefs] = useState(0);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("recibidos");
   // Pedido real de Javier el 4-sep-2026: "no es un pop up, cada pedido
@@ -280,6 +282,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const [cargandoListas, setCargandoListas] = useState(true);
+  const [errorListas, setErrorListas] = useState<string | null>(null);
   const [recibidos, setRecibidos] = useState<OrderRow[]>([]);
   const [entregados, setEntregados] = useState<OrderRow[]>([]);
   const [reclamos, setReclamos] = useState<OrderRow[]>([]);
@@ -289,6 +292,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   const [escalar, setEscalar] = useState<CallbackRow[]>([]);
   const [leidas, setLeidas] = useState<Set<string>>(() => new Set());
   const [marcandoTodas, setMarcandoTodas] = useState(false);
+  const ultimaCargaRef = useRef(0);
 
   // Solo para refrescar las etiquetas "vencido hace / en" de Programados
   // cada tanto — no dispara ninguna consulta nueva.
@@ -300,12 +304,20 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
 
   useEffect(() => {
     if (!userId) return;
+    setLoadingPrefs(true);
+    setErrorPrefs(null);
     const sb: any = supabase; // select("*") a propósito — ver nota junto a PreferenciasRow
     sb.from("restaurant_staff")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle()
-      .then(({ data }: { data: PreferenciasRow | null }) => {
+      .then(({ data, error }: { data: PreferenciasRow | null; error?: { message?: string } | null }) => {
+        if (error) {
+          setErrorPrefs(error.message ?? "No fue posible consultar las preferencias.");
+          setFila(null);
+          setLoadingPrefs(false);
+          return;
+        }
         setFila(data);
         setLoadingPrefs(false);
       })
@@ -317,13 +329,16 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
       // error visible. Mismo patrón de bug que Sucursales/Voces e idiomas.
       .catch((err: unknown) => {
         console.error("No se pudo leer preferencias de notificaciones:", err);
+        setErrorPrefs(err instanceof Error ? err.message : "No fue posible consultar las preferencias.");
         setFila(null);
         setLoadingPrefs(false);
       });
-  }, [userId]);
+  }, [userId, reintentoPrefs]);
 
   const cargarListas = useCallback(async (restaurantId: string) => {
+    const cargaId = ++ultimaCargaRef.current;
     setCargandoListas(true);
+    setErrorListas(null);
     // try/finally: sin esto, cualquier falla real de red en el Promise.all
     // (no un error devuelto por Supabase, sino la promesa rechazándose) dejaba
     // `cargandoListas` en true para siempre y las 7 pestañas de pedidos se
@@ -346,7 +361,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
         // hora de entrega — el filtro fino (¿de verdad tardó?) es client-side
         // en `esEntregaTardia`, porque cruza dos columnas distintas.
         sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
-          .not("delivered_at", "is", null).order("delivered_at", { ascending: false }).limit(200),
+          .not("delivered_at", "is", null).order("delivered_at", { ascending: false }).limit(1000),
         sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "pending")
           .not("scheduled_for", "is", null).lte("scheduled_for", umbralProgramado)
           .order("scheduled_for", { ascending: true }).limit(200),
@@ -363,18 +378,50 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
         .find((resultado) => resultado.error)?.error;
       if (primerError) throw primerError;
 
-      setRecibidos((recibidosRes.data as OrderRow[] | null) ?? []);
-      setEntregados((entregadosRes.data as OrderRow[] | null) ?? []);
-      setReclamos((reclamosRes.data as OrderRow[] | null) ?? []);
+      const filasLeidas = (leidasRes.data as { notification_key: string }[] | null) ?? [];
+      const idsLeidos = (categoria: TabId) => filasLeidas
+        .map(({ notification_key }) => notification_key.startsWith(`${categoria}:`) ? notification_key.slice(categoria.length + 1) : null)
+        .filter((id): id is string => Boolean(id))
+        .slice(0, 200);
+      const categoriasPedido: TabId[] = ["recibidos", "entregados", "reclamos", "entrega_tardia", "programados"];
+      const categoriasContacto: TabId[] = ["quejas", "escalar"];
+      const orderHistoryIds = [...new Set(categoriasPedido.flatMap(idsLeidos))];
+      const callbackHistoryIds = [...new Set(categoriasContacto.flatMap(idsLeidos))];
+      const [orderHistoryRes, callbackHistoryRes] = await Promise.all([
+        orderHistoryIds.length > 0
+          ? sb.from("orders").select("*").eq("restaurant_id", restaurantId).in("id", orderHistoryIds)
+          : Promise.resolve({ data: [], error: null }),
+        callbackHistoryIds.length > 0
+          ? sb.from("callback_requests").select("*").eq("restaurant_id", restaurantId).in("id", callbackHistoryIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (orderHistoryRes.error) throw orderHistoryRes.error;
+      if (callbackHistoryRes.error) throw callbackHistoryRes.error;
+      if (cargaId !== ultimaCargaRef.current) return;
+      const orderHistory = new Map(((orderHistoryRes.data as OrderRow[] | null) ?? []).map((item) => [item.id, item]));
+      const callbackHistory = new Map(((callbackHistoryRes.data as CallbackRow[] | null) ?? []).map((item) => [item.id, item]));
+      const conHistorial = <T extends { id: string }>(actuales: T[], ids: string[], mapa: Map<string, T>) => {
+        const presentes = new Set(actuales.map(({ id }) => id));
+        return [
+          ...actuales,
+          ...ids.map((id) => mapa.get(id)).filter((item): item is T => Boolean(item) && !presentes.has(item.id)),
+        ].slice(0, 200);
+      };
+
+      setRecibidos(conHistorial((recibidosRes.data as OrderRow[] | null) ?? [], idsLeidos("recibidos"), orderHistory));
+      setEntregados(conHistorial((entregadosRes.data as OrderRow[] | null) ?? [], idsLeidos("entregados"), orderHistory));
+      setReclamos(conHistorial((reclamosRes.data as OrderRow[] | null) ?? [], idsLeidos("reclamos"), orderHistory));
       setEntregaTardiaPool((entregaTardiaRes.data as OrderRow[] | null) ?? []);
-      setProgramados((programadosRes.data as OrderRow[] | null) ?? []);
-      setQuejas((quejasRes.data as CallbackRow[] | null) ?? []);
-      setEscalar((escalarRes.data as CallbackRow[] | null) ?? []);
-      setLeidas(new Set(((leidasRes.data as { notification_key: string }[] | null) ?? []).map((r) => r.notification_key)));
+      setProgramados(conHistorial((programadosRes.data as OrderRow[] | null) ?? [], idsLeidos("programados"), orderHistory));
+      setQuejas(conHistorial((quejasRes.data as CallbackRow[] | null) ?? [], idsLeidos("quejas"), callbackHistory));
+      setEscalar(conHistorial((escalarRes.data as CallbackRow[] | null) ?? [], idsLeidos("escalar"), callbackHistory));
+      setLeidas(new Set(filasLeidas.map((r) => r.notification_key)));
     } catch (err) {
+      if (cargaId !== ultimaCargaRef.current) return;
       console.error("No se pudieron cargar las listas de notificaciones:", err);
+      setErrorListas(err instanceof Error ? err.message : "No fue posible consultar las notificaciones.");
     } finally {
-      setCargandoListas(false);
+      if (cargaId === ultimaCargaRef.current) setCargandoListas(false);
     }
   }, [userId]);
 
@@ -382,7 +429,31 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
     if (fila?.restaurant_id) cargarListas(fila.restaurant_id);
   }, [fila?.restaurant_id, cargarListas]);
 
-  const entregaTardia = entregaTardiaPool.filter(esEntregaTardia);
+  // Mantiene las pestañas en el mismo estado que la campana, incluso si el
+  // pedido cambia mientras esta sección permanece abierta o si otra pestaña
+  // del navegador marca una notificación como leída.
+  useEffect(() => {
+    if (!fila?.restaurant_id || !userId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refrescar = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void cargarListas(fila.restaurant_id), 120);
+    };
+    const canal = supabase
+      .channel(`notification-center-${fila.restaurant_id}-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `restaurant_id=eq.${fila.restaurant_id}` }, refrescar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "callback_requests", filter: `restaurant_id=eq.${fila.restaurant_id}` }, refrescar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notification_reads", filter: `restaurant_id=eq.${fila.restaurant_id}` }, refrescar)
+      .subscribe();
+    window.addEventListener("atiende:notifications-changed", refrescar);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("atiende:notifications-changed", refrescar);
+      void supabase.removeChannel(canal);
+    };
+  }, [fila?.restaurant_id, userId, cargarListas]);
+
+  const entregaTardia = entregaTardiaPool.filter(esEntregaTardia).slice(0, 200);
 
   const claveNotificacion = (categoria: TabId, id: string) => `${categoria}:${id}`;
   const separarPorLectura = <T extends { id: string }>(items: T[], categoria: TabId) => ({
@@ -481,6 +552,8 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
             : error.message,
           variant: "destructive",
         });
+      } else {
+        window.dispatchEvent(new CustomEvent("atiende:notifications-changed"));
       }
     } catch (err) {
       setFila(anterior);
@@ -511,20 +584,44 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
     if (el) setIndicador({ left: el.offsetLeft, width: el.offsetWidth });
   }, [tab, loadingPrefs]);
 
-  if (loadingPrefs) return null;
+  if (loadingPrefs) {
+    return (
+      <div className="w-full rounded-2xl border border-border bg-card py-16 flex justify-center" aria-busy="true">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (!fila) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <p className="text-[13px] text-muted-foreground text-center py-8">
-          No encontramos tu cuenta dentro del staff de este restaurante, así que no hay notificaciones que mostrar.
+      <div role={errorPrefs ? "alert" : undefined} className="w-full rounded-2xl border border-border bg-card p-6 text-center">
+        <p className="text-[13px] text-muted-foreground py-4">
+          {errorPrefs ?? "No encontramos tu cuenta dentro del staff de este restaurante, así que no hay notificaciones que mostrar."}
         </p>
+        {errorPrefs && (
+          <Button variant="outline" onClick={() => setReintentoPrefs((valor) => valor + 1)}>
+            Volver a intentar
+          </Button>
+        )}
       </div>
     );
   }
 
   if (detalleId) {
     return <PedidoDetalleSection orderId={detalleId} onVolver={() => setDetalleId(null)} onSelect={setDetalleId} />;
+  }
+
+  if (errorListas && !cargandoListas) {
+    return (
+      <div role="alert" className="w-full rounded-2xl border border-destructive/30 bg-card p-6 text-center">
+        <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-destructive" />
+        <p className="text-sm font-medium text-foreground">No se pudieron cargar las notificaciones</p>
+        <p className="mt-1 text-xs text-muted-foreground">{errorListas}</p>
+        <Button className="mt-4" variant="outline" onClick={() => void cargarListas(fila.restaurant_id)}>
+          Volver a intentar
+        </Button>
+      </div>
+    );
   }
 
   const conteos: Record<TabId, number> = {
