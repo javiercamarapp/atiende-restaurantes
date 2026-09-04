@@ -3,7 +3,7 @@ set -euo pipefail
 
 database_url="${1:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
 restaurant_id="68000000-0000-0000-0000-000000000001"
-scratch="$(mktemp -d /private/tmp/atiende-outbox-race.XXXXXX)"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/atiende-outbox-race.XXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
 
 psql "$database_url" -X -v ON_ERROR_STOP=1 -q <<SQL
