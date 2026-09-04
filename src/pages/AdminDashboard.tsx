@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -1674,23 +1674,42 @@ const AdminDashboard = () => {
   const [dateFilter, setDateFilter] = useState<'today' | '7' | '30' | '90' | '180' | '365' | 'historico'>('today');
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
-  // Campanita del header: antes el badge/animación se quedaban prendidos
-  // para siempre mientras hubiera CUALQUIER callback_request sin resolver,
-  // aunque el admin ya la hubiera visto — pedido explícito de Javier (con
-  // screenshot): al entrar a "Notificaciones" se debe apagar, y quedarse
-  // apagada hasta que llegue una NUEVA de verdad. Se guarda en localStorage
-  // el timestamp de la última vez que se vio la sección — el badge solo
-  // cuenta sin-resolver creadas DESPUÉS de ese momento, así que una
-  // notificación ya vista no reaparece aunque siga sin resolverse.
-  const [notifLastViewedAt, setNotifLastViewedAt] = useState<string>(
-    () => localStorage.getItem("atiende_notif_last_viewed_at") ?? new Date(0).toISOString(),
-  );
+  // La campana y las siete pestañas comparten el mismo contador persistente
+  // en Postgres. Abrir la sección ya no borra todo por timestamp: únicamente
+  // baja lo que el usuario abrió o marcó explícitamente como leído.
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const refrescarContadorNotificaciones = useCallback(async () => {
+    if (!restaurantId || !user?.id) {
+      setNotificationUnreadCount(0);
+      return;
+    }
+    const sb: any = supabase;
+    const { data, error } = await sb.rpc("notification_unread_count", { p_restaurant_id: restaurantId });
+    if (error) {
+      console.error("No se pudo actualizar la campana de notificaciones:", error);
+      return;
+    }
+    setNotificationUnreadCount(Number(data) || 0);
+  }, [restaurantId, user?.id]);
+
   useEffect(() => {
-    if (activeSection !== "notificaciones") return;
-    const ahora = new Date().toISOString();
-    localStorage.setItem("atiende_notif_last_viewed_at", ahora);
-    setNotifLastViewedAt(ahora);
-  }, [activeSection]);
+    void refrescarContadorNotificaciones();
+    if (!restaurantId || !user?.id) return;
+
+    const alLeer = () => { void refrescarContadorNotificaciones(); };
+    window.addEventListener("atiende:notifications-read", alLeer);
+
+    const canal = supabase
+      .channel(`notification-bell-${restaurantId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `restaurant_id=eq.${restaurantId}` }, alLeer)
+      .on("postgres_changes", { event: "*", schema: "public", table: "callback_requests", filter: `restaurant_id=eq.${restaurantId}` }, alLeer)
+      .subscribe();
+
+    return () => {
+      window.removeEventListener("atiende:notifications-read", alLeer);
+      void supabase.removeChannel(canal);
+    };
+  }, [restaurantId, user?.id, refrescarContadorNotificaciones]);
 
   // Toast real de "Pedido nuevo": bug real reportado por Javier el 3-sep-2026
   // ("se hizo todo bien en la llamada, únicamente no me llegó la
@@ -3081,9 +3100,9 @@ const AdminDashboard = () => {
                     className="relative w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
                   >
                     <Bell className="w-4 h-4" strokeWidth={1.75} />
-                    {callbackRequests.filter((c) => !c.resolved && c.created_at > notifLastViewedAt).length > 0 && (
+                    {notificationUnreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-medium leading-4 text-center animate-pulse">
-                        {callbackRequests.filter((c) => !c.resolved && c.created_at > notifLastViewedAt).length}
+                        {notificationUnreadCount > 999 ? "999+" : notificationUnreadCount}
                       </span>
                     )}
                   </button>
