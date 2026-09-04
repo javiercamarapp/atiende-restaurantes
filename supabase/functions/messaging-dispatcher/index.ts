@@ -48,15 +48,21 @@ Deno.serve(async (req) => {
     return respond({ error: "Unauthorized" }, 401)
   }
   const worker = req.headers.get("x-atiende-worker") || crypto.randomUUID()
-  const { data: jobs, error } = await supabase.rpc("claim_messaging_outbox_batch", {
-    p_worker_id: worker, p_limit: 20, p_lease_seconds: 120,
-  })
-  if (error) {
-    logEvent("error", "dispatcher.claim_failed", requestId, { error_class: error.code ?? "DatabaseError" })
-    return respond({ error: "Unable to claim outbox" }, 503)
-  }
+  let claimed = 0
   let sent = 0
-  for (const job of jobs ?? []) {
+  // Claim each effect immediately before sending it. Claiming a large batch
+  // up front lets later leases expire while earlier provider calls run.
+  for (let i = 0; i < 20; i++) {
+    const { data: jobs, error } = await supabase.rpc("claim_messaging_outbox_batch", {
+      p_worker_id: worker, p_limit: 1, p_lease_seconds: 120,
+    })
+    if (error) {
+      logEvent("error", "dispatcher.claim_failed", requestId, { error_class: error.code ?? "DatabaseError" })
+      return respond({ error: "Unable to claim outbox", claimed, sent }, 503)
+    }
+    const job = jobs?.[0]
+    if (!job) break
+    claimed++
     let failure: string | null = null
     try {
       const payload = job.payload ?? {}
@@ -105,5 +111,5 @@ Deno.serve(async (req) => {
       })
     }
   }
-  return respond({ claimed: jobs?.length ?? 0, sent })
+  return respond({ claimed, sent })
 })

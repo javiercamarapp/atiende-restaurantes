@@ -166,6 +166,9 @@ Deno.serve(async (req) => {
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         "Content-Type": "application/json",
+        // Resend retains idempotency keys for 24 h. This closes the normal
+        // provider-accepted/worker-crashed retry window for email effects.
+        "Idempotency-Key": `order/${order_id}/${evento}`,
       },
       body: JSON.stringify({
         from: RESEND_FROM,
