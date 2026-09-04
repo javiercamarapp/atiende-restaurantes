@@ -21,3 +21,4 @@ done
 
 bash supabase/tests/order_idempotency_concurrency.sh "$database_url"
 bash supabase/tests/messaging_outbox_concurrency.sh "$database_url"
+bash supabase/tests/migration_out_of_order_upgrade.sh "$database_url"

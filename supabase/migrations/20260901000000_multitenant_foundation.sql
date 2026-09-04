@@ -74,18 +74,18 @@ grant execute on function public.is_restaurant_staff(uuid, uuid) to authenticate
 alter table public.restaurants enable row level security;
 alter table public.restaurant_staff enable row level security;
 
+drop policy if exists "Members can view their restaurant" on public.restaurants;
 create policy "Members can view their restaurant"
   on public.restaurants for select to authenticated
   using (public.is_restaurant_staff(auth.uid(), id) or public.is_superadmin(auth.uid()));
 
+drop policy if exists "Staff can view own membership" on public.restaurant_staff;
 create policy "Staff can view own membership"
   on public.restaurant_staff for select to authenticated
   using (user_id = auth.uid() or public.is_superadmin(auth.uid()));
 
-create policy "Staff can update own notification preferences"
-  on public.restaurant_staff for update to authenticated
-  using (user_id = auth.uid() or public.is_superadmin(auth.uid()))
-  with check (user_id = auth.uid() or public.is_superadmin(auth.uid()));
+-- Do not add a broad UPDATE policy here. Notification preferences are changed
+-- by update_my_notification_preference() in the forward security migration.
 
 -- The legacy dump predates tenants.  Defaults exist only long enough for the
 -- historical single-restaurant seed to replay; a later migration removes them
@@ -97,8 +97,11 @@ update public.categories set restaurant_id = 'be3fbdeb-80e7-4e7b-9b44-22b476c082
 where restaurant_id is null;
 alter table public.categories alter column restaurant_id set not null;
 alter table public.categories drop constraint if exists categories_slug_key;
-alter table public.categories
-  add constraint categories_restaurant_slug_key unique (restaurant_id, slug);
+do $$ begin
+  if not exists(select 1 from pg_constraint where conname='categories_restaurant_slug_key') then
+    alter table public.categories add constraint categories_restaurant_slug_key unique (restaurant_id, slug);
+  end if;
+end $$;
 
 alter table public.products
   add column if not exists restaurant_id uuid references public.restaurants(id)
