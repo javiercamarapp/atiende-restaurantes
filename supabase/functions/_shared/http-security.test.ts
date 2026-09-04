@@ -32,6 +32,25 @@ Deno.test("origin allowlist is exact and server-to-server remains valid", () => 
   assert(originAllowed(null, allowed), "server request rejected");
 });
 
+Deno.test("production panel origins are allowed without accepting arbitrary previews", () => {
+  assert(
+    originAllowed("https://atiende-restaurantes.vercel.app"),
+    "canonical production origin rejected",
+  );
+  assert(
+    originAllowed("https://atiende-restaurantes-likida.vercel.app"),
+    "production alias rejected",
+  );
+  assert(
+    originAllowed("https://atiende-restaurantes-git-main-likida.vercel.app"),
+    "main alias rejected",
+  );
+  assert(
+    !originAllowed("https://atiende-restaurantes-evil-likida.vercel.app"),
+    "arbitrary deployment origin accepted",
+  );
+});
+
 Deno.test("disallowed CORS origin is never reflected", () => {
   const headers = corsHeaders(
     new Request("https://edge.test", {

@@ -3,6 +3,9 @@ import { correlationHeaders, correlationId } from "./observability.ts";
 const DEFAULT_ORIGINS = [
   "https://www.useatiende.ai",
   "https://useatiende.ai",
+  "https://atiende-restaurantes.vercel.app",
+  "https://atiende-restaurantes-likida.vercel.app",
+  "https://atiende-restaurantes-git-main-likida.vercel.app",
   "http://localhost:5173",
   "http://localhost:4173",
 ];
