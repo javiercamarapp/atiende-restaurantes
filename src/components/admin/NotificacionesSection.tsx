@@ -211,13 +211,11 @@ function ListasPorLectura<T extends { id: string }>({
   textoVacio: string;
   renderItem: (item: T, leida: boolean) => React.ReactNode;
 }) {
-  if (pendientes.length === 0 && leidas.length === 0) {
-    return <EstadoVacio icon={Icon} texto={textoVacio} />;
-  }
-
   return (
     <div className="space-y-4">
-      {pendientes.length === 0 ? (
+      {pendientes.length === 0 && leidas.length === 0 ? (
+        <EstadoVacio icon={Icon} texto={textoVacio} />
+      ) : pendientes.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-7 text-center">
           <CheckCheck className="w-8 h-8 mx-auto mb-2 text-emerald-500" strokeWidth={1.6} />
           <p className="text-[13px] font-medium text-foreground">Todo leído</p>
