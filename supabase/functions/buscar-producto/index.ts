@@ -18,7 +18,7 @@
 // verify_jwt: false explícito en cada redeploy.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { tokenizeForProductSearch } from "../_shared/create-order-core.ts";
+import { buscarProductosCore } from "../_shared/create-order-core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,24 +68,15 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Tokenizado compartido con WhatsApp (whatsapp-agent-core.ts) — ver
-    // create-order-core.ts para el historial completo de por qué existe.
-    const tokensAUsar = tokenizeForProductSearch(query);
-
-    let builder = supabase
-      .from("branch_products")
-      .select("price, is_available, products!inner(id, name, restaurant_id)")
-      .eq("branch_id", branch?.id)
-      .eq("is_available", true)
-      .eq("products.restaurant_id", branch?.restaurant_id);
-    for (const token of tokensAUsar) {
-      builder = builder.ilike("products.name", `%${token}%`);
-    }
-    const { data: rows, error } = await builder.limit(8);
-    if (error) throw error;
-
-    // deno-lint-ignore no-explicit-any
-    const productos = (rows ?? []).map((r: any) => ({ id: r.products.id, name: r.products.name, price: r.price }));
+    // Búsqueda compartida con WhatsApp (whatsapp-agent-core.ts) — ver
+    // create-order-core.ts (buscarProductosCore) para el historial completo
+    // de por qué compara contra name+description+categoría+search_keywords
+    // en vez de solo name.
+    const productos = await buscarProductosCore(supabase, {
+      branchId: branch.id,
+      restaurantId: branch.restaurant_id,
+      query,
+    });
 
     return new Response(JSON.stringify({ productos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

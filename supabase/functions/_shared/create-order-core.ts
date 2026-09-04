@@ -149,6 +149,86 @@ export function tokenizeForProductSearch(query: string): string[] {
   return tokens.length > 0 ? tokens : [query.toLowerCase()];
 }
 
+export interface ProductoEncontrado {
+  id: string;
+  name: string;
+  price: number;
+  /**
+   * Cantidad fija de piezas del paquete si el producto se vende como
+   * paquete indivisible (ej. 3 para "Tacos de Bistec de Res (orden de 3)"),
+   * 1 si se vende por pieza individual ("... (individual)" / "Orden
+   * individual" en su description), o null si no aplica esa noción de
+   * "piezas por paquete" (bebidas, platillos completos, kilos, etc.).
+   * Se calcula del name+description real en vez de dejar que el LLM tenga
+   * que inferirlo de un paréntesis en el texto — bug real confirmado
+   * 4-sep-2026: el agente de voz aceptó "un taco de bistec" sin corregir
+   * al cliente pese a que el prompt ya le decía que revisara el nombre;
+   * un campo estructurado explícito es más difícil de pasar por alto que
+   * un patrón de texto libre.
+   */
+  pack_size: number | null;
+}
+
+function extraerPackSize(name: string, description: string | null): number | null {
+  const texto = `${name} ${description ?? ""}`;
+  const orden = texto.match(/orden de (\d+)/i);
+  if (orden) return parseInt(orden[1], 10);
+  if (/individual/i.test(texto)) return 1;
+  return null;
+}
+
+/**
+ * Búsqueda real de productos disponibles en una sucursal, compartida por el
+ * agente de voz (buscar-producto/index.ts) y el de WhatsApp
+ * (whatsapp-agent-core.ts) — antes cada uno traía su propia copia de esta
+ * consulta (mismo texto, dos archivos) y las dos comparaban el query del
+ * cliente SOLO contra `products.name`. Bug real confirmado 4-sep-2026: un
+ * cliente pidió "una pizza" y el agente dijo que no había disponible, pese a
+ * que sí existe un producto real ("Quesobich de Queso", categoría "Pizza
+ * Quesobich") que es literalmente una pizza — la palabra "pizza" solo vive en
+ * su `description` y en el nombre de su categoría, nunca en `products.name`,
+ * así que la búsqueda angosta no lo encontraba. Ahora un token hace match si
+ * aparece en el name, la description, la categoría, O cualquier alias de
+ * `products.search_keywords` (columna sembrada a mano para ~250 productos
+ * reales el 4-sep-2026) — todos los tokens siguen siendo obligatorios (AND),
+ * solo se amplió EN QUÉ campo puede aparecer cada uno.
+ */
+export async function buscarProductosCore(
+  supabase: any,
+  { branchId, restaurantId, query }: { branchId: string; restaurantId: string; query: string },
+): Promise<ProductoEncontrado[]> {
+  const tokens = tokenizeForProductSearch(query);
+
+  const { data: rows, error } = await supabase
+    .from("branch_products")
+    .select("price, is_available, products!inner(id, name, description, restaurant_id, search_keywords, categories(name))")
+    .eq("branch_id", branchId)
+    .eq("is_available", true)
+    .eq("products.restaurant_id", restaurantId)
+    .limit(400);
+  if (error) throw error;
+
+  const coincide = (r: any) => {
+    const producto = r.products;
+    const textoPlano = [producto.name, producto.description, producto.categories?.name]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const alias: string[] = producto.search_keywords ?? [];
+    return tokens.every((t) => textoPlano.includes(t) || alias.some((a) => a.toLowerCase().includes(t)));
+  };
+
+  return (rows ?? [])
+    .filter(coincide)
+    .slice(0, 8)
+    .map((r: any) => ({
+      id: r.products.id,
+      name: r.products.name,
+      price: r.price,
+      pack_size: extraerPackSize(r.products.name, r.products.description),
+    }));
+}
+
 export async function createOrderCore(supabase: any, payload: CreateOrderPayload) {
   if ((!payload.branch_slug && !payload.branch_name) || !payload.customer_name || !payload.customer_phone) {
     throw new OrderValidationError("branch_slug (o branch_name), customer_name y customer_phone son requeridos");

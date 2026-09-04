@@ -20,7 +20,7 @@
 //   OPENROUTER_MODEL_ESCALADO (opcional) - default: openai/gpt-5.4-mini
 
 // deno-lint-ignore-file no-explicit-any
-import { createOrderCore, OrderValidationError, tokenizeForProductSearch, vipNote } from "./create-order-core.ts";
+import { buscarProductosCore, createOrderCore, OrderValidationError, vipNote } from "./create-order-core.ts";
 
 // OPENROUTER_API_KEY vive en Supabase Vault (mismo mecanismo real que
 // ELEVENLABS_API_KEY y las credenciales de WhatsApp Cloud API) — no como
@@ -80,7 +80,7 @@ REGLAS DE NEGOCIO:
 - No inventes productos ni precios: usa siempre la herramienta buscar_producto para confirmar nombre/precio real antes de agregar algo al pedido. Puedes recomendar productos populares o combinaciones típicas si el cliente no sabe qué pedir.
 - No vendas cantidades sueltas de un producto marcado "(orden de N)" — es un paquete fijo, no piezas individuales (ver paso 4).
 - Si dice "(1/2 orden)", es una versión de medio paquete que ya existe como su propio producto — ofrécela si el cliente quiere menos cantidad en vez de inventar una fracción tú mismo.
-- Si piden algo que no existe en el menú, dilo con naturalidad y sugiere algo parecido.
+- Si buscar_producto devuelve una lista VACÍA para lo que pidió el cliente, significa que ese producto NO EXISTE en el menú de ninguna sucursal — bug real confirmado 4-sep-2026 (un cliente pidió "una pizza" y el agente le dijo que "no estaba disponible en esta sucursal", como si existiera en otra — falso, y confuso). Nunca digas "no disponible en esta sucursal" ni nada que sugiera que existe en otro lado cuando la lista viene vacía: dilo tal cual ("no tenemos eso en el menú") y sugiere algo parecido que sí exista.
 - Si el pedido incluye alcohol (cerveza, licor, cóctel): antes de agregarlo, pregunta directo si quien recibe es mayor de edad y espera un sí/no claro. Si la respuesta es evasiva o ambigua ("no sé", "seguro alguien mayor abre"), vuelve a preguntar de forma directa — nunca sigas adelante sin una confirmación clara, y NUNCA digas que el producto no está disponible como pretexto para evitar la pregunta; sé honesto sobre por qué preguntas.
 - No inventes horarios de apertura/cierre — ese dato no está confirmado todavía.
 - No inventes sucursales ni branch_slugs que no estén en la lista de arriba.
@@ -94,7 +94,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si la colonia no es clara, pregunta la colonia o una referencia cercana ANTES de llamar la herramienta. Si responde encontrada:false, pide otra referencia (colonia vecina, cruce de calles, plaza conocida) e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien. Si el cliente prefiere que se lo mandes desde otra sucursal (por ejemplo, porque le queda mejor otra zona que conoce), no insistas en que sea forzosamente la más cercana — acepta con gusto cualquiera de las sucursales reales de la lista de arriba que el cliente prefiera, y sigue con esa.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal que ya confirmaste en el paso 3 — el precio real varía por sucursal). Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
-   - IMPORTANTE: lee bien el nombre exacto que devuelve buscar_producto — si dice "(orden de N)" (ej. "Tacos de Bistec de Res (orden de 3)"), es un paquete fijo indivisible de N piezas, no piezas sueltas, y el precio ya es el del paquete completo. Si el cliente pide una cantidad de ese sabor que no es múltiplo de N, DILO EXACTAMENTE ASÍ, sin dar vueltas: "ese taco solo se vende en órdenes de [N] tacos" (usa el número real N que trajo buscar_producto para ese sabor), da el precio real del paquete completo, y ofrécele ajustar a un múltiplo de N o cambiar a un sabor "(individual)" (ese sí se vende por pieza suelta).
+   - IMPORTANTE, revísalo ANTES de confirmar cantidad con el cliente, no después al calcular el total: cada resultado de buscar_producto trae un campo pack_size. Si pack_size es un número mayor a 1 (ej. 3 para "Tacos de Bistec de Res (orden de 3)"), es un paquete fijo indivisible de esa cantidad de piezas — no piezas sueltas — y el precio mostrado ya es el del paquete completo. Si el cliente pidió una cantidad de ese sabor que no es múltiplo exacto de pack_size (incluido pedir solo 1), DILO EXACTAMENTE ASÍ, en cuanto lo detectes, sin dar vueltas y sin esperar a que llegue el momento de dar el total: "ese taco solo se vende en órdenes de [pack_size] tacos" (usa el número real de pack_size), da el precio real del paquete completo, y ofrécele ajustar a un múltiplo de pack_size o cambiar a un sabor con pack_size 1 (ese sí se vende por pieza suelta). Si pack_size es 1, ese sabor se vende individual, sin restricción. Si pack_size es null, no aplica esta restricción (bebidas, platillos completos, kilos, etc.).
    - Si buscar_producto devuelve más de un producto real parecido a lo que pidió el cliente (ej. "Guacamole" el platillo completo vs. "Extra Guacamole" la porción chica) y no está claro cuál quiere, no elijas tú solo — dile los nombres y precios de las opciones y que el cliente escoja.
    - Si el cliente pide alguna instrucción especial para algún producto o para el pedido (ej. "sin cebolla", "que no pique", "toca el timbre y no el interfón"), guárdala tal cual la dijo en el parámetro notes de crear_pedido — no basta con repetirla en el chat, tiene que quedar en el pedido para que cocina/repartidor la vean. Confírmale al cliente que la anotaste.
 5. Antes de cerrar: pregunta si quiere agregar algo extra — frijoles charros, guacamole, tortillas, ensalada o alguna salsa en específico. Ninguno de estos viene incluido gratis con los tacos, son productos aparte con su propio costo (confirma nombre y precio real con buscar_producto si el cliente quiere alguno). La única excepción son los "kilos a domicilio": esos SÍ incluyen salsa roja, salsa verde, limones y tortillas sin costo extra — no lo confundas con los pedidos de tacos normales.
@@ -163,7 +163,7 @@ export const TOOLS = [
     type: "function",
     function: {
       name: "buscar_producto",
-      description: "Busca productos del menú real de la sucursal por nombre o palabra clave. Devuelve id, nombre y precio real de esa sucursal (el precio varía por sucursal).",
+      description: "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal (el precio varía por sucursal), y pack_size (número de piezas del paquete si se vende en orden fija, 1 si es individual, null si no aplica — ver instrucciones del paso 4 sobre qué hacer con pack_size antes de confirmar cantidad). Lista vacía significa que ese producto no existe en el menú, no que esté agotado.",
       parameters: {
         type: "object",
         properties: {
@@ -351,21 +351,15 @@ export async function runAgentTurn(
             if (!branch) {
               result = { error: "branch_slug desconocido — confirma la sucursal antes de buscar productos" };
             } else {
-              // Tokenizado compartido con el agente de voz (buscar-producto/index.ts)
-              // — ver create-order-core.ts para el historial completo.
-              const tokensAUsar = tokenizeForProductSearch(String(input.query ?? ""));
-
-              let builder = supabase
-                .from("branch_products")
-                .select("price, is_available, products!inner(id, name, restaurant_id)")
-                .eq("branch_id", branch.id)
-                .eq("is_available", true)
-                .eq("products.restaurant_id", restaurantId);
-              for (const token of tokensAUsar) {
-                builder = builder.ilike("products.name", `%${token}%`);
-              }
-              const { data: rows } = await builder.limit(8); // mismo límite que buscar-producto/index.ts (voz) — antes era 6 aquí, sin razón documentada para la diferencia
-              result = (rows ?? []).map((r: any) => ({ id: r.products.id, name: r.products.name, price: r.price }));
+              // Búsqueda compartida con el agente de voz (buscar-producto/index.ts)
+              // — ver create-order-core.ts (buscarProductosCore) para el
+              // historial completo de por qué compara contra
+              // name+description+categoría+search_keywords en vez de solo name.
+              result = await buscarProductosCore(supabase, {
+                branchId: branch.id,
+                restaurantId,
+                query: String(input.query ?? ""),
+              });
             }
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
