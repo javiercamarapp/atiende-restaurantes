@@ -18,7 +18,7 @@
 //   OPENROUTER_MODEL (opcional)
 //   OPENROUTER_MODEL_ESCALADO (opcional)
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import {
   lookupCustomer,
   redactSensitiveInfo,

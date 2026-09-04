@@ -15,7 +15,7 @@
 // usuario (auth.admin.deleteUser) para no dejar una cuenta huérfana sin
 // perfil/rol/vínculo al restaurante.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

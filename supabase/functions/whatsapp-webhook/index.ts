@@ -23,7 +23,7 @@
 // Verify token: el valor real de WHATSAPP_VERIFY_TOKEN (Vault) — Meta lo manda
 // de vuelta en hub.verify_token durante el handshake GET.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0"
 import {
   lookupCustomer,
   redactSensitiveInfo,
@@ -32,6 +32,11 @@ import { RESTAURANT_ID, runAgentTurn } from "../_shared/whatsapp-agent-core.ts"
 import { actorHash, constantTimeEqual } from "../_shared/http-security.ts"
 import { verifyMetaSignature } from "../_shared/meta-signature.ts"
 import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts"
+import {
+  correlationHeaders,
+  correlationId,
+  logEvent,
+} from "../_shared/observability.ts"
 
 const GRAPH_API_VERSION = "v25.0" // misma versión real que trae el panel de Meta de Javier
 
@@ -64,6 +69,7 @@ function createServiceClient() {
 }
 
 Deno.serve(async (req: Request) => {
+  const requestId = correlationId(req)
   const url = new URL(req.url)
 
   // Handshake de verificación real de Meta: GET con hub.mode/hub.verify_token/
@@ -276,10 +282,12 @@ Deno.serve(async (req: Request) => {
       }
     }
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...correlationHeaders(requestId) },
     })
   } catch (err) {
-    console.error("whatsapp-webhook error:", err)
+    logEvent("error", "whatsapp.webhook_failed", requestId, {
+      error_class: err instanceof Error ? err.constructor.name : "UnknownError",
+    })
     if (supabase && messageId && phoneHash) {
       const errorClass =
         err instanceof Error ? err.constructor.name : "UnknownError"
@@ -305,7 +313,7 @@ Deno.serve(async (req: Request) => {
     // A signed transient failure must be retried; the message ledger prevents duplicates.
     return new Response(JSON.stringify({ ok: false }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...correlationHeaders(requestId) },
     })
   }
 })

@@ -11,9 +11,10 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:edge",
-    "test:edge": "deno test --allow-env --no-check supabase/functions/_shared/*.test.ts",
+    "test:edge": "deno test --allow-env supabase/functions/_shared/*.test.ts",
+    "check:edge": "deno check supabase/functions/*/index.ts",
     "test:db": "bash supabase/tests/run-local.sh",
-    "quality": "npm run lint && npm run typecheck && npm run test:edge && npm run build",
+    "quality": "npm run lint && npm run typecheck && npm run test:edge && npm run check:edge && npm run build:budget",
     "preview": "vite preview"
   },
   "dependencies": {

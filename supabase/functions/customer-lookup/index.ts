@@ -9,7 +9,7 @@
 // Supabase rechaza con 401 antes de que este código corra. El default de
 // deploy_edge_function es true, hay que pasar verify_jwt: false explícito.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import { lookupCustomer, vipNote } from "../_shared/create-order-core.ts";
 import {
   consumeRateLimit,

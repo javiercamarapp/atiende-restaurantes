@@ -19,7 +19,7 @@
 // Si ese insert falla, se hace rollback borrando el usuario recién creado
 // para no dejar una cuenta a medias (con rol pero sin perfil operativo).
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

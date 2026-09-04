@@ -29,6 +29,9 @@ export async function verifyMetaSignature(
     false,
     ["sign"],
   )
-  const expected = hex(await crypto.subtle.sign("HMAC", key, rawBody))
+  // Copy into an owned ArrayBuffer: Deno's Uint8Array may be backed by the
+  // broader ArrayBufferLike type, while WebCrypto requires BufferSource.
+  const message = rawBody.slice().buffer as ArrayBuffer
+  const expected = hex(await crypto.subtle.sign("HMAC", key, message))
   return constantTimeHexEqual(supplied, expected)
 }

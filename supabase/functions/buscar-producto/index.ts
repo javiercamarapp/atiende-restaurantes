@@ -17,7 +17,7 @@
 // default de deploy_edge_function es true, así que hay que pasar
 // verify_jwt: false explícito en cada redeploy.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import { buscarProductosCore } from "../_shared/create-order-core.ts";
 import {
   consumeRateLimit,

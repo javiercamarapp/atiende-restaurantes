@@ -24,7 +24,7 @@
 // deploy_edge_function es true, hay que pasar verify_jwt: false explícito
 // en cada redeploy — igual que buscar-producto/create-order/customer-lookup.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import {
   consumeRateLimit,
   HttpInputError,

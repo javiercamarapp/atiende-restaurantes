@@ -45,7 +45,7 @@
 // Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
 // interna, no algo que el dueño del restaurante deba ver.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import { authorizeAgentConfig } from "../_shared/agent-config-auth.ts";
 import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts";
 import {

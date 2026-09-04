@@ -1,3 +1,5 @@
+import { correlationHeaders, correlationId } from "./observability.ts";
+
 const DEFAULT_ORIGINS = [
   "https://www.useatiende.ai",
   "https://useatiende.ai",
@@ -43,7 +45,11 @@ export function preflightResponse(req: Request): Response {
   if (!originAllowed(req.headers.get("Origin"))) {
     return jsonResponse(req, { error: "Origen no permitido" }, 403);
   }
-  return new Response(null, { status: 204, headers: corsHeaders(req) });
+  const requestId = correlationId(req);
+  return new Response(null, {
+    status: 204,
+    headers: { ...corsHeaders(req), ...correlationHeaders(requestId) },
+  });
 }
 
 export function constantTimeEqual(
@@ -76,10 +82,12 @@ export function jsonResponse(
   status = 200,
   extra: Record<string, string> = {},
 ) {
+  const requestId = correlationId(req);
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       ...corsHeaders(req),
+      ...correlationHeaders(requestId),
       "Content-Type": "application/json",
       ...extra,
     },

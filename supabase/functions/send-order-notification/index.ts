@@ -3,7 +3,7 @@
 // todavía no versiona el dispatcher/outbox que deba invocarlo; por eso no se
 // debe afirmar que los correos son automáticos hasta cerrar INT-05 de la
 // auditoría y verificar el flujo en staging.
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import {
   correoPedidoCancelado,
   correoPedidoEnCamino,

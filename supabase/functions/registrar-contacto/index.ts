@@ -4,7 +4,7 @@
 // ninguna herramienta que de verdad lo guardara — se quedaba en una promesa
 // vacía. También la usa el webhook de WhatsApp para el mismo caso.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import {
   consumeRateLimit,
   HttpInputError,

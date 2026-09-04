@@ -11,6 +11,7 @@ tests=(
   supabase/tests/privilege_escalation.sql
   supabase/tests/messaging_outbox.sql
   supabase/tests/privacy_dsar.sql
+  supabase/tests/operational_observability.sql
 )
 
 for test_file in "${tests[@]}"; do
