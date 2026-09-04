@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import OrderDetailDialog from "@/components/admin/OrderDetailDialog";
 import {
   ShoppingCart, AlertTriangle, PhoneCall, SlidersHorizontal,
   Mic, MessageCircle, Loader2, Package, CheckCircle2, Ban, Clock,
@@ -146,9 +147,12 @@ const numeroPedido = (o: OrderRow) => (o.order_number ? `Venta ${String(o.order_
 
 // Fila compartida por los 5 tabs de pedidos — solo cambia el `pill` de la
 // derecha (estado propio de cada categoría).
-function FilaPedido({ order, pill }: { order: OrderRow; pill?: React.ReactNode }) {
+function FilaPedido({ order, pill, onClick }: { order: OrderRow; pill?: React.ReactNode; onClick?: () => void }) {
   return (
-    <div className="p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0">
+    <div
+      onClick={onClick}
+      className={`p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0 ${onClick ? "cursor-pointer hover:bg-muted/40 transition-colors" : ""}`}
+    >
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
           <IconoFuente source={order.source} />
@@ -211,6 +215,10 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("recibidos");
+  // Pedido real de Javier el 4-sep-2026: "en todos los lados que salgan los
+  // pedidos, al apretarlo se abra detalles" — mismo modal compartido que
+  // Historial de Órdenes y Pedidos, ver OrderDetailDialog.tsx.
+  const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const [cargandoListas, setCargandoListas] = useState(true);
   const [recibidos, setRecibidos] = useState<OrderRow[]>([]);
@@ -443,7 +451,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                   <EstadoVacio icon={Package} texto="No hay pedidos nuevos en este momento." />
                 ) : (
                   <div className="rounded-xl border border-border overflow-hidden">
-                    {recibidos.map((o) => <FilaPedido key={o.id} order={o} pill={<Pill clase="bg-yellow-100 text-yellow-700">Pendiente</Pill>} />)}
+                    {recibidos.map((o) => <FilaPedido key={o.id} order={o} onClick={() => setDetalleId(o.id)} pill={<Pill clase="bg-yellow-100 text-yellow-700">Pendiente</Pill>} />)}
                   </div>
                 )}
               </>
@@ -467,6 +475,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                       <FilaPedido
                         key={o.id}
                         order={o}
+                        onClick={() => setDetalleId(o.id)}
                         pill={
                           <Pill clase="bg-green-100 text-green-700">
                             {o.delivered_at ? `Entregado ${format(new Date(o.delivered_at), "HH:mm", { locale: es })}` : "Entregado"}
@@ -500,6 +509,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                       <FilaPedido
                         key={o.id}
                         order={o}
+                        onClick={() => setDetalleId(o.id)}
                         pill={
                           o.status === "problema"
                             ? <Pill clase="bg-fuchsia-100 text-fuchsia-700">Incidencia</Pill>
@@ -536,6 +546,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                         <FilaPedido
                           key={o.id}
                           order={o}
+                          onClick={() => setDetalleId(o.id)}
                           pill={<Pill clase="bg-orange-100 text-orange-700">+{formatoDuracion(minutosTarde)} tarde</Pill>}
                         />
                       );
@@ -569,6 +580,7 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
                         <FilaPedido
                           key={o.id}
                           order={o}
+                          onClick={() => setDetalleId(o.id)}
                           pill={
                             <Pill clase={vencido ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}>
                               {vencido ? "Vencido hace " : "En "}{formatDistanceToNow(new Date(o.scheduled_for as string), { locale: es })}
@@ -703,6 +715,8 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
           ))}
         </div>
       </div>
+
+      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 };

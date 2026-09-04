@@ -36,6 +36,7 @@ import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import RepartidorSidebar from "@/components/repartidor/RepartidorSidebar";
 import { AtiendeWordmark } from "@/components/AtiendeLogo";
+import OrderDetailDialog from "@/components/admin/OrderDetailDialog";
 
 interface Order {
   id: string;
@@ -91,6 +92,10 @@ const RepartidorDashboard = () => {
   // libre que queda guardada en `incident_note` y dispara el correo real de
   // aviso al staff (mismo mecanismo que ya usa "cancelado").
   const [incidenciaAbierta, setIncidenciaAbierta] = useState<{ orderId: string; clienteNombre: string } | null>(null);
+  // Pedido real de Javier el 4-sep-2026: "en todos los lados que salgan los
+  // pedidos, al apretarlo se abra detalles" — mismo modal compartido de
+  // Historial/Pedidos/Notificaciones.
+  const [detalleId, setDetalleId] = useState<string | null>(null);
   const [incidenciaNota, setIncidenciaNota] = useState("");
   const [reportandoIncidencia, setReportandoIncidencia] = useState(false);
 
@@ -267,7 +272,7 @@ const RepartidorDashboard = () => {
       <Card className="mb-4">
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="cursor-pointer" onClick={() => setDetalleId(order.id)}>
               <div className="flex items-center gap-2 mb-1">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <span className="font-semibold text-foreground">{order.customer_name}</span>
@@ -894,6 +899,8 @@ const RepartidorDashboard = () => {
           </button>
         </nav>
       </div>
+
+      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
 
       {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
       <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>

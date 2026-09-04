@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import OrderDetailDialog from "@/components/admin/OrderDetailDialog";
 import {
   ShoppingCart, MapPin, Bike, Clock, User, Package, Truck, CheckCircle2,
   CalendarClock, Store, Loader2, Radar, AlertTriangle,
@@ -84,6 +85,10 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
   const [tab, setTab] = useState<Tab>("recibidas");
   const [ahora, setAhora] = useState(() => Date.now());
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  // Pedido real de Javier el 4-sep-2026: "en todos los lados que salgan los
+  // pedidos, al apretarlo se abra detalles" — modal compartido, ver
+  // OrderDetailDialog.tsx (mismo componente que usa Historial de Órdenes).
+  const [detalleId, setDetalleId] = useState<string | null>(null);
   const [asignando, setAsignando] = useState<string | null>(null); // order.id en flujo de despacho
   const [repartidorElegido, setRepartidorElegido] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState<string | null>(null);
@@ -366,7 +371,7 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
                   return (
                     <div
                       key={order.id}
-                      onClick={() => setSelectedOrderId(order.id)}
+                      onClick={() => { setSelectedOrderId(order.id); setDetalleId(order.id); }}
                       className={`p-3 border-b border-dashed border-border last:border-0 transition-colors cursor-pointer ${
                         seleccionado ? "bg-primary/5" : "hover:bg-muted/40"
                       }`}
@@ -524,6 +529,8 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
         </div>
       )}
 
+      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
+
       {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
       <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>
         <DialogContent>
@@ -556,6 +563,7 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
 }
 
 function PanelProgramadas({ orders, branchById }: { orders: OrderRow[]; branchById: Map<string, BranchRow> }) {
+  const [detalleId, setDetalleId] = useState<string | null>(null);
   return (
     <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -578,7 +586,11 @@ function PanelProgramadas({ orders, branchById }: { orders: OrderRow[]; branchBy
             .map((order) => {
               const sucursal = order.branch_id ? branchById.get(order.branch_id) : undefined;
               return (
-                <div key={order.id} className="p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40">
+                <div
+                  key={order.id}
+                  onClick={() => setDetalleId(order.id)}
+                  className="p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0 transition-colors hover:bg-muted/40 cursor-pointer"
+                >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                       <CalendarClock className="w-5 h-5 text-primary" strokeWidth={1.75} />
@@ -618,6 +630,7 @@ function PanelProgramadas({ orders, branchById }: { orders: OrderRow[]; branchBy
             })}
         </div>
       )}
+      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 }
