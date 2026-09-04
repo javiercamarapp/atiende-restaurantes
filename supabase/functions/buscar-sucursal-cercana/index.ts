@@ -25,32 +25,51 @@
 // en cada redeploy — igual que buscar-producto/create-order/customer-lookup.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  consumeRateLimit,
+  HttpInputError,
+  jsonResponse,
+  preflightResponse,
+  readJson,
+  requestActor,
+  secretMatches,
+} from "../_shared/http-security.ts";
 
 const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflightResponse(req);
+  if (req.method !== "POST") {
+    return jsonResponse(req, { error: "Método no permitido" }, 405);
+  }
+  if (!secretMatches(req, "x-atiende-tool-secret", "VOICE_TOOL_SECRET")) {
+    return jsonResponse(req, { error: "No autorizado" }, 401);
   }
 
   try {
-    const { colonia } = (await req.json()) as { colonia?: string };
-    if (!colonia || !colonia.trim()) {
-      return new Response(JSON.stringify({ error: "colonia es requerido" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const { colonia } = await readJson<{ colonia?: unknown }>(req, 4 * 1024);
+    if (
+      typeof colonia !== "string" || !colonia.trim() || colonia.length > 160
+    ) {
+      return jsonResponse(req, { error: "colonia es requerido" }, 400);
     }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const limited = await consumeRateLimit(
+      supabase,
+      "buscar-sucursal-cercana",
+      requestActor(req, colonia),
+      60,
+      60,
+    );
+    if (!limited.allowed) {
+      return jsonResponse(req, { error: "Demasiadas solicitudes" }, 429, {
+        "Retry-After": "60",
+      });
+    }
 
     const { data, error } = await supabase.rpc("sucursal_mas_cercana", {
       p_restaurant_id: RESTAURANT_ID,
@@ -60,28 +79,25 @@ Deno.serve(async (req: Request) => {
 
     const match = data?.[0];
     if (!match) {
-      return new Response(JSON.stringify({
+      return jsonResponse(req, {
         encontrada: false,
-        mensaje: "No reconozco esa colonia — pide al cliente otra referencia cercana (colonia vecina, cruce de calles, plaza conocida) e intenta de nuevo.",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        mensaje:
+          "No reconozco esa colonia — pide al cliente otra referencia cercana (colonia vecina, cruce de calles, plaza conocida) e intenta de nuevo.",
       });
     }
 
-    return new Response(JSON.stringify({
+    return jsonResponse(req, {
       encontrada: true,
       branch_slug: match.branch_slug,
       branch_name: match.branch_name,
       distancia_km: match.distancia_km,
       colonia_reconocida: match.colonia_encontrada,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("buscar-sucursal-cercana error:", err);
-    return new Response(JSON.stringify({ error: "Error interno" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const status = err instanceof HttpInputError ? err.status : 500;
+    return jsonResponse(req, {
+      error: err instanceof HttpInputError ? err.message : "Error interno",
+    }, status);
   }
 });
