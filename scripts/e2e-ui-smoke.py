@@ -5,11 +5,16 @@ from playwright.async_api import async_playwright
 
 
 BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+BROWSER = os.environ.get("BROWSER", "chromium")
+SIMULATE_CHUNK_FAILURE = os.environ.get("SIMULATE_CHUNK_FAILURE") == "1"
 
 
 async def main() -> None:
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+        browser_type = getattr(playwright, BROWSER, None)
+        if browser_type is None:
+            raise ValueError(f"Navegador Playwright no soportado: {BROWSER}")
+        browser = await browser_type.launch(headless=True)
         page = await browser.new_page(viewport={"width": 1440, "height": 900})
         page_errors: list[str] = []
         console_errors: list[str] = []
@@ -21,6 +26,15 @@ async def main() -> None:
             if message.type == "error"
             else None,
         )
+
+        if SIMULATE_CHUNK_FAILURE:
+            await page.route("**/assets/SuperAdminDashboard-*.js", lambda route: route.abort())
+            await page.goto(f"{BASE_URL}/admin/superadmin", wait_until="domcontentloaded")
+            recovery = page.get_by_role("alert")
+            await recovery.wait_for(timeout=15_000)
+            assert "No se pudo cargar el panel" in await recovery.inner_text()
+            await browser.close()
+            return
 
         await page.goto(f"{BASE_URL}/admin/login", wait_until="networkidle")
         await page.get_by_placeholder("tu@correo.com").wait_for()

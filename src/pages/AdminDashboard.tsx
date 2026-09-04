@@ -2302,7 +2302,9 @@ const AdminDashboard = () => {
   // pedido real, incluidos los que el sembrado de demo dejó con
   // created_at unos minutos/horas adelantado por el desfase de zona
   // horaria (se guardó hora local de Mérida como si ya fuera UTC).
-  const MUY_FUTURO = new Date(8640000000000000);
+  // Postgres timestamptz no acepta el año +275760 del máximo Date de JS.
+  // Año 9999 cubre holgadamente cualquier pedido y es portable en la RPC.
+  const MUY_FUTURO = new Date("9999-12-31T23:59:59.999Z");
   const EPOCA = new Date(0);
   const construirPeriodosComparacion = (filtro: typeof dateFilter, ahora: Date) => {
     switch (filtro) {

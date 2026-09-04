@@ -254,7 +254,7 @@ const SuperAdminDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-muted/30 flex gap-3 p-3">
+    <div className="min-h-screen bg-muted/30 flex gap-3 p-3" data-panel-version="2026-09-04-cache-recovery">
       {/* Sidebar — panel flotante, separado del resto (no fundido con el
           header ni con el contenido): mismo patrón que el sidebar real de
           Likida. Logo suelto arriba, nav suelta, y todo lo de cuenta abajo
