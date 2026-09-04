@@ -3,14 +3,16 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import NotFound from "./pages/NotFound";
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
-import SuperAdminDashboard from "./pages/SuperAdminDashboard";
-import RepartidorDashboard from "./pages/RepartidorDashboard";
-import RepartidorAdminPanel from "./pages/RepartidorAdminPanel";
-import Terminos from "./pages/Terminos";
-import Privacidad from "./pages/Privacidad";
+import { lazy, Suspense } from "react";
+
+const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const SuperAdminDashboard = lazy(() => import("./pages/SuperAdminDashboard"));
+const RepartidorDashboard = lazy(() => import("./pages/RepartidorDashboard"));
+const RepartidorAdminPanel = lazy(() => import("./pages/RepartidorAdminPanel"));
+const Terminos = lazy(() => import("./pages/Terminos"));
+const Privacidad = lazy(() => import("./pages/Privacidad"));
 
 const queryClient = new QueryClient();
 
@@ -35,18 +37,20 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<RaizConHash />} />
-          <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/terminos" element={<Terminos />} />
-          <Route path="/privacidad" element={<Privacidad />} />
-          <Route path="/admin/superadmin" element={<SuperAdminDashboard />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/repartidor/:userId" element={<RepartidorAdminPanel />} />
-          <Route path="/repartidor" element={<RepartidorDashboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Suspense fallback={<main className="min-h-screen bg-background" aria-busy="true" aria-label="Cargando" />}>
+          <Routes>
+            <Route path="/" element={<RaizConHash />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/terminos" element={<Terminos />} />
+            <Route path="/privacidad" element={<Privacidad />} />
+            <Route path="/admin/superadmin" element={<SuperAdminDashboard />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/repartidor/:userId" element={<RepartidorAdminPanel />} />
+            <Route path="/repartidor" element={<RepartidorDashboard />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
