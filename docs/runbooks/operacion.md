@@ -15,6 +15,8 @@ voz o WhatsApp contra credenciales reales sin un ambiente aislado y autorizació
 5. Ejecutar un escaneo de secretos y una auditoría de dependencias con red disponible.
 6. Validar en staging aislado los contratos de Meta, OpenRouter, ElevenLabs y Resend.
 7. Aplicar migraciones primero en staging, comprobar métricas y ensayar rollback lógico.
+8. Verificar que `Messaging outbox dispatcher` está activo, que sus dos secretos existen y
+   que una fila sintética permitida pasa de `pending` a `sent` sin dejar backlog.
 
 Un warning de bundle, una prueba omitida o una integración no verificable debe quedar en el
 registro de release; no se convierte en verde por ausencia de evidencia.
@@ -60,12 +62,19 @@ backup, punto restaurado, duración, conteos, hashes de artefactos y responsable
 ## Incidente: WhatsApp atrasado o fallando
 
 - Revisar estados y antigüedad en `whatsapp_inbound_events` y leases vencidos.
+- Revisar `messaging_outbox`: `pending`/`failed` viejos, `processing` con lease vencido y `dead`.
 - Comprobar expiración del access token y existencia de `WHATSAPP_APP_SECRET`.
 - Un `processed` no debe reabrirse; un `failed` es reclamable; un lease expira en cinco
   minutos como máximo por contrato de migración.
 - No registrar cuerpos, teléfonos, tokens ni respuestas completas del proveedor.
-- El handler aún procesa solo el primer mensaje de cada lote Meta; mantener tráfico limitado
-  hasta cerrar `INT-04` de la auditoría.
+- El handler procesa el lote Meta completo. Si un elemento falla responde 500; el replay
+  omite ids ya procesados y reclama sólo los fallidos.
+- El workflow versionado llama al dispatcher cada cinco minutos. Si no hay ejecuciones,
+  comprobar que la rama desplegada contiene el workflow y que existen
+  `ATIENDE_SUPABASE_URL` y `ATIENDE_INTERNAL_WEBHOOK_SECRET` en el repositorio.
+- Resend recibe `Idempotency-Key` por pedido/evento. Meta WhatsApp no ofrece aquí una clave
+  equivalente: una caída después del 2xx del proveedor y antes del ack local puede duplicar
+  una respuesta; reconciliar por `source_message_id` y conservar evidencia.
 
 ## Incidente: proveedor externo lento
 
@@ -83,10 +92,13 @@ requieren configuración fuera del repositorio.
 - Alertas requeridas: token de Meta con 14/7/1 días de anticipación, fallos de Vault,
   credenciales de Resend/OpenRouter/ElevenLabs y cambios de permisos.
 
-## Señales mínimas pendientes de instrumentar
+## Señales mínimas
 
-- Latencia/error por función y proveedor, con correlation ID.
-- Mensajes WhatsApp `failed` y `processing` envejecidos.
+- Latencia/error por función y proveedor, con correlation ID (`operational_events`).
+- Mensajes WhatsApp `failed`/`processing` envejecidos y outbox `dead`/backlog.
 - Rechazos por rate limit y por firma.
 - Pedidos deduplicados, pedidos por canal y fallos de creación.
 - Retraso de notificaciones y antigüedad del último backup restaurado.
+
+`operational_health_snapshot()` calcula las señales locales; el paso pendiente de release es
+conectar sus umbrales a un canal real, asignar on-call y ejecutar una prueba de alerta.
