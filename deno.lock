@@ -83,7 +83,6 @@
         "npm:typescript@^5.8.3",
         "npm:vaul@~0.9.9",
         "npm:vite@^5.4.19",
-        "npm:xlsx@~0.18.5",
         "npm:zod@^3.25.76"
       ]
     }
