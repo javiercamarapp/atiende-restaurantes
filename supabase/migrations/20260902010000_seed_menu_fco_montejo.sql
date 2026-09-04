@@ -32,7 +32,8 @@ INSERT INTO public.categories (name, slug, display_order) VALUES
   ('Cervezas', 'cervezas', 21),
   ('Licores y Cocktails', 'licores', 22),
   ('Guarniciones Extra', 'extras', 23)
-ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, display_order = EXCLUDED.display_order;
+ON CONFLICT (restaurant_id, slug) DO UPDATE
+SET name = EXCLUDED.name, display_order = EXCLUDED.display_order;
 
 INSERT INTO public.products (category_id, name, description, price, is_popular, display_order) VALUES
   ((SELECT id FROM public.categories WHERE slug = 'tacos'), 'Taco Al Pastor (individual)', 'Orden individual', 42, true, 1),

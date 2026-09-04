@@ -109,6 +109,7 @@ Deno.serve(async (req: Request) => {
     // luego para lo que generó el turno.
     const userMessage = { role: "user", content: redactSensitiveInfo(body) };
     const { data: messagesAfterUser, error: appendUserError } = await supabase.rpc("whatsapp_append_turn", {
+      p_restaurant_id: RESTAURANT_ID,
       p_phone: phone,
       p_new_messages: [userMessage],
     });
@@ -122,6 +123,7 @@ Deno.serve(async (req: Request) => {
     const nuevosDelTurno = updatedMessages.slice(messages.length);
     if (nuevosDelTurno.length > 0) {
       const { error: appendTurnError } = await supabase.rpc("whatsapp_append_turn", {
+        p_restaurant_id: RESTAURANT_ID,
         p_phone: phone,
         p_new_messages: nuevosDelTurno,
         p_status: orderId ? "completed" : "active",

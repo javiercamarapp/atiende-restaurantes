@@ -4,8 +4,8 @@
 -- que de verdad lo guardara — se quedaba en una promesa vacía.
 create table if not exists public.callback_requests (
   id uuid primary key default gen_random_uuid(),
-  restaurant_id uuid not null,
-  branch_id uuid,
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  branch_id uuid references public.branches(id) on delete set null,
   customer_name text not null,
   customer_phone text not null,
   reason text,
@@ -17,7 +17,4 @@ create table if not exists public.callback_requests (
 alter table public.callback_requests enable row level security;
 create policy "Restaurant staff can view their callback requests"
   on public.callback_requests for select
-  using (true);
-create policy "Service role can insert callback requests"
-  on public.callback_requests for insert
-  with check (true);
+  using (public.is_restaurant_staff(auth.uid(), restaurant_id) or public.is_superadmin(auth.uid()));

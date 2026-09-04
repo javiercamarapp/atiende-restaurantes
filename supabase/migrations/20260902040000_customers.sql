@@ -6,12 +6,14 @@
 
 CREATE TABLE public.customers (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  phone TEXT NOT NULL UNIQUE,
+  restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
+  phone TEXT NOT NULL,
   name TEXT,
   order_count INTEGER NOT NULL DEFAULT 0,
   last_order_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  UNIQUE (restaurant_id, phone)
 );
 
 CREATE TABLE public.customer_addresses (
@@ -30,9 +32,17 @@ ALTER TABLE public.customer_addresses ENABLE ROW LEVEL SECURITY;
 -- PII (phone, address) — no public policies on purpose. Only the Edge Functions
 -- (service role, bypasses RLS) and admins can read this.
 CREATE POLICY "Admins can view customers" ON public.customers
-  FOR SELECT TO authenticated USING (public.has_role(auth.uid(), 'admin'));
+  FOR SELECT TO authenticated USING (
+    public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid())
+  );
 CREATE POLICY "Admins can view customer addresses" ON public.customer_addresses
-  FOR SELECT TO authenticated USING (public.has_role(auth.uid(), 'admin'));
+  FOR SELECT TO authenticated USING (
+    EXISTS (
+      SELECT 1 FROM public.customers c
+      WHERE c.id = customer_addresses.customer_id
+        AND (public.is_restaurant_staff(auth.uid(), c.restaurant_id) OR public.is_superadmin(auth.uid()))
+    )
+  );
 
 CREATE TRIGGER update_customers_updated_at
 BEFORE UPDATE ON public.customers

@@ -8,11 +8,35 @@
 -- hacer upsert por teléfono.
 
 CREATE POLICY "Admins can insert customers" ON public.customers
-  FOR INSERT TO authenticated WITH CHECK (public.has_role(auth.uid(), 'admin'));
+  FOR INSERT TO authenticated WITH CHECK (
+    public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid())
+  );
 CREATE POLICY "Admins can update customers" ON public.customers
-  FOR UPDATE TO authenticated USING (public.has_role(auth.uid(), 'admin'));
+  FOR UPDATE TO authenticated
+  USING (public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid()))
+  WITH CHECK (public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid()));
 
 CREATE POLICY "Admins can insert customer addresses" ON public.customer_addresses
-  FOR INSERT TO authenticated WITH CHECK (public.has_role(auth.uid(), 'admin'));
+  FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.customers c
+      WHERE c.id = customer_addresses.customer_id
+        AND (public.is_restaurant_staff(auth.uid(), c.restaurant_id) OR public.is_superadmin(auth.uid()))
+    )
+  );
 CREATE POLICY "Admins can update customer addresses" ON public.customer_addresses
-  FOR UPDATE TO authenticated USING (public.has_role(auth.uid(), 'admin'));
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.customers c
+      WHERE c.id = customer_addresses.customer_id
+        AND (public.is_restaurant_staff(auth.uid(), c.restaurant_id) OR public.is_superadmin(auth.uid()))
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.customers c
+      WHERE c.id = customer_addresses.customer_id
+        AND (public.is_restaurant_staff(auth.uid(), c.restaurant_id) OR public.is_superadmin(auth.uid()))
+    )
+  );

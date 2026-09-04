@@ -79,6 +79,7 @@ Deno.serve(async (req: Request) => {
     // en la auditoría adversarial del 3-sep-2026.
     const userMessage = { role: "user", content: redactSensitiveInfo(message.trim()) };
     const { data: messagesAfterUser, error: appendUserError } = await supabase.rpc("whatsapp_append_turn", {
+      p_restaurant_id: RESTAURANT_ID,
       p_phone: phone,
       p_new_messages: [userMessage],
     });
@@ -92,6 +93,7 @@ Deno.serve(async (req: Request) => {
     const nuevosDelTurno = updatedMessages.slice(messages.length);
     if (nuevosDelTurno.length > 0) {
       const { error: appendTurnError } = await supabase.rpc("whatsapp_append_turn", {
+        p_restaurant_id: RESTAURANT_ID,
         p_phone: phone,
         p_new_messages: nuevosDelTurno,
         p_status: orderId ? "completed" : "active",

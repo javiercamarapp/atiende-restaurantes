@@ -1,8 +1,10 @@
 -- Branches (sucursales) as real data instead of hardcoded JSX
 CREATE TABLE public.branches (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  restaurant_id UUID NOT NULL DEFAULT 'be3fbdeb-80e7-4e7b-9b44-22b476c08298'
+    REFERENCES public.restaurants(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  slug TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL,
   phone TEXT,
   address TEXT,
   lat NUMERIC(9,6),
@@ -13,6 +15,9 @@ CREATE TABLE public.branches (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.branches
+  ADD CONSTRAINT branches_restaurant_slug_key UNIQUE (restaurant_id, slug);
+
 ALTER TABLE public.branches ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Branches are viewable by everyone"
@@ -21,15 +26,16 @@ USING (true);
 
 CREATE POLICY "Admins can insert branches"
 ON public.branches FOR INSERT TO authenticated
-WITH CHECK (public.has_role(auth.uid(), 'admin'));
+WITH CHECK (public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid()));
 
 CREATE POLICY "Admins can update branches"
 ON public.branches FOR UPDATE TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
+USING (public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid()))
+WITH CHECK (public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid()));
 
 CREATE POLICY "Admins can delete branches"
 ON public.branches FOR DELETE TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
+USING (public.is_restaurant_staff(auth.uid(), restaurant_id) OR public.is_superadmin(auth.uid()));
 
 CREATE TRIGGER update_branches_updated_at
 BEFORE UPDATE ON public.branches
@@ -56,6 +62,8 @@ INSERT INTO public.branches (name, slug, phone, address, lat, lng, display_order
     NULL, 21.2960, -89.6020, 6),
   ('Pensiones',         'pensiones',      '999 987 5410',
     'Calle 52 No. 37 por Av. 7, Residencial Pensiones, cerca de Plaza Las Américas', 20.9800, -89.6300, 7);
+
+ALTER TABLE public.branches ALTER COLUMN restaurant_id DROP DEFAULT;
 
 -- orders: link to a real branch, and record where the order came from
 ALTER TABLE public.orders

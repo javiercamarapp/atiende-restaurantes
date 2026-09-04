@@ -56,7 +56,7 @@ create policy "Admins and repartidores can create orders"
 -- authenticated/PUBLIC dejaba leer/corromper el historial completo de
 -- WhatsApp de cualquier teléfono sin autenticación. Solo la usan
 -- whatsapp-webhook/whatsapp-widget-chat, ambos con SERVICE_ROLE_KEY.
-revoke execute on function public.whatsapp_append_turn(text, jsonb, text, uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.whatsapp_append_turn(uuid, text, jsonb, text, uuid, uuid) from public, anon, authenticated;
 
 -- 6. BAJO — get_order_status (SECURITY DEFINER) es un bypass de RLS sobre
 -- orders sin ningún uso real en el código (confirmado por grep). Se revoca
