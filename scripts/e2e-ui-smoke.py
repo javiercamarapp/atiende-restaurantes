@@ -1,9 +1,10 @@
 import asyncio
+import os
 
 from playwright.async_api import async_playwright
 
 
-BASE_URL = "http://127.0.0.1:8080"
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 
 
 async def main() -> None:
