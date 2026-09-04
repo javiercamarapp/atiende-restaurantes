@@ -22,7 +22,7 @@ create table if not exists public.restaurant_staff (
   id uuid primary key default gen_random_uuid(),
   restaurant_id uuid not null references public.restaurants(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null default 'staff' check (role in ('owner', 'admin', 'staff')),
+  role text not null default 'staff' check (role in ('owner', 'admin', 'staff', 'repartidor')),
   notify_nuevo boolean not null default true,
   notify_preparando boolean not null default true,
   notify_en_camino boolean not null default true,

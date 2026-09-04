@@ -564,6 +564,7 @@ export type Database = {
           id: string
           image_url: string | null
           is_active: boolean | null
+          restaurant_id: string
           title: string
           updated_at: string | null
         }
@@ -575,6 +576,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_active?: boolean | null
+          restaurant_id: string
           title: string
           updated_at?: string | null
         }
@@ -586,10 +588,19 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_active?: boolean | null
+          restaurant_id?: string
           title?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promos_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       repartidor_perfil: {
         Row: {
@@ -795,6 +806,7 @@ export type Database = {
           messages: Json
           order_id: string | null
           phone: string
+          restaurant_id: string
           status: string
           updated_at: string
         }
@@ -805,6 +817,7 @@ export type Database = {
           messages?: Json
           order_id?: string | null
           phone: string
+          restaurant_id: string
           status?: string
           updated_at?: string
         }
@@ -815,10 +828,18 @@ export type Database = {
           messages?: Json
           order_id?: string | null
           phone?: string
+          restaurant_id?: string
           status?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_conversations_branch_id_fkey"
             columns: ["branch_id"]
@@ -862,6 +883,10 @@ export type Database = {
         Returns: boolean
       }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
+      shares_restaurant: {
+        Args: { _target: string; _viewer: string }
+        Returns: boolean
+      }
       orders_bucketed_stats: {
         Args: {
           p_bucket_ends: string[]
@@ -891,6 +916,7 @@ export type Database = {
           p_new_messages: Json
           p_order_id?: string
           p_phone: string
+          p_restaurant_id: string
           p_status?: string
         }
         Returns: Json
