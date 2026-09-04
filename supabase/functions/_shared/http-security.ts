@@ -97,8 +97,11 @@ export async function actorHash(actor: string): Promise<string> {
 }
 
 export function requestActor(req: Request, secondary = ""): string {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return `${forwarded || "unknown"}:${secondary.slice(0, 128)}`;
+  const connectingIp = req.headers.get("cf-connecting-ip")?.trim();
+  // Trusted proxies append their observed peer. The last hop prevents a
+  // caller-controlled prefix from manufacturing a new bucket per request.
+  const forwarded = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
+  return `${connectingIp || forwarded || "unknown"}:${secondary.slice(0, 128)}`;
 }
 
 // deno-lint-ignore no-explicit-any

@@ -6,6 +6,7 @@ import {
   originAllowed,
   preflightResponse,
   readJson,
+  requestActor,
 } from "./http-security.ts";
 
 function assert(condition: boolean, message: string) {
@@ -96,4 +97,11 @@ Deno.test("actor hash is deterministic and does not contain PII", async () => {
   assert(first === second, "hash is not deterministic");
   assert(/^[0-9a-f]{64}$/.test(first), "hash format is invalid");
   assert(!first.includes("999999"), "hash contains source PII");
+});
+
+Deno.test("rate actor ignores attacker-controlled forwarded prefixes", () => {
+  const req = new Request("https://edge.test", {
+    headers: { "x-forwarded-for": "198.51.100.7, 203.0.113.9" },
+  });
+  assert(requestActor(req) === "203.0.113.9:", "untrusted forwarded prefix selected");
 });

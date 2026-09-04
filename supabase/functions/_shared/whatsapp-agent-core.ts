@@ -26,7 +26,7 @@ import {
   OrderValidationError,
   vipNote,
 } from "./create-order-core.ts"
-import { fetchWithTimeout as fetch } from "./fetch-timeout.ts"
+import { fetchWithTimeout } from "./fetch-timeout.ts"
 
 // OPENROUTER_API_KEY vive en Supabase Vault (mismo mecanismo real que
 // ELEVENLABS_API_KEY y las credenciales de WhatsApp Cloud API) — no como
@@ -380,6 +380,9 @@ export async function runAgentTurn(
   orderId: string | null
   branchId: string | null
 }> {
+  // A complete agent turn may invoke the provider more than once after tool
+  // calls. Bound the whole turn, not only each individual HTTP request.
+  const turnDeadline = Date.now() + 45_000
   let orderId: string | null = null
   let branchId: string | null = null
   let huboFalloDeHerramienta = false // dispara el escalón caro en el siguiente turno
@@ -412,7 +415,18 @@ export async function runAgentTurn(
     const modeloDeEsteTurno = huboFalloDeHerramienta
       ? MODEL_ESCALADO
       : agentConfig.llm_model
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const remainingMs = turnDeadline - Date.now()
+    if (remainingMs <= 0) {
+      console.error("OpenRouter turn deadline exhausted")
+      return {
+        reply:
+          "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
+        updatedMessages: messages,
+        orderId,
+        branchId,
+      }
+    }
+    const res = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -433,7 +447,7 @@ export async function runAgentTurn(
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools: TOOLS,
       }),
-    })
+    }, Math.min(30_000, remainingMs))
 
     if (!res.ok) {
       console.error("OpenRouter API error:", await res.text())
