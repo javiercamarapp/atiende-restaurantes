@@ -351,6 +351,112 @@ export type Database = {
         }
         Relationships: []
       }
+      messaging_outbox: {
+        Row: {
+          attempts: number
+          available_at: string
+          channel: string
+          created_at: string
+          dedupe_key: string
+          event_type: string
+          fence_token: string | null
+          id: string
+          last_error: string | null
+          lease_until: string | null
+          payload: Json
+          restaurant_id: string
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          channel: string
+          created_at?: string
+          dedupe_key: string
+          event_type: string
+          fence_token?: string | null
+          id?: string
+          last_error?: string | null
+          lease_until?: string | null
+          payload: Json
+          restaurant_id: string
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          channel?: string
+          created_at?: string
+          dedupe_key?: string
+          event_type?: string
+          fence_token?: string | null
+          id?: string
+          last_error?: string | null
+          lease_until?: string | null
+          payload?: Json
+          restaurant_id?: string
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messaging_outbox_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operational_events: {
+        Row: {
+          component: string
+          correlation_id: string
+          created_at: string
+          duration_ms: number | null
+          event_name: string
+          id: number
+          metadata: Json
+          restaurant_id: string | null
+          severity: string
+        }
+        Insert: {
+          component: string
+          correlation_id: string
+          created_at?: string
+          duration_ms?: number | null
+          event_name: string
+          id?: never
+          metadata?: Json
+          restaurant_id?: string | null
+          severity: string
+        }
+        Update: {
+          component?: string
+          correlation_id?: string
+          created_at?: string
+          duration_ms?: number | null
+          event_name?: string
+          id?: never
+          metadata?: Json
+          restaurant_id?: string | null
+          severity?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operational_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           assigned_repartidor_id: string | null
@@ -501,6 +607,82 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      privacy_requests: {
+        Row: {
+          affected_rows: number
+          completed_at: string
+          created_at: string
+          customer_id: string | null
+          id: string
+          request_type: string
+          requested_by: string
+          restaurant_id: string
+        }
+        Insert: {
+          affected_rows?: number
+          completed_at?: string
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          request_type: string
+          requested_by: string
+          restaurant_id: string
+        }
+        Update: {
+          affected_rows?: number
+          completed_at?: string
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          request_type?: string
+          requested_by?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "privacy_requests_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      privacy_retention_policies: {
+        Row: {
+          conversation_days: number | null
+          order_pii_days: number | null
+          resolved_callback_days: number | null
+          restaurant_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          conversation_days?: number | null
+          order_pii_days?: number | null
+          resolved_callback_days?: number | null
+          restaurant_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          conversation_days?: number | null
+          order_pii_days?: number | null
+          resolved_callback_days?: number | null
+          restaurant_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "privacy_retention_policies_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       products: {
         Row: {
@@ -994,6 +1176,36 @@ export type Database = {
         Args: { _restaurant_id: string; _user_id: string }
         Returns: boolean
       }
+      claim_messaging_outbox_batch: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_worker_id: string
+        }
+        Returns: {
+          attempts: number
+          available_at: string
+          channel: string
+          created_at: string
+          dedupe_key: string
+          event_type: string
+          fence_token: string | null
+          id: string
+          last_error: string | null
+          lease_until: string | null
+          payload: Json
+          restaurant_id: string
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "messaging_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_whatsapp_conversation: {
         Args: {
           p_lease_seconds?: number
@@ -1008,6 +1220,17 @@ export type Database = {
           p_message_id: string
           p_phone_hash: string
           p_restaurant_id: string
+        }
+        Returns: boolean
+      }
+      complete_messaging_outbox: {
+        Args: {
+          p_error?: string
+          p_fence_token: string
+          p_id: string
+          p_max_attempts?: number
+          p_retry_seconds?: number
+          p_status: string
         }
         Returns: boolean
       }
@@ -1026,6 +1249,24 @@ export type Database = {
           p_idempotency_key?: string
           p_order: Json
         }
+        Returns: Json
+      }
+      enqueue_messaging_outbox: {
+        Args: {
+          p_channel: string
+          p_dedupe_key: string
+          p_event_type: string
+          p_payload: Json
+          p_restaurant_id: string
+        }
+        Returns: string
+      }
+      erase_customer_data: {
+        Args: { p_customer_id: string; p_restaurant_id: string }
+        Returns: number
+      }
+      export_customer_data: {
+        Args: { p_customer_id: string; p_restaurant_id: string }
         Returns: Json
       }
       finish_whatsapp_message: {
@@ -1051,6 +1292,10 @@ export type Database = {
         Returns: boolean
       }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
+      operational_alert_snapshot: {
+        Args: { p_restaurant_id: string; p_window_minutes?: number }
+        Returns: Json
+      }
       orders_bucketed_stats: {
         Args: {
           p_bucket_ends: string[]
@@ -1079,6 +1324,22 @@ export type Database = {
           whatsapp_revenue: number
         }[]
       }
+      record_operational_event: {
+        Args: {
+          p_component: string
+          p_correlation_id: string
+          p_duration_ms?: number
+          p_event_name: string
+          p_metadata?: Json
+          p_restaurant_id: string
+          p_severity: string
+        }
+        Returns: number
+      }
+      run_privacy_retention: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: Json
+      }
       shares_restaurant: {
         Args: { _target: string; _viewer: string }
         Returns: boolean
@@ -1090,6 +1351,54 @@ export type Database = {
           branch_slug: string
           colonia_encontrada: string
           distancia_km: number
+        }[]
+      }
+      superadmin_customers_page: {
+        Args: { p_page?: number; p_page_size?: number; p_search?: string }
+        Returns: {
+          last_order_at: string
+          name: string
+          order_count: number
+          phone: string
+          restaurant_id: string
+        }[]
+      }
+      superadmin_orders_page: {
+        Args: {
+          p_page?: number
+          p_page_size?: number
+          p_search?: string
+          p_since?: string
+          p_status?: string
+        }
+        Returns: {
+          created_at: string
+          restaurant_id: string
+          status: string
+          total: number
+        }[]
+      }
+      superadmin_platform_stats: {
+        Args: never
+        Returns: {
+          active_restaurant_count: number
+          customer_count: number
+          orders_today: number
+          restaurant_count: number
+          revenue_today: number
+        }[]
+      }
+      superadmin_restaurants_page: {
+        Args: { p_page?: number; p_page_size?: number }
+        Returns: {
+          customer_count: number
+          id: string
+          is_active: boolean
+          name: string
+          order_count: number
+          pending_order_count: number
+          revenue: number
+          slug: string
         }[]
       }
       update_assigned_order_status: {
@@ -1141,12 +1450,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1168,12 +1477,13 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1192,12 +1502,13 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1216,12 +1527,13 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1234,11 +1546,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
