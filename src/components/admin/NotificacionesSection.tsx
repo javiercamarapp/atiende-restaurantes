@@ -55,6 +55,7 @@ interface OrderRow {
   delivered_at?: string | null;
   estimated_delivery_at?: string | null;
   scheduled_for?: string | null;
+  incident_note?: string | null;
 }
 
 interface CallbackRow {
@@ -77,7 +78,7 @@ const EVENTOS: { key: keyof Omit<PreferenciasRow, "id" | "restaurant_id">; label
   { key: "notify_preparando", label: "En preparación", descripcion: "Cuando se confirma un pedido y pasa a cocina — correo real." },
   { key: "notify_en_camino", label: "En camino", descripcion: "Cuando un pedido sale a entrega — correo real." },
   { key: "notify_entregado", label: "Entregado", descripcion: "Cuando se marca un pedido como entregado — correo real, y controla la pestaña \"Entregados\"." },
-  { key: "notify_cancelado", label: "Con reclamos (cancelado)", descripcion: "Cuando se cancela un pedido — la única señal real de reclamo que existe hoy en `orders`. Correo real, y controla la pestaña \"Con reclamos\"." },
+  { key: "notify_cancelado", label: "Incidencias (cancelado o problema)", descripcion: "Cuando se cancela un pedido o se reporta una incidencia real (dirección incorrecta, cliente no contesta, queja, etc.) — correo real, y controla la pestaña \"Incidencias\"." },
   { key: "notify_entrega_tardia", label: "Entrega tardía", descripcion: "Cuando un pedido se entrega más tarde de lo prometido (o de lo común, si no hay hora prometida). Controla la pestaña \"Entrega tardía\".", sinCorreoAun: true },
   { key: "notify_programado_por_vencer", label: "Programado por vencer", descripcion: "Cuando un pedido programado está por llegar a su hora y sigue sin despacharse. Controla la pestaña \"Programados\".", sinCorreoAun: true },
   { key: "notify_queja", label: "Quejas registradas", descripcion: "Cuando el agente anota un contacto con motivo de queja o inconformidad — riesgo directo de perder al cliente si no se atiende rápido. Controla la pestaña \"Quejas\".", sinCorreoAun: true },
@@ -93,7 +94,7 @@ type TabId = "recibidos" | "entregados" | "reclamos" | "entrega_tardia" | "progr
 const TABS: { id: TabId; label: string; icon: typeof Package }[] = [
   { id: "recibidos", label: "Recibidos", icon: Package },
   { id: "entregados", label: "Entregados", icon: CheckCircle2 },
-  { id: "reclamos", label: "Con reclamos", icon: Ban },
+  { id: "reclamos", label: "Incidencias", icon: Ban },
   { id: "entrega_tardia", label: "Entrega tardía", icon: Clock },
   { id: "programados", label: "Programados", icon: CalendarClock },
   { id: "quejas", label: "Quejas", icon: AlertTriangle },
@@ -158,6 +159,12 @@ function FilaPedido({ order, pill }: { order: OrderRow; pill?: React.ReactNode }
             {numeroPedido(order)}
             {order.branch ? ` · ${order.branch}` : ""} · {format(new Date(order.created_at), "d MMM, HH:mm", { locale: es })}
           </p>
+          {/* Nota real de la incidencia (incident_note) — pedido real de
+              Javier el 4-sep-2026, mismo patrón que ya usa el mensaje de
+              Quejas/Escalar más abajo en este archivo. */}
+          {order.status === "problema" && order.incident_note && (
+            <p className="text-[12px] text-foreground mt-0.5 leading-snug">{order.incident_note}</p>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -261,7 +268,10 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
           .order("created_at", { ascending: false }).limit(50),
         sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "entregado")
           .order("created_at", { ascending: false }).limit(50),
-        sb.from("orders").select("*").eq("restaurant_id", restaurantId).eq("status", "cancelado")
+        // "Incidencias": cancelados + el estado genérico "problema" (pedido
+        // real de Javier el 4-sep-2026) — cualquier incidencia real
+        // reportada en cualquier punto del ciclo, con su nota en incident_note.
+        sb.from("orders").select("*").eq("restaurant_id", restaurantId).in("status", ["cancelado", "problema"])
           .order("created_at", { ascending: false }).limit(50),
         // Candidatos a "entrega tardía": todo lo entregado con marca real de
         // hora de entrega — el filtro fino (¿de verdad tardó?) es client-side
@@ -477,16 +487,26 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
               <>
                 <p className="font-mono text-[11px] tabular-nums text-muted-foreground">{reclamos.length} en total</p>
                 <p className="text-[12px] text-muted-foreground -mt-1">
-                  Pedidos cancelados — no existe hoy una columna de "reclamo" en `orders`, así que se usa la señal real más cercana: status "cancelado" (la
-                  única que de verdad indica que un pedido salió mal, según ya definió Historial de Órdenes).
+                  Pedidos cancelados o con una incidencia real reportada (dirección incorrecta, cliente no contesta, queja del cliente, etc. — con la nota
+                  real que se escribió al reportarla).
                 </p>
                 {cargandoListas ? (
                   <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                 ) : reclamos.length === 0 ? (
-                  <EstadoVacio icon={Ban} texto="No hay pedidos cancelados." />
+                  <EstadoVacio icon={Ban} texto="No hay incidencias ni pedidos cancelados." />
                 ) : (
                   <div className="rounded-xl border border-border overflow-hidden">
-                    {reclamos.map((o) => <FilaPedido key={o.id} order={o} pill={<Pill clase="bg-red-100 text-red-700">Cancelado</Pill>} />)}
+                    {reclamos.map((o) => (
+                      <FilaPedido
+                        key={o.id}
+                        order={o}
+                        pill={
+                          o.status === "problema"
+                            ? <Pill clase="bg-fuchsia-100 text-fuchsia-700">Incidencia</Pill>
+                            : <Pill clase="bg-red-100 text-red-700">Cancelado</Pill>
+                        }
+                      />
+                    ))}
                   </div>
                 )}
               </>

@@ -16,9 +16,11 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ShoppingCart, MapPin, Bike, Clock, User, Package, Truck, CheckCircle2,
-  CalendarClock, Store, Loader2, Radar,
+  CalendarClock, Store, Loader2, Radar, AlertTriangle,
 } from "lucide-react";
 
 // Cada 60s: refresca pedidos y re-evalúa a qué pestaña pertenece cada
@@ -42,7 +44,16 @@ interface OrderRow {
   scheduled_for: string | null;
   assigned_repartidor_id: string | null;
   estimated_delivery_at: string | null;
+  incident_note: string | null;
 }
+
+// "Demorado" no es un status guardado — es una condición calculada: la
+// entrega sigue en_camino pero ya se pasó del tiempo estimado real. Pedido
+// real de Javier el 4-sep-2026 ("también agrega el demorado"), junto con
+// el estado genérico "Incidencias" — mismo criterio que ya usa "Entrega
+// tardía" en Notificaciones, para pedidos TODAVÍA en camino.
+const esDemorado = (o: OrderRow, ahora: number) =>
+  o.status === "en_camino" && !!o.estimated_delivery_at && new Date(o.estimated_delivery_at).getTime() < ahora;
 interface BranchRow {
   id: string;
   name: string;
@@ -76,6 +87,15 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
   const [asignando, setAsignando] = useState<string | null>(null); // order.id en flujo de despacho
   const [repartidorElegido, setRepartidorElegido] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState<string | null>(null);
+
+  // Diálogo real de "Reportar incidencia" — pedido real de Javier el
+  // 4-sep-2026: un estado genérico ("Incidencias" en la UI, `problema` en
+  // la base) para cualquier problema real en cualquier punto del ciclo,
+  // con una nota libre que dispara el correo real de aviso al staff (mismo
+  // mecanismo que ya usa "cancelado").
+  const [incidenciaAbierta, setIncidenciaAbierta] = useState<OrderRow | null>(null);
+  const [incidenciaNota, setIncidenciaNota] = useState("");
+  const [reportandoIncidencia, setReportandoIncidencia] = useState(false);
 
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const repartidorById = useMemo(() => new Map(repartidores.map((r) => [r.user_id, r])), [repartidores]);
@@ -266,6 +286,28 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
     await cargar();
   };
 
+  const reportarIncidencia = async () => {
+    if (!incidenciaAbierta) return;
+    if (!incidenciaNota.trim()) {
+      toast({ title: "Falta la nota", description: "Escribe qué pasó antes de reportar la incidencia.", variant: "destructive" });
+      return;
+    }
+    setReportandoIncidencia(true);
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: "problema", incident_note: incidenciaNota.trim() })
+      .eq("id", incidenciaAbierta.id);
+    setReportandoIncidencia(false);
+    if (error) {
+      toast({ title: "No se pudo reportar la incidencia", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Incidencia reportada", description: `#${incidenciaAbierta.order_number} pasó a Incidencias.` });
+    setIncidenciaAbierta(null);
+    setIncidenciaNota("");
+    await cargar();
+  };
+
   const conteo = tab === "recibidas" ? recibidas.length : tab === "enviadas" ? enviadas.length : programadas.length;
 
   return (
@@ -367,21 +409,33 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
                             {repartidor?.nombre || repartidor?.email || "Repartidor"}
                           </span>
                           {order.estimated_delivery_at && (
-                            <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                            <span className={`inline-flex items-center gap-1.5 text-[12px] ${esDemorado(order, ahora) ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
                               <Clock className="w-3.5 h-3.5" strokeWidth={1.75} />
-                              Llega {format(new Date(order.estimated_delivery_at), "HH:mm", { locale: es })}
+                              {esDemorado(order, ahora) ? "Demorado — debía llegar " : "Llega "}
+                              {format(new Date(order.estimated_delivery_at), "HH:mm", { locale: es })}
                             </span>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 rounded-full px-3 text-[11.5px] ml-auto"
-                            disabled={guardando === order.id}
-                            onClick={(e) => { e.stopPropagation(); marcarEntregado(order); }}
-                          >
-                            {guardando === order.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                            Marcar entregado
-                          </Button>
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-full px-3 text-[11.5px] text-fuchsia-700 border-fuchsia-500/30 hover:bg-fuchsia-500/10"
+                              onClick={(e) => { e.stopPropagation(); setIncidenciaAbierta(order); }}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              Incidencia
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-full px-3 text-[11.5px]"
+                              disabled={guardando === order.id}
+                              onClick={(e) => { e.stopPropagation(); marcarEntregado(order); }}
+                            >
+                              {guardando === order.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              Marcar entregado
+                            </Button>
+                          </div>
                         </div>
                       )}
 
@@ -422,15 +476,26 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
                               </Button>
                             </div>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 rounded-full px-3 text-[11.5px]"
-                              onClick={(e) => { e.stopPropagation(); setAsignando(order.id); }}
-                            >
-                              <Bike className="w-3 h-3" strokeWidth={1.75} />
-                              Asignar repartidor
-                            </Button>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 rounded-full px-3 text-[11.5px]"
+                                onClick={(e) => { e.stopPropagation(); setAsignando(order.id); }}
+                              >
+                                <Bike className="w-3 h-3" strokeWidth={1.75} />
+                                Asignar repartidor
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 rounded-full px-3 text-[11.5px] text-fuchsia-700 border-fuchsia-500/30 hover:bg-fuchsia-500/10"
+                                onClick={(e) => { e.stopPropagation(); setIncidenciaAbierta(order); }}
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                Incidencia
+                              </Button>
+                            </div>
                           )}
                         </div>
                       )}
@@ -458,6 +523,34 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
           />
         </div>
       )}
+
+      {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
+      <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reportar incidencia</DialogTitle>
+            <DialogDescription>
+              {incidenciaAbierta ? `Pedido #${incidenciaAbierta.order_number} — ${incidenciaAbierta.customer_name}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Ej. dirección incorrecta, cliente no contesta, queja del cliente..."
+            value={incidenciaNota}
+            onChange={(e) => setIncidenciaNota(e.target.value)}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>Cancelar</Button>
+            <Button
+              className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+              onClick={reportarIncidencia}
+              disabled={reportandoIncidencia}
+            >
+              {reportandoIncidencia ? "Reportando..." : "Reportar incidencia"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

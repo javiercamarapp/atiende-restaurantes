@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Package, 
-  MapPin, 
-  Clock, 
-  CheckCircle, 
-  Phone, 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Package,
+  MapPin,
+  Clock,
+  CheckCircle,
+  Phone,
   User,
   DollarSign,
   Truck,
@@ -21,7 +23,13 @@ import {
   Timer,
   History,
   HelpCircle,
-  ArrowLeft
+  ArrowLeft,
+  AlertTriangle,
+  UserCircle,
+  Bike,
+  Car,
+  IdCard,
+  Contact
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -31,6 +39,7 @@ import { AtiendeWordmark } from "@/components/AtiendeLogo";
 
 interface Order {
   id: string;
+  order_number: number | null;
   customer_name: string;
   customer_phone: string;
   customer_address: string | null;
@@ -39,7 +48,32 @@ interface Order {
   created_at: string;
   items: any;
   branch: string | null;
+  estimated_delivery_at: string | null;
+  incident_note: string | null;
 }
+
+interface RepartidorPerfil {
+  nombre_completo: string;
+  telefono: string;
+  correo: string;
+  tipo_vehiculo: string;
+  placas: string | null;
+  numero_licencia: string | null;
+  direccion: string;
+  contacto_emergencia_nombre: string;
+  contacto_emergencia_telefono: string;
+  fecha_alta: string;
+}
+
+// "Demorado" no es un status guardado — es una condición calculada: la
+// entrega sigue en_camino pero ya se pasó del tiempo estimado real
+// (estimated_delivery_at, capturada al despachar). Pedido real de Javier
+// el 4-sep-2026 ("también agrega el demorado"), junto con el estado
+// genérico "Incidencias" — mismo criterio real que ya usa "Entrega tardía"
+// en Notificaciones del admin, pero para pedidos TODAVÍA en camino, no
+// solo los ya entregados.
+const esDemorado = (order: Order) =>
+  order.status === "en_camino" && !!order.estimated_delivery_at && new Date(order.estimated_delivery_at).getTime() < Date.now();
 
 const RepartidorDashboard = () => {
   const navigate = useNavigate();
@@ -48,6 +82,17 @@ const RepartidorDashboard = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [perfil, setPerfil] = useState<RepartidorPerfil | null>(null);
+
+  // Diálogo real de "Reportar incidencia" — pedido real de Javier el
+  // 4-sep-2026: un estado genérico ("Incidencias" en la UI, `problema` en
+  // la base) que el repartidor mismo puede reportar en cualquier punto del
+  // ciclo (dirección incorrecta, cliente no contesta, etc.), con una nota
+  // libre que queda guardada en `incident_note` y dispara el correo real de
+  // aviso al staff (mismo mecanismo que ya usa "cancelado").
+  const [incidenciaAbierta, setIncidenciaAbierta] = useState<{ orderId: string; clienteNombre: string } | null>(null);
+  const [incidenciaNota, setIncidenciaNota] = useState("");
+  const [reportandoIncidencia, setReportandoIncidencia] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -73,7 +118,7 @@ const RepartidorDashboard = () => {
       }
 
       setUser(session.user);
-      await fetchOrders();
+      await Promise.all([fetchOrders(session.user.id), fetchPerfil(session.user.id)]);
       setLoading(false);
     };
 
@@ -90,15 +135,31 @@ const RepartidorDashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const fetchOrders = async () => {
+  // Bug real corregido el 4-sep-2026: antes se traían TODOS los pedidos del
+  // restaurante sin filtro, así que cualquier repartidor veía (y podía
+  // marcar como entregados) los pedidos asignados a otros repartidores. La
+  // asignación real vive en `assigned_repartidor_id` (la pone el admin al
+  // despachar desde Pedidos) — cada repartidor solo debe ver lo que es
+  // suyo.
+  const fetchOrders = async (repartidorId: string) => {
     const { data, error } = await supabase
       .from("orders")
       .select("*")
+      .eq("assigned_repartidor_id", repartidorId)
       .order("created_at", { ascending: false });
 
     if (!error && data) {
       setOrders(data as Order[]);
     }
+  };
+
+  const fetchPerfil = async (repartidorId: string) => {
+    const { data } = await supabase
+      .from("repartidor_perfil")
+      .select("*")
+      .eq("user_id", repartidorId)
+      .maybeSingle();
+    setPerfil((data as RepartidorPerfil | null) ?? null);
   };
 
   const handleLogout = async () => {
@@ -117,20 +178,39 @@ const RepartidorDashboard = () => {
       return;
     }
 
-    // Marca de tiempo real de entrega (aparte del status), para "Entrega
-    // tardía" en el panel de Notificaciones del admin. Va suelta y sin
-    // bloquear: si la columna `delivered_at` todavía no existe (migración
-    // pendiente de aplicar — ver supabase/migrations/20260903041514_...),
-    // esto falla en silencio y el pedido de todos modos queda entregado.
+    // Marca de tiempo real de entrega, aparte del status — usada por
+    // "Entrega tardía" en el panel de Notificaciones del admin.
     if (newStatus === "entregado") {
       (supabase as any).from("orders").update({ delivered_at: new Date().toISOString() }).eq("id", orderId)
         .then(({ error: errDelivered }: { error: unknown }) => {
-          if (errDelivered) console.warn("No se pudo guardar delivered_at (¿falta aplicar la migración?)", errDelivered);
+          if (errDelivered) console.warn("No se pudo guardar delivered_at", errDelivered);
         });
     }
 
     toast.success(`Pedido ${newStatus === 'en_camino' ? 'en camino' : newStatus === 'entregado' ? 'entregado' : 'actualizado'}`);
-    await fetchOrders();
+    if (user?.id) await fetchOrders(user.id);
+  };
+
+  const reportarIncidencia = async () => {
+    if (!incidenciaAbierta) return;
+    if (!incidenciaNota.trim()) {
+      toast.error("Escribe qué pasó antes de reportar la incidencia.");
+      return;
+    }
+    setReportandoIncidencia(true);
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: "problema", incident_note: incidenciaNota.trim() })
+      .eq("id", incidenciaAbierta.orderId);
+    setReportandoIncidencia(false);
+    if (error) {
+      toast.error("No se pudo reportar la incidencia");
+      return;
+    }
+    toast.success("Incidencia reportada — administración ya la puede ver.");
+    setIncidenciaAbierta(null);
+    setIncidenciaNota("");
+    if (user?.id) await fetchOrders(user.id);
   };
 
   const openGoogleMaps = (address: string | null) => {
@@ -170,6 +250,10 @@ const RepartidorDashboard = () => {
         return <Badge className="bg-secondary/15 text-secondary-foreground dark:text-secondary border border-secondary/30">En Camino</Badge>;
       case 'entregado':
         return <Badge className="bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30">Entregado</Badge>;
+      case 'problema':
+        return <Badge className="bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-400 border border-fuchsia-500/30">Incidencia</Badge>;
+      case 'cancelado':
+        return <Badge className="bg-red-500/15 text-red-700 dark:text-red-400 border border-red-500/30">Cancelado</Badge>;
       default:
         return <Badge className="bg-muted text-muted-foreground border border-border">{status || 'Sin estado'}</Badge>;
     }
@@ -188,11 +272,22 @@ const RepartidorDashboard = () => {
                 <User className="w-4 h-4 text-muted-foreground" />
                 <span className="font-semibold text-foreground">{order.customer_name}</span>
               </div>
+              <p className="font-mono text-[11px] text-muted-foreground">
+                Pedido #{order.order_number != null ? String(order.order_number).padStart(4, "0") : order.id.slice(0, 8)}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: es })}
               </p>
             </div>
-            {getStatusBadge(order.status)}
+            <div className="flex flex-col items-end gap-1">
+              {getStatusBadge(order.status)}
+              {esDemorado(order) && (
+                <Badge className="bg-red-500/15 text-red-700 dark:text-red-400 border border-red-500/30">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  Demorado
+                </Badge>
+              )}
+            </div>
           </div>
 
           {/* Order Items */}
@@ -273,6 +368,17 @@ const RepartidorDashboard = () => {
                 >
                   <CheckCircle className="w-5 h-5 mr-2" />
                   ENTREGADO
+                </Button>
+              )}
+              {(order.status === 'pending' || order.status === 'preparando' || order.status === 'en_camino') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-fuchsia-700 dark:text-fuchsia-400 border-fuchsia-500/30 hover:bg-fuchsia-500/10"
+                  onClick={() => setIncidenciaAbierta({ orderId: order.id, clienteNombre: order.customer_name })}
+                >
+                  <AlertTriangle className="w-4 h-4 mr-1" />
+                  Reportar incidencia
                 </Button>
               )}
             </div>
@@ -441,70 +547,7 @@ const RepartidorDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <>
-                {pendingOrders.map(order => (
-                  <Card key={order.id} className="mb-4">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <User className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-semibold text-foreground">{order.customer_name}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: es })}
-                          </p>
-                        </div>
-                        {getStatusBadge(order.status)}
-                      </div>
-
-                      {/* Address */}
-                      {order.customer_address && (
-                        <div className="flex items-start gap-2 mb-3">
-                          <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                          <p className="text-sm text-muted-foreground">{order.customer_address}</p>
-                        </div>
-                      )}
-
-                      {/* Total */}
-                      <div className="flex items-center gap-2 mb-4">
-                        <DollarSign className="w-4 h-4 text-green-600" />
-                        <span className="font-bold text-foreground">${Number(order.total).toFixed(2)}</span>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => callCustomer(order.customer_phone)}
-                            className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                          >
-                            <Phone className="w-4 h-4 mr-1" />
-                            Llamar
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => openGoogleMaps(order.customer_address)}
-                            className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                          >
-                            <MapPin className="w-4 h-4 mr-1" />
-                            Mapa
-                          </Button>
-                        </div>
-                        <Button
-                          size="lg"
-                          className="w-full bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-4 text-lg"
-                          onClick={() => updateOrderStatus(order.id, 'en_camino')}
-                        >
-                          <Truck className="w-6 h-6 mr-2" />
-                          RECIBIDO - EN CAMINO
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </>
+              pendingOrders.map(order => <OrderCard key={order.id} order={order} />)
             )}
           </div>
         );
@@ -536,53 +579,7 @@ const RepartidorDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <>
-                {activeOrders.map(order => (
-                  <OrderCard key={order.id} order={order} showActions={false} />
-                ))}
-                
-                {/* Prominent Action Buttons */}
-                <Card className="border-2 border-green-500 bg-green-50 dark:bg-green-500/10">
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-bold text-center mb-4 text-foreground">Acciones de Entrega</h3>
-                    <div className="space-y-3">
-                      {activeOrders.map(order => (
-                        <div key={order.id} className="space-y-2">
-                          <p className="text-sm font-medium text-center text-muted-foreground">
-                            Pedido de {order.customer_name} - ${Number(order.total).toFixed(2)}
-                          </p>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => callCustomer(order.customer_phone)}
-                              className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                            >
-                              <Phone className="w-4 h-4 mr-1" />
-                              Llamar
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => openGoogleMaps(order.customer_address)}
-                              className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                            >
-                              <MapPin className="w-4 h-4 mr-1" />
-                              Mapa
-                            </Button>
-                          </div>
-                          <Button
-                            size="lg"
-                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-4 text-lg"
-                            onClick={() => updateOrderStatus(order.id, 'entregado')}
-                          >
-                            <CheckCircle className="w-6 h-6 mr-2" />
-                            ENTREGADO
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
+              activeOrders.map(order => <OrderCard key={order.id} order={order} />)
             )}
           </div>
         );
@@ -710,7 +707,8 @@ const RepartidorDashboard = () => {
                 <div>
                   <h3 className="font-semibold mb-2 text-foreground">¿Problemas con un pedido?</h3>
                   <p className="text-sm text-muted-foreground">
-                    Contacta al cliente directamente usando el botón "Llamar" o comunícate con administración.
+                    Contacta al cliente directamente usando el botón "Llamar", o presiona "Reportar incidencia" en la
+                    tarjeta del pedido — queda registrado y administración lo ve de inmediato.
                   </p>
                 </div>
                 <div className="pt-4 border-t">
@@ -720,6 +718,82 @@ const RepartidorDashboard = () => {
                 </div>
               </CardContent>
             </Card>
+          </div>
+        );
+
+      case 'profile':
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 mb-4">
+              <Button variant="ghost" size="icon" onClick={() => setActiveSection('dashboard')}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <UserCircle className="w-6 h-6" />
+                Perfil
+              </h2>
+            </div>
+            {!perfil ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <UserCircle className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No encontramos tu perfil operativo todavía.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xl font-semibold shrink-0">
+                        {perfil.nombre_completo.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-display text-lg font-semibold text-foreground">{perfil.nombre_completo}</p>
+                        <p className="text-sm text-muted-foreground">{perfil.correo}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm text-foreground">{perfil.telefono}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {perfil.tipo_vehiculo === 'bicicleta' ? <Bike className="w-4 h-4 text-muted-foreground shrink-0" /> : <Car className="w-4 h-4 text-muted-foreground shrink-0" />}
+                        <span className="text-sm text-foreground capitalize">{perfil.tipo_vehiculo}</span>
+                      </div>
+                      {perfil.placas && (
+                        <div className="flex items-center gap-2">
+                          <IdCard className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <span className="text-sm text-foreground">{perfil.placas}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm text-foreground">Desde {format(new Date(perfil.fecha_alta), "d MMM yyyy", { locale: es })}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-6 space-y-2">
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Contacto de emergencia</p>
+                    <div className="flex items-center gap-2">
+                      <Contact className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm text-foreground">{perfil.contacto_emergencia_nombre} — {perfil.contacto_emergencia_telefono}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+            <Button
+              variant="outline"
+              className="w-full text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
+              onClick={handleLogout}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Cerrar sesión
+            </Button>
           </div>
         );
 
@@ -744,9 +818,12 @@ const RepartidorDashboard = () => {
       <div className="md:hidden fixed top-0 left-0 right-0 bg-card border-b border-border z-50 safe-area-top">
         <div className="flex items-center justify-between px-4 py-3">
           <AtiendeWordmark />
-          <Button variant="ghost" size="icon" onClick={handleLogout} className="text-destructive hover:bg-destructive hover:text-destructive-foreground">
-            <LogOut className="w-5 h-5" />
-          </Button>
+          <button
+            onClick={() => setActiveSection('profile')}
+            className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium"
+          >
+            {user?.email?.charAt(0).toUpperCase() || 'R'}
+          </button>
         </div>
       </div>
 
@@ -817,6 +894,34 @@ const RepartidorDashboard = () => {
           </button>
         </nav>
       </div>
+
+      {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
+      <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reportar incidencia</DialogTitle>
+            <DialogDescription>
+              {incidenciaAbierta ? `Pedido de ${incidenciaAbierta.clienteNombre}` : ""} — cuéntanos qué pasó, administración lo verá de inmediato.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Ej. la dirección no existe, el cliente no contesta, hubo un accidente..."
+            value={incidenciaNota}
+            onChange={(e) => setIncidenciaNota(e.target.value)}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>Cancelar</Button>
+            <Button
+              className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+              onClick={reportarIncidencia}
+              disabled={reportandoIncidencia}
+            >
+              {reportandoIncidencia ? "Reportando..." : "Reportar incidencia"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -41,6 +41,8 @@ interface OrderRow {
   source: string;
   branch: string | null;
   branch_id: string | null;
+  estimated_delivery_at: string | null;
+  incident_note: string | null;
 }
 interface BranchOption {
   id: string;
@@ -75,11 +77,24 @@ const ESTADO_BADGE: Record<string, { etiqueta: string; clase: string }> = {
   completado: { etiqueta: "Entregado", clase: "bg-green-100 text-green-700" },
   cancelado: { etiqueta: "Cancelado", clase: "bg-red-100 text-red-700" },
   programado: { etiqueta: "Programado", clase: "bg-purple-100 text-purple-700" },
+  // Estado genérico "Incidencias" (`problema` en la base, pedido real de
+  // Javier el 4-sep-2026): cubre cualquier problema real reportado en
+  // cualquier punto del ciclo — dirección incorrecta, cliente no contesta,
+  // o una queja real después de que el pedido ya se entregó — con la nota
+  // libre en `incident_note`.
+  problema: { etiqueta: "Incidencia", clase: "bg-fuchsia-100 text-fuchsia-700" },
   reclamado: { etiqueta: "Reclamado", clase: "bg-amber-100 text-amber-800" },
   regresado: { etiqueta: "Regresado", clase: "bg-red-100 text-red-700" },
 };
 const badgeDeEstado = (status: string | null) =>
   ESTADO_BADGE[status ?? ""] ?? { etiqueta: status || "Sin estado", clase: "bg-muted text-muted-foreground" };
+
+// "Demorado" no es un status guardado — es una condición calculada: el
+// pedido sigue en_camino pero ya se pasó de su tiempo estimado real
+// (estimated_delivery_at, capturada al despachar desde Pedidos). Pedido
+// real de Javier el 4-sep-2026 ("también agrega el demorado").
+const esDemorado = (o: OrderRow) =>
+  o.status === "en_camino" && !!o.estimated_delivery_at && new Date(o.estimated_delivery_at).getTime() < Date.now();
 
 const numeroPedido = (id: string) => `#${id.slice(0, 8).toUpperCase()}`;
 const formatoMXN = (n: number) =>
@@ -128,7 +143,7 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
       const sb: any = supabase;
       let q = sb
         .from("orders")
-        .select("id, customer_name, customer_phone, total, status, created_at, source, branch, branch_id", { count: "exact" })
+        .select("id, customer_name, customer_phone, total, status, created_at, source, branch, branch_id, estimated_delivery_at, incident_note", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(desde, hasta)
         // Pedidos de prueba reales del widget de WhatsApp de la página
@@ -345,18 +360,18 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
             </PopoverContent>
           </Popover>
 
-          {/* Reclamos / quejas / no entregados — mapeado al estado real
-              disponible: todo lo que no llegó a "entregado" (incluye
-              cancelado, la única señal real de un pedido que salió mal). */}
+          {/* Reclamos / incidencias / no entregados — todo pedido que no
+              llegó a "entregado" (incluye cancelado E incidencias reales,
+              ver ESTADO_BADGE.problema arriba). */}
           <button
             onClick={() => setSoloProblemas((v) => !v)}
-            title='No hay un estado "reclamo" o "queja" en el backend hoy — este filtro muestra todo pedido que no llegó a entregado (incluye cancelados).'
+            title="Muestra todo pedido que no llegó a entregado: cancelados e incidencias reportadas."
             className={`flex items-center gap-1.5 h-8 px-2.5 rounded-full text-[12px] font-medium transition-colors ${
               soloProblemas ? "bg-destructive text-destructive-foreground" : "border border-border text-foreground hover:bg-muted"
             }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            Reclamos / no entregados
+            Incidencias / no entregados
           </button>
 
           <form
@@ -441,7 +456,17 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
                         <td className="px-3 py-2.5 text-[12.5px] text-foreground">{nombreSucursal(o)}</td>
                         <td className="px-3 py-2.5 text-right font-display text-[13px] font-semibold tabular-nums text-foreground">{formatoMXN(Number(o.total))}</td>
                         <td className="px-3 py-2.5">
-                          <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-medium ${badge.clase}`}>{badge.etiqueta}</span>
+                          <span
+                            className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-medium ${badge.clase}`}
+                            title={o.status === "problema" && o.incident_note ? o.incident_note : undefined}
+                          >
+                            {badge.etiqueta}
+                          </span>
+                          {esDemorado(o) && (
+                            <span className="inline-block ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-red-100 text-red-700">
+                              Demorado
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-[12px] text-muted-foreground whitespace-nowrap">
                           {o.created_at ? format(new Date(o.created_at), "d MMM yyyy, HH:mm", { locale: es }) : "—"}

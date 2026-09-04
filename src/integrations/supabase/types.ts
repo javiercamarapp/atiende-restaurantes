@@ -296,6 +296,24 @@ export type Database = {
           },
         ]
       }
+      merida_colonias: {
+        Row: {
+          lat: number
+          lng: number
+          nombre: string
+        }
+        Insert: {
+          lat: number
+          lng: number
+          nombre: string
+        }
+        Update: {
+          lat?: number
+          lng?: number
+          nombre?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           assigned_repartidor_id: string | null
@@ -311,7 +329,10 @@ export type Database = {
           delivered_at: string | null
           estimated_delivery_at: string | null
           id: string
+          incident_note: string | null
+          is_demo: boolean
           items: Json
+          notes: string | null
           order_number: number
           restaurant_id: string
           scheduled_for: string | null
@@ -333,7 +354,10 @@ export type Database = {
           delivered_at?: string | null
           estimated_delivery_at?: string | null
           id?: string
+          incident_note?: string | null
+          is_demo?: boolean
           items: Json
+          notes?: string | null
           order_number?: number
           restaurant_id: string
           scheduled_for?: string | null
@@ -355,7 +379,10 @@ export type Database = {
           delivered_at?: string | null
           estimated_delivery_at?: string | null
           id?: string
+          incident_note?: string | null
+          is_demo?: boolean
           items?: Json
+          notes?: string | null
           order_number?: number
           restaurant_id?: string
           scheduled_for?: string | null
@@ -620,9 +647,11 @@ export type Database = {
           notify_en_camino: boolean
           notify_entrega_tardia: boolean
           notify_entregado: boolean
+          notify_escalar: boolean
           notify_nuevo: boolean
           notify_preparando: boolean
           notify_programado_por_vencer: boolean
+          notify_queja: boolean
           restaurant_id: string
           role: string
           user_id: string
@@ -634,9 +663,11 @@ export type Database = {
           notify_en_camino?: boolean
           notify_entrega_tardia?: boolean
           notify_entregado?: boolean
+          notify_escalar?: boolean
           notify_nuevo?: boolean
           notify_preparando?: boolean
           notify_programado_por_vencer?: boolean
+          notify_queja?: boolean
           restaurant_id: string
           role: string
           user_id: string
@@ -648,9 +679,11 @@ export type Database = {
           notify_en_camino?: boolean
           notify_entrega_tardia?: boolean
           notify_entregado?: boolean
+          notify_escalar?: boolean
           notify_nuevo?: boolean
           notify_preparando?: boolean
           notify_programado_por_vencer?: boolean
+          notify_queja?: boolean
           restaurant_id?: string
           role?: string
           user_id?: string
@@ -804,6 +837,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calc_customer_tier: {
+        Args: { p_customer_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
       get_order_status: { Args: { _order_id: string }; Returns: string }
       get_secret: { Args: { secret_name: string }; Returns: string }
       has_restaurant_role: {
@@ -822,6 +859,39 @@ export type Database = {
         Returns: boolean
       }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
+      orders_bucketed_stats: {
+        Args: {
+          p_bucket_ends: string[]
+          p_bucket_starts: string[]
+          p_restaurant_id: string
+        }
+        Returns: {
+          customer_count: number
+          idx: number
+          order_count: number
+          revenue: number
+        }[]
+      }
+      sucursal_mas_cercana: {
+        Args: { p_colonia: string; p_restaurant_id: string }
+        Returns: {
+          branch_name: string
+          branch_slug: string
+          colonia_encontrada: string
+          distancia_km: number
+        }[]
+      }
+      unaccent: { Args: { "": string }; Returns: string }
+      whatsapp_append_turn: {
+        Args: {
+          p_branch_id?: string
+          p_new_messages: Json
+          p_order_id?: string
+          p_phone: string
+          p_status?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user" | "repartidor" | "superadmin"

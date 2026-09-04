@@ -9,6 +9,7 @@ import {
   correoPedidoEntregado,
   correoPedidoNuevo,
   correoPedidoPreparando,
+  correoPedidoProblema,
   type PedidoCorreo,
 } from "../_shared/emails/plantillas.ts";
 
@@ -22,6 +23,11 @@ const EVENTO_A_COLUMNA: Record<string, string> = {
   entregado: "notify_entregado",
   completado: "notify_entregado",
   cancelado: "notify_cancelado",
+  // Estado genérico "problema" (pedido real de Javier el 3-sep-2026): reusa
+  // la misma preferencia que "cancelado" — ambos son la señal real de "algo
+  // salió mal", y separar una preferencia nueva solo para esto no vale la
+  // pena mientras no haya pedido explícito de controlarlas por separado.
+  problema: "notify_cancelado",
 };
 
 Deno.serve(async (req) => {
@@ -41,7 +47,7 @@ Deno.serve(async (req) => {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, customer_name, customer_phone, customer_address, total, source, items, restaurant_id, branch_id, branches(name), restaurants(name)")
+      .select("id, customer_name, customer_phone, customer_address, total, source, items, restaurant_id, branch_id, incident_note, branches(name), restaurants(name)")
       .eq("id", order_id)
       .single();
     if (orderError || !order) throw orderError ?? new Error("Pedido no encontrado");
@@ -77,6 +83,9 @@ Deno.serve(async (req) => {
       itemsTexto,
     };
 
+    // "problema" es el único evento cuya plantilla real necesita un segundo
+    // argumento (la nota real de incident_note) — el resto ignora un
+    // segundo argumento de sobra sin problema.
     const correoBuilder = {
       nuevo: correoPedidoNuevo,
       preparando: correoPedidoPreparando,
@@ -84,9 +93,10 @@ Deno.serve(async (req) => {
       entregado: correoPedidoEntregado,
       completado: correoPedidoEntregado,
       cancelado: correoPedidoCancelado,
+      problema: correoPedidoProblema,
     }[evento as string]!;
 
-    const { asunto, html, texto } = correoBuilder(pedido);
+    const { asunto, html, texto } = correoBuilder(pedido, order.incident_note ?? undefined);
 
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",

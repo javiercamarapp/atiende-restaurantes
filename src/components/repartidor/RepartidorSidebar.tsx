@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Package, 
+import {
+  LayoutDashboard,
+  Package,
   Clock,
   MapPin,
   History,
@@ -9,7 +9,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Truck
+  Truck,
+  UserCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -38,6 +39,12 @@ const menuSections = [
       { id: 'pending', label: 'Pendientes', icon: Clock, badge: true },
       { id: 'active', label: 'En Camino', icon: Truck, badge: true },
       { id: 'history', label: 'Historial', icon: History },
+    ]
+  },
+  {
+    title: 'CUENTA',
+    items: [
+      { id: 'profile', label: 'Perfil', icon: UserCircle },
     ]
   },
 ];
@@ -143,13 +150,16 @@ const RepartidorSidebar = ({
         <div className={cn("rounded-xl border border-border bg-card", collapsed ? "p-2" : "p-2.5")}>
           {!collapsed ? (
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium shrink-0">
+              <button
+                onClick={() => onSectionChange('profile')}
+                className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium shrink-0"
+              >
                 {user?.email?.charAt(0).toUpperCase() || 'R'}
-              </div>
-              <div className="flex-1 min-w-0">
+              </button>
+              <button onClick={() => onSectionChange('profile')} className="flex-1 min-w-0 text-left">
                 <p className="text-sm text-foreground truncate">{user?.email}</p>
                 <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Repartidor</p>
-              </div>
+              </button>
               <button onClick={onLogout} className="text-destructive hover:opacity-70 shrink-0">
                 <LogOut className="w-4 h-4" />
               </button>

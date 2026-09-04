@@ -131,6 +131,32 @@ export function correoPedidoCancelado(p: PedidoCorreo, motivo?: string): Correo 
   };
 }
 
+// Estado genérico "problema" (pedido real de Javier el 3-sep-2026): cubre
+// cualquier incidencia real en cualquier punto del ciclo — dirección
+// incorrecta en camino, cliente no contesta, o una queja real después de
+// que el pedido ya se entregó — con una nota de texto libre que explica
+// qué pasó (incident_note), mismo patrón que el `motivo` opcional de
+// correoPedidoCancelado.
+export function correoPedidoProblema(p: PedidoCorreo, nota?: string): Correo {
+  const html = renderCorreo({
+    titulo: "Incidencia en un pedido",
+    preheader: `Hubo una incidencia con el pedido de ${p.clienteNombre}`,
+    etiqueta: { texto: "Incidencia", color: "#c026d3" },
+    parrafosHtml: [
+      `Se reportó una incidencia en el pedido de <strong>${escapeHtml(p.clienteNombre)}</strong> en <strong>${escapeHtml(p.sucursalNombre)}</strong>.`,
+      ...(nota ? [`Nota: ${escapeHtml(nota)}`] : []),
+    ],
+    tabla: tablaPedido(p),
+    cta: { texto: "Ver pedido en el panel", url: `${APP_URL}/admin` },
+    piePorQueLlego: "Recibes este correo porque activaste las notificaciones de pedidos cancelados/con incidencias en tu cuenta de atiende.ai.",
+  });
+  return {
+    asunto: `Incidencia · ${p.sucursalNombre} · ${p.clienteNombre}`,
+    html,
+    texto: `Se reportó una incidencia en el pedido de ${p.clienteNombre} en ${p.sucursalNombre}.${nota ? ` Nota: ${nota}` : ""}`,
+  };
+}
+
 export function correoBienvenida(nombreRestaurante: string, rol: string): Correo {
   const html = renderCorreo({
     titulo: `Ya tienes acceso a ${nombreRestaurante}`,
