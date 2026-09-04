@@ -135,33 +135,29 @@ Deno.serve(async (req: Request) => {
     // Payload real de Meta: entry[].changes[].value.messages[] — otros
     // eventos (statuses de entrega/lectura, etc.) no traen `messages`, los
     // ignoramos con un 200 vacío en vez de tratarlos como error.
-    const value = payload?.entry?.[0]?.changes?.[0]?.value
-    const message = value?.messages?.[0]
-    if (!message || message.type !== "text") {
+    // Meta puede agrupar varios entry/changes/messages. Se conserva el orden
+    // del payload y se procesa cada mensaje; nunca se selecciona solo [0].
+    const incomingMessages = (Array.isArray(payload?.entry) ? payload.entry : []).flatMap((entry: any) =>
+      (entry?.changes ?? []).flatMap((change: any) =>
+        Array.isArray(change?.value?.messages) ? change.value.messages : []
+      )
+    )
+    if (incomingMessages.length === 0) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json" },
       })
     }
 
-    if (
-      typeof message.id !== "string" ||
-      message.id.length > 255 ||
-      !/^\d{7,20}$/.test(String(message.from ?? ""))
-    ) {
-      return new Response("Invalid message", { status: 400 })
-    }
-    messageId = message.id
-    const phone = `+${message.from}` // Meta manda el wa_id sin "+", nuestro schema real de phone sí lo lleva
-    const body = String(message.text?.body ?? "").trim()
-    if (!body) {
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-
-    if (body.length > 4000) {
-      return new Response("Message too long", { status: 400 })
-    }
+    for (const message of incomingMessages) {
+      if (message?.type !== "text") continue
+      if (typeof message.id !== "string" || message.id.length > 255 ||
+        !/^\d{7,20}$/.test(String(message.from ?? ""))) continue
+      const currentMessageId = message.id
+      messageId = currentMessageId
+      const phone = `+${message.from}`
+      const body = String(message.text?.body ?? "").trim()
+      if (!body || body.length > 4000) continue
+      try {
     phoneHash = await actorHash(phone)
     const { data: claimed, error: claimError } = await supabase.rpc(
       "claim_whatsapp_message",
@@ -174,9 +170,7 @@ Deno.serve(async (req: Request) => {
     if (claimError) throw claimError
     // Meta delivery is at-least-once; an already processed/in-flight id is acknowledged.
     if (!claimed) {
-      return new Response(JSON.stringify({ ok: true, duplicate: true }), {
-        headers: { "Content-Type": "application/json" },
-      })
+      continue
     }
 
     const { data: lease, error: leaseError } = await supabase.rpc(
@@ -198,10 +192,7 @@ Deno.serve(async (req: Request) => {
         })
         .eq("message_id", messageId)
         .eq("restaurant_id", RESTAURANT_ID)
-      return new Response("Conversation busy", {
-        status: 503,
-        headers: { "Retry-After": "2" },
-      })
+      continue
     }
     leaseAcquired = true
 
@@ -237,7 +228,7 @@ Deno.serve(async (req: Request) => {
       phone,
       customer,
       RESTAURANT_ID,
-      messageId,
+      currentMessageId,
     )
 
     const nuevosDelTurno = updatedMessages.slice(messages.length)
@@ -256,7 +247,7 @@ Deno.serve(async (req: Request) => {
       if (appendTurnError) throw appendTurnError
     }
 
-    await sendWhatsAppMessage(supabase, message.from, reply)
+    await enqueueWhatsAppMessage(supabase, message.from, reply, currentMessageId)
     const { error: finishError } = await supabase.rpc(
       "finish_whatsapp_message",
       {
@@ -269,6 +260,21 @@ Deno.serve(async (req: Request) => {
     )
     if (finishError) throw finishError
     leaseAcquired = false
+      } catch (messageError) {
+        const errorClass = messageError instanceof Error ? messageError.constructor.name : "UnknownError"
+        if (leaseAcquired) {
+          await supabase.rpc("finish_whatsapp_message", {
+            p_restaurant_id: RESTAURANT_ID, p_message_id: messageId,
+            p_phone_hash: phoneHash, p_status: "failed", p_error_class: errorClass,
+          })
+        } else {
+          await supabase.from("whatsapp_inbound_events").update({ last_error_class: errorClass, status: "failed" })
+            .eq("message_id", messageId).eq("restaurant_id", RESTAURANT_ID)
+        }
+        leaseAcquired = false
+        continue
+      }
+    }
     return new Response(JSON.stringify({ ok: true }), {
       headers: { "Content-Type": "application/json" },
     })
@@ -304,37 +310,16 @@ Deno.serve(async (req: Request) => {
   }
 })
 
-// Envía un mensaje real vía WhatsApp Cloud API (Graph API de Meta) — no
-// Twilio. `to` debe ir sin "+" (formato wa_id real que usa Meta).
+// Solo persiste el efecto externo. El dispatcher es el único componente que
+// habla con Graph API, de modo que un retry del webhook nunca duplica envíos.
 // deno-lint-ignore no-explicit-any
-async function sendWhatsAppMessage(supabase: any, to: string, body: string) {
-  const token = await getVaultSecret(supabase, "WHATSAPP_ACCESS_TOKEN")
-  const phoneNumberId = await getVaultSecret(
-    supabase,
-    "WHATSAPP_PHONE_NUMBER_ID",
-  )
-  if (!token || !phoneNumberId) {
-    throw new Error("WhatsApp outbound credentials are not configured")
-  }
-
-  const res = await fetch(
-    `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body },
-      }),
-    },
-  )
-  if (!res.ok) {
-    // Do not log the provider body: it can contain identifiers or message data.
-    throw new Error(`WhatsApp Cloud API send failed with status ${res.status}`)
-  }
+async function enqueueWhatsAppMessage(supabase: any, to: string, body: string, sourceMessageId: string) {
+  const { error } = await supabase.rpc("enqueue_messaging_outbox", {
+    p_restaurant_id: RESTAURANT_ID,
+    p_channel: "whatsapp",
+    p_event_type: "whatsapp.reply",
+    p_dedupe_key: `reply:${sourceMessageId}`,
+    p_payload: { to, body, source_message_id: sourceMessageId },
+  })
+  if (error) throw error
 }
