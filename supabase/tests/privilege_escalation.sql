@@ -12,6 +12,10 @@ insert into public.restaurant_staff(id, restaurant_id, user_id, role) values
 insert into public.orders(id, restaurant_id, customer_name, customer_phone, total, items, source, status, assigned_repartidor_id) values
   ('55000000-0000-0000-0000-000000000013', '55000000-0000-0000-0000-000000000010', 'Assigned', '9990000001', 100, '[]', 'admin', 'preparando', '55000000-0000-0000-0000-000000000002'),
   ('55000000-0000-0000-0000-000000000014', '55000000-0000-0000-0000-000000000010', 'Other', '9990000002', 200, '[]', 'admin', 'preparando', null);
+insert into public.categories(id, restaurant_id, name, slug) values
+  ('55000000-0000-0000-0000-000000000015', '55000000-0000-0000-0000-000000000010', 'Protected', 'protected');
+insert into public.whatsapp_agent_config(restaurant_id, system_prompt) values
+  ('55000000-0000-0000-0000-000000000010', 'Protected prompt');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '55000000-0000-0000-0000-000000000001', true);
@@ -46,6 +50,12 @@ begin
   if not public.update_assigned_order_status('55000000-0000-0000-0000-000000000013', 'en_camino', null) then raise exception 'safe en_camino failed'; end if;
   if not public.update_assigned_order_status('55000000-0000-0000-0000-000000000013', 'entregado', null) then raise exception 'safe entregado failed'; end if;
   if (select total from public.orders where id = '55000000-0000-0000-0000-000000000013') <> 100 then raise exception 'order total changed'; end if;
+  update public.categories set name = 'Courier takeover' where id = '55000000-0000-0000-0000-000000000015';
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'courier changed catalog'; end if;
+  update public.whatsapp_agent_config set system_prompt = 'Courier prompt' where restaurant_id = '55000000-0000-0000-0000-000000000010';
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'courier changed agent config'; end if;
 end;
 $$;
 
