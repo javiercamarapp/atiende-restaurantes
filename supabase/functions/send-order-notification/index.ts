@@ -108,12 +108,18 @@ Deno.serve(async (req) => {
       .map((d: any) => d.profiles?.email as string | undefined)
       .filter((email: string | undefined): email is string => !!email);
 
-    if (correos.length === 0 || !RESEND_API_KEY) {
+    if (!RESEND_API_KEY) {
+      // A missing provider credential is an operational outage, not a
+      // successful no-op. Returning 503 keeps the outbox item retryable and
+      // eventually visible in its DLQ/alerts instead of silently losing it.
+      return jsonResponse(req, {
+        error: "Proveedor de correo no configurado",
+      }, 503);
+    }
+    if (correos.length === 0) {
       return jsonResponse(req, {
         sent: 0,
-        reason: !RESEND_API_KEY
-          ? "RESEND_API_KEY no configurada"
-          : "sin destinatarios",
+        reason: "sin destinatarios",
       });
     }
 

@@ -151,139 +151,167 @@ Deno.serve(async (req: Request) => {
       })
     }
 
+    let hadRetryableFailure = false
     for (const message of incomingMessages) {
       const currentMessageId = message.id
       messageId = currentMessageId
       const phone = `+${message.from}`
       const body = String(message.text?.body ?? "").trim()
       try {
-    phoneHash = await actorHash(phone)
-    const { data: claimed, error: claimError } = await supabase.rpc(
-      "claim_whatsapp_message",
-      {
-        p_restaurant_id: RESTAURANT_ID,
-        p_message_id: messageId,
-        p_phone_hash: phoneHash,
-      },
-    )
-    if (claimError) throw claimError
-    // Meta delivery is at-least-once; an already processed/in-flight id is acknowledged.
-    if (!claimed) {
-      continue
-    }
+        phoneHash = await actorHash(phone)
+        const { data: claimed, error: claimError } = await supabase.rpc(
+          "claim_whatsapp_message",
+          {
+            p_restaurant_id: RESTAURANT_ID,
+            p_message_id: messageId,
+            p_phone_hash: phoneHash,
+          },
+        )
+        if (claimError) throw claimError
+        // Meta delivery is at-least-once; an already processed/in-flight id is acknowledged.
+        if (!claimed) {
+          continue
+        }
 
-    const { data: lease, error: leaseError } = await supabase.rpc(
-      "claim_whatsapp_conversation",
-      {
-        p_restaurant_id: RESTAURANT_ID,
-        p_phone_hash: phoneHash,
-        p_message_id: messageId,
-        p_lease_seconds: 120,
-      },
-    )
-    if (leaseError) throw leaseError
-    if (!lease) {
-      await supabase
-        .from("whatsapp_inbound_events")
-        .update({
-          status: "failed",
-          last_error_class: "ConversationBusy",
-        })
-        .eq("message_id", messageId)
-        .eq("restaurant_id", RESTAURANT_ID)
-      continue
-    }
-    leaseAcquired = true
+        const { data: lease, error: leaseError } = await supabase.rpc(
+          "claim_whatsapp_conversation",
+          {
+            p_restaurant_id: RESTAURANT_ID,
+            p_phone_hash: phoneHash,
+            p_message_id: messageId,
+            p_lease_seconds: 120,
+          },
+        )
+        if (leaseError) throw leaseError
+        if (!lease) {
+          hadRetryableFailure = true
+          await supabase
+            .from("whatsapp_inbound_events")
+            .update({
+              status: "failed",
+              last_error_class: "ConversationBusy",
+            })
+            .eq("message_id", messageId)
+            .eq("restaurant_id", RESTAURANT_ID)
+          continue
+        }
+        leaseAcquired = true
 
-    // Bug crítico real encontrado en la auditoría adversarial del
-    // 3-sep-2026: mensajes casi-simultáneos del mismo cliente (mandar 2-3
-    // mensajes seguidos sin esperar respuesta, comportamiento normal de
-    // WhatsApp) corrompían y perdían historial de forma silenciosa — el
-    // patrón anterior (SELECT messages -> push() en JS -> UPDATE del
-    // arreglo completo) no tenía ningún lock: dos requests traslapados para
-    // el mismo phone hacían que el segundo UPDATE sobreescribiera por
-    // completo lo que el primero ya había guardado. Fix: whatsapp_append_turn
-    // hace el append en una sola sentencia SQL (messages = messages ||
-    // nuevos) — el row lock de Postgres serializa escrituras concurrentes
-    // al mismo phone sin perder ningún mensaje. Se llama dos veces: primero
-    // para el mensaje del usuario (así queda a salvo aunque el LLM tarde),
-    // luego para lo que generó el turno.
-    const userMessage = { role: "user", content: redactSensitiveInfo(body) }
-    const { data: messagesAfterUser, error: appendUserError } =
-      await supabase.rpc("append_whatsapp_user_message_once", {
-        p_restaurant_id: RESTAURANT_ID,
-        p_message_id: messageId,
-        p_phone: phone,
-        p_new_message: userMessage,
-      })
-    if (appendUserError) throw appendUserError
-    // deno-lint-ignore no-explicit-any
-    const messages = (messagesAfterUser ?? [userMessage]) as any[]
+        // Bug crítico real encontrado en la auditoría adversarial del
+        // 3-sep-2026: mensajes casi-simultáneos del mismo cliente (mandar 2-3
+        // mensajes seguidos sin esperar respuesta, comportamiento normal de
+        // WhatsApp) corrompían y perdían historial de forma silenciosa — el
+        // patrón anterior (SELECT messages -> push() en JS -> UPDATE del
+        // arreglo completo) no tenía ningún lock: dos requests traslapados para
+        // el mismo phone hacían que el segundo UPDATE sobreescribiera por
+        // completo lo que el primero ya había guardado. Fix: whatsapp_append_turn
+        // hace el append en una sola sentencia SQL (messages = messages ||
+        // nuevos) — el row lock de Postgres serializa escrituras concurrentes
+        // al mismo phone sin perder ningún mensaje. Se llama dos veces: primero
+        // para el mensaje del usuario (así queda a salvo aunque el LLM tarde),
+        // luego para lo que generó el turno.
+        const userMessage = {
+          role: "user",
+          content: redactSensitiveInfo(body),
+        }
+        const { data: messagesAfterUser, error: appendUserError } =
+          await supabase.rpc("append_whatsapp_user_message_once", {
+            p_restaurant_id: RESTAURANT_ID,
+            p_message_id: messageId,
+            p_phone: phone,
+            p_new_message: userMessage,
+          })
+        if (appendUserError) throw appendUserError
+        // deno-lint-ignore no-explicit-any
+        const messages = (messagesAfterUser ?? [userMessage]) as any[]
 
-    const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone)
-    const { reply, updatedMessages, orderId, branchId } = await runAgentTurn(
-      supabase,
-      messages,
-      phone,
-      customer,
-      RESTAURANT_ID,
-      currentMessageId,
-    )
+        const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone)
+        const { reply, updatedMessages, orderId, branchId } =
+          await runAgentTurn(
+            supabase,
+            messages,
+            phone,
+            customer,
+            RESTAURANT_ID,
+            currentMessageId,
+          )
 
-    const nuevosDelTurno = updatedMessages.slice(messages.length)
-    if (nuevosDelTurno.length > 0) {
-      const { error: appendTurnError } = await supabase.rpc(
-        "whatsapp_append_turn",
-        {
-          p_restaurant_id: RESTAURANT_ID,
-          p_phone: phone,
-          p_new_messages: nuevosDelTurno,
-          p_status: orderId ? "completed" : "active",
-          p_order_id: orderId,
-          p_branch_id: branchId,
-        },
-      )
-      if (appendTurnError) throw appendTurnError
-    }
+        const nuevosDelTurno = updatedMessages.slice(messages.length)
+        if (nuevosDelTurno.length > 0) {
+          const { error: appendTurnError } = await supabase.rpc(
+            "whatsapp_append_turn",
+            {
+              p_restaurant_id: RESTAURANT_ID,
+              p_phone: phone,
+              p_new_messages: nuevosDelTurno,
+              p_status: orderId ? "completed" : "active",
+              p_order_id: orderId,
+              p_branch_id: branchId,
+            },
+          )
+          if (appendTurnError) throw appendTurnError
+        }
 
-    await enqueueWhatsAppMessage(supabase, message.from, reply, currentMessageId)
-    const { error: finishError } = await supabase.rpc(
-      "finish_whatsapp_message",
-      {
-        p_restaurant_id: RESTAURANT_ID,
-        p_message_id: messageId,
-        p_phone_hash: phoneHash,
-        p_status: "processed",
-        p_error_class: null,
-      },
-    )
-    if (finishError) throw finishError
-    leaseAcquired = false
+        await enqueueWhatsAppMessage(
+          supabase,
+          message.from,
+          reply,
+          currentMessageId,
+        )
+        const { error: finishError } = await supabase.rpc(
+          "finish_whatsapp_message",
+          {
+            p_restaurant_id: RESTAURANT_ID,
+            p_message_id: messageId,
+            p_phone_hash: phoneHash,
+            p_status: "processed",
+            p_error_class: null,
+          },
+        )
+        if (finishError) throw finishError
+        leaseAcquired = false
       } catch (messageError) {
-        const errorClass = messageError instanceof Error ? messageError.constructor.name : "UnknownError"
+        hadRetryableFailure = true
+        const errorClass = messageError instanceof Error
+          ? messageError.constructor.name
+          : "UnknownError"
         if (leaseAcquired) {
           await supabase.rpc("finish_whatsapp_message", {
-            p_restaurant_id: RESTAURANT_ID, p_message_id: messageId,
-            p_phone_hash: phoneHash, p_status: "failed", p_error_class: errorClass,
+            p_restaurant_id: RESTAURANT_ID,
+            p_message_id: messageId,
+            p_phone_hash: phoneHash,
+            p_status: "failed",
+            p_error_class: errorClass,
           })
         } else {
-          await supabase.from("whatsapp_inbound_events").update({ last_error_class: errorClass, status: "failed" })
+          await supabase.from("whatsapp_inbound_events").update({
+            last_error_class: errorClass,
+            status: "failed",
+          })
             .eq("message_id", messageId).eq("restaurant_id", RESTAURANT_ID)
         }
         leaseAcquired = false
         continue
       }
     }
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { "Content-Type": "application/json", ...correlationHeaders(requestId) },
+    // Meta retries the complete signed batch on any non-2xx. Successfully
+    // processed message ids are idempotently skipped by the inbound ledger,
+    // while failed/busy messages can be reclaimed instead of being stranded.
+    return new Response(JSON.stringify({ ok: !hadRetryableFailure }), {
+      status: hadRetryableFailure ? 500 : 200,
+      headers: {
+        "Content-Type": "application/json",
+        ...correlationHeaders(requestId),
+      },
     })
   } catch (err) {
     logEvent("error", "whatsapp.webhook_failed", requestId, {
       error_class: err instanceof Error ? err.constructor.name : "UnknownError",
     })
     if (supabase && messageId && phoneHash) {
-      const errorClass =
-        err instanceof Error ? err.constructor.name : "UnknownError"
+      const errorClass = err instanceof Error
+        ? err.constructor.name
+        : "UnknownError"
       if (leaseAcquired) {
         await supabase.rpc("finish_whatsapp_message", {
           p_restaurant_id: RESTAURANT_ID,
@@ -306,7 +334,10 @@ Deno.serve(async (req: Request) => {
     // A signed transient failure must be retried; the message ledger prevents duplicates.
     return new Response(JSON.stringify({ ok: false }), {
       status: 500,
-      headers: { "Content-Type": "application/json", ...correlationHeaders(requestId) },
+      headers: {
+        "Content-Type": "application/json",
+        ...correlationHeaders(requestId),
+      },
     })
   }
 })
@@ -314,7 +345,12 @@ Deno.serve(async (req: Request) => {
 // Solo persiste el efecto externo. El dispatcher es el único componente que
 // habla con Graph API, de modo que un retry del webhook nunca duplica envíos.
 // deno-lint-ignore no-explicit-any
-async function enqueueWhatsAppMessage(supabase: any, to: string, body: string, sourceMessageId: string) {
+async function enqueueWhatsAppMessage(
+  supabase: any,
+  to: string,
+  body: string,
+  sourceMessageId: string,
+) {
   const { error } = await supabase.rpc("enqueue_messaging_outbox", {
     p_restaurant_id: RESTAURANT_ID,
     p_channel: "whatsapp",
