@@ -762,7 +762,7 @@ const SucursalesSection = ({ restaurantId }: Props) => {
         subtitulo={modalHorario?.name}
         onGuardar={guardarHorario}
         guardando={guardandoHorario}
-        anchoClase="max-w-3xl"
+        anchoClase="max-w-4xl"
       >
         <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3">
           <div>
@@ -794,7 +794,7 @@ const SucursalesSection = ({ restaurantId }: Props) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="grid grid-cols-1 md:grid-cols-2 gap-2"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
             >
               {DIAS.map(({ id, etiqueta }, i) => (
                 <motion.div
