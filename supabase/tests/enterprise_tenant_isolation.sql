@@ -52,6 +52,9 @@ declare
   visible_orders integer;
   visible_rows integer;
   changed_rows integer;
+  v_product_id uuid;
+  branch_count integer;
+  availability_count integer;
 begin
   select count(*) into visible_orders from public.orders;
   if visible_orders <> 1 then
@@ -77,6 +80,17 @@ begin
   get diagnostics changed_rows = row_count;
   if changed_rows <> 0 then
     raise exception 'tenant A updated tenant B category';
+  end if;
+
+  insert into public.products (restaurant_id, name, price)
+  values ('be3fbdeb-80e7-4e7b-9b44-22b476c08298', 'Atomic product', 42)
+  returning id into v_product_id;
+  select count(*) into branch_count from public.branches
+  where restaurant_id = 'be3fbdeb-80e7-4e7b-9b44-22b476c08298';
+  select count(*) into availability_count from public.branch_products
+  where product_id = v_product_id;
+  if availability_count <> branch_count then
+    raise exception 'new product attached to %/% tenant branches', availability_count, branch_count;
   end if;
 
   begin
