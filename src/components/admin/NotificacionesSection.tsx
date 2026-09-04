@@ -151,6 +151,12 @@ function FilaPedido({ order, pill, onClick }: { order: OrderRow; pill?: React.Re
   return (
     <div
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (onClick && (event.key === "Enter" || event.key === " ")) onClick();
+      }}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Abrir ${numeroPedido(order)} de ${order.customer_name}` : undefined}
       className={`p-3 flex items-center justify-between gap-3 border-b border-dashed border-border last:border-0 ${onClick ? "cursor-pointer hover:bg-muted/40 transition-colors" : ""}`}
     >
       <div className="flex items-center gap-3 min-w-0">

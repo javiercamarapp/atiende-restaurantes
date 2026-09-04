@@ -3097,6 +3097,7 @@ const AdminDashboard = () => {
                   </Button>
                   <button
                     onClick={() => setActiveSection('notificaciones')}
+                    aria-label={`Notificaciones: ${notificationUnreadCount} sin leer`}
                     className="relative w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
                   >
                     <Bell className="w-4 h-4" strokeWidth={1.75} />
