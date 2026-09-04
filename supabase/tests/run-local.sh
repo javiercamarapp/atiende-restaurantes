@@ -14,6 +14,8 @@ tests=(
   supabase/tests/operational_observability.sql
   supabase/tests/superadmin_platform_rpc.sql
   supabase/tests/notification_reads.sql
+  supabase/tests/voice_preview_sessions.sql
+  supabase/tests/voice_preview_sessions_upgrade.sql
 )
 
 for test_file in "${tests[@]}"; do

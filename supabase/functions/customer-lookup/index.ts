@@ -10,7 +10,11 @@
 // deploy_edge_function es true, hay que pasar verify_jwt: false explícito.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
-import { lookupCustomer, vipNote } from "../_shared/create-order-core.ts";
+import {
+  canonicalizeMexicanPhone,
+  lookupCustomer,
+  vipNote,
+} from "../_shared/create-order-core.ts";
 import {
   consumeRateLimit,
   HttpInputError,
@@ -49,6 +53,13 @@ Deno.serve(async (req: Request) => {
     if (typeof phone !== "string" || !phone.trim() || phone.length > 64) {
       return jsonResponse(req, { error: "phone es requerido" }, 400);
     }
+    const canonicalPhone = canonicalizeMexicanPhone(phone);
+    if (!canonicalPhone) {
+      return jsonResponse(req, {
+        error:
+          "Número inválido. Pide exactamente 10 dígitos, léelos en grupos 3-3-4 y obtén una confirmación explícita antes de volver a buscar.",
+      }, 400);
+    }
     const limited = await consumeRateLimit(
       supabase,
       "customer-lookup",
@@ -62,7 +73,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const customer = await lookupCustomer(supabase, RESTAURANT_ID, phone);
+    const customer = await lookupCustomer(
+      supabase,
+      RESTAURANT_ID,
+      canonicalPhone,
+    );
 
     // agent_notes: instrucciones en texto plano listas para que el LLM del
     // agente de voz las use tal cual al leer el resultado de esta tool —

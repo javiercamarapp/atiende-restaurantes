@@ -31,8 +31,19 @@ begin
   end if;
 
   v_first := public.create_order_idempotent(v_payload, repeat('b', 64), repeat('c', 64));
-  v_second := public.create_order_idempotent(v_payload, repeat('d', 64), repeat('c', 64));
+  v_second := public.create_order_idempotent(v_payload, repeat('b', 64), repeat('c', 64));
   if v_first->>'id' <> v_second->>'id' then raise exception 'explicit idempotency retry created a duplicate'; end if;
+  begin
+    perform public.create_order_idempotent(v_payload || '{"total":200}'::jsonb, repeat('d', 64), repeat('c', 64));
+    raise exception 'changed payload reused the same idempotency key';
+  exception when sqlstate 'PT409' then null;
+  end;
+  if (select count(*) from public.orders where restaurant_id = '52000000-0000-0000-0000-000000000001') <> 2 then
+    raise exception 'idempotency conflict changed the number of orders';
+  end if;
+  if (select order_count from public.customers where id = '52000000-0000-0000-0000-000000000003') <> 2 then
+    raise exception 'idempotency conflict incremented customer order_count';
+  end if;
 end;
 $$;
 

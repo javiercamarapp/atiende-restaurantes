@@ -27,8 +27,8 @@ import {
   OrderValidationError,
   quoteOrderCore,
   vipNote,
-} from "./create-order-core.ts"
-import { fetchWithTimeout } from "./fetch-timeout.ts"
+} from "./create-order-core.ts";
+import { fetchWithTimeout } from "./fetch-timeout.ts";
 
 // OPENROUTER_API_KEY vive en Supabase Vault (mismo mecanismo real que
 // ELEVENLABS_API_KEY y las credenciales de WhatsApp Cloud API) — no como
@@ -38,21 +38,21 @@ import { fetchWithTimeout } from "./fetch-timeout.ts"
 async function getOpenRouterKey(supabase: any): Promise<string | null> {
   const { data, error } = await supabase.rpc("get_secret", {
     secret_name: "OPENROUTER_API_KEY",
-  })
+  });
   if (error) {
-    console.error("get_secret(OPENROUTER_API_KEY) falló:", error)
-    return null
+    console.error("get_secret(OPENROUTER_API_KEY) falló:", error);
+    return null;
   }
-  return (data as string | null) ?? null
+  return (data as string | null) ?? null;
 }
 
-export const MODEL_DEFAULT =
-  Deno.env.get("OPENROUTER_MODEL") ?? "openai/gpt-5.6-luna"
-export const MODEL_ESCALADO =
-  Deno.env.get("OPENROUTER_MODEL_ESCALADO") ?? "openai/gpt-5.6-terra"
-export const MODEL_RESPALDO =
-  Deno.env.get("OPENROUTER_MODEL_RESPALDO") ?? "google/gemini-3.6-flash"
-export const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298"
+export const MODEL_DEFAULT = Deno.env.get("OPENROUTER_MODEL") ??
+  "openai/gpt-5.6-luna";
+export const MODEL_ESCALADO = Deno.env.get("OPENROUTER_MODEL_ESCALADO") ??
+  "openai/gpt-5.6-terra";
+export const MODEL_RESPALDO = Deno.env.get("OPENROUTER_MODEL_RESPALDO") ??
+  "google/gemini-3.6-flash";
+export const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
 
 // Los 4 estilos de tono reales que ofrece el selector del admin — deben
 // coincidir 1:1 con el CHECK de la columna tone_style en la migración
@@ -69,14 +69,14 @@ export const TONE_INSTRUCTIONS: Record<string, string> = {
     "Profesional y neutro: correcto y claro, ni muy formal ni muy relajado — como una línea de atención a clientes seria.",
   divertido_desenfadado:
     "Divertido y desenfadado: relajado, con humor ligero y algún emoji ocasional, sin dejar de ser claro con los datos del pedido.",
-}
+};
 
 export type WhatsAppAgentConfig = {
-  system_prompt: string
-  tone_style: string
-  llm_model: string
-  temperature: number
-}
+  system_prompt: string;
+  tone_style: string;
+  llm_model: string;
+  temperature: number;
+};
 
 // Estas reglas se agregan DESPUÉS del prompt editable del admin: una edición
 // de tono o personalidad nunca puede borrar por accidente la semántica de
@@ -90,7 +90,16 @@ export const ORDER_QUANTITY_RULES = `REGLAS DURAS DE CANTIDADES Y TOTAL:
 - Nunca cierres un turno diciendo solo "voy a revisar", "déjame buscar" o "voy a calcular". Ejecuta la herramienta necesaria en ese mismo turno y después responde con el resultado, o termina con una pregunta concreta que el cliente sí deba contestar.
 - Está prohibido preguntar efectivo/tarjeta antes de que cotizar_pedido responda con éxito, incluso si es un pedido de un solo producto o una bebida. Después de que el cliente elija la forma de pago, llama inmediatamente a crear_pedido: no pidas una confirmación redundante. Emite cada respuesta una sola vez; nunca dupliques un párrafo.
 - Conserva en requested_quantity la cantidad de piezas/unidades que dijo y confirmó el cliente. Nunca conviertas tú las piezas a órdenes ni mandes quantity: cotizar_pedido y crear_pedido hacen esa conversión de forma determinista.
-- Antes de decir cualquier total o preguntar la forma de pago, llama siempre a cotizar_pedido. Repite exactamente el total y los renglones devueltos; nunca hagas aritmética mental ni recalcules el resultado.`
+- Antes de decir cualquier total o preguntar la forma de pago, llama siempre a cotizar_pedido. Repite exactamente el total y los renglones devueltos; nunca hagas aritmética mental ni recalcules el resultado.`;
+
+// Se inyecta después del prompt editable/persistido. Así una configuración
+// antigua no puede desactivar reglas operativas que cocina necesita hoy.
+export const ORDER_IDENTITY_AND_COMPLEMENT_RULES =
+  `REGLAS DURAS DE IDENTIDAD Y COMPLEMENTOS:
+- Si el cliente corrige su nombre, descarta por completo la versión anterior, confirma la corrección más reciente y usa únicamente ese nombre final al crear el pedido.
+- Todos los pedidos incluyen sin costo salsa verde, salsa roja, limones y cebolla, salvo que el cliente pida quitar alguno.
+- Salsa habanero y crema de ajo son gratis pero solo se envían si el cliente las pide expresamente. Nunca las busques como producto ni las cobres. Envía habanero/ajo en requested_complements y las omisiones de verde/roja/limones/cebolla en omit_default_complements.
+- Un pedido no existe hasta que crear_pedido devuelve éxito. Si ya devolvió un order id, nunca vuelvas a crear el pedido ni respondas con un error genérico aunque falle el siguiente turno del proveedor.`;
 
 export function enforceBistecPackNotice(
   reply: string,
@@ -98,17 +107,18 @@ export function enforceBistecPackNotice(
 ): string {
   const latestUserText = [...messages].reverse().find((message) =>
     message.role === "user" && typeof message.content === "string"
-  )?.content
+  )?.content;
   if (
     typeof latestUserText !== "string" ||
-    !/\bbistec(?:es)?\b/i.test(latestUserText) ||
+    !/(?:\btacos?\b.{0,30}\bbistec(?:es)?\b|\bbistec(?:es)?\b.{0,30}\btacos?\b)/i
+      .test(latestUserText) ||
     /\b[oó]rdenes?\s+de\s+(?:3|tres)\b/i.test(reply)
   ) {
-    return reply
+    return reply;
   }
   const notice =
-    "Los tacos de bistec se venden únicamente en órdenes de 3; cada precio del menú corresponde a la orden completa."
-  return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice
+    "Los tacos de bistec se venden únicamente en órdenes de 3; cada precio del menú corresponde a la orden completa.";
+  return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice;
 }
 
 // Bug real confirmado 4-sep-2026: el agente saludaba con "Buenas tardes" fijo
@@ -125,13 +135,14 @@ export function saludoSegunHoraMerida(ahora: Date = new Date()): string {
       hour: "numeric",
       hourCycle: "h23",
     }).format(ahora),
-  )
-  if (hora >= 5 && hora < 12) return "Buenos días"
-  if (hora >= 12 && hora < 19) return "Buenas tardes"
-  return "Buenas noches"
+  );
+  if (hora >= 5 && hora < 12) return "Buenos días";
+  if (hora >= 12 && hora < 19) return "Buenas tardes";
+  return "Buenas noches";
 }
 
-export const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, una taquería con varias sucursales en Mérida.
+export const BASE_SYSTEM_PROMPT =
+  `Eres el asistente de WhatsApp de Los Taquitos de PM, una taquería con varias sucursales en Mérida.
 Tomas pedidos a domicilio por chat. Tono cálido, directo, mensajes cortos (esto es WhatsApp, no una carta), actúa natural — no leas listas completas de golpe, ve conversando.
 
 SUCURSALES REALES (usa esto para decidir cuál está más cerca de la dirección del cliente — nunca inventes otra sucursal ni otro slug):
@@ -147,7 +158,9 @@ REGLAS DE NEGOCIO:
 - Formas de pago: tarjeta (pide la terminal al momento del pedido) o contra entrega. No proceses pagos ni pidas número de tarjeta por chat. Si el cliente comparte un número de tarjeta de todos modos, dile explícitamente que no lo necesitas y que no se guarda — nunca lo repitas, confirmes ni lo uses para nada.
 - Tiempo de entrega: 40 a 50 minutos (1h a 1h20 si llueve).
 - Las promos de 2x1 y nachos+aguas son SOLO para comer en el restaurante — nunca las ofrezcas para domicilio.
-- Los "kilos a domicilio" incluyen salsa roja, salsa verde, limones y tortillas sin costo extra.
+- Todos los pedidos incluyen sin costo salsa verde, salsa roja, limones y cebolla. No preguntes si desea estos cuatro: van por defecto, salvo que el cliente pida quitar alguno.
+- Salsa habanero y crema de ajo también son complementos sin costo, pero SOLO se envían si el cliente los pide explícitamente. No llames a buscar_producto para ninguno de estos seis complementos y nunca los cobres; registra habanero/ajo en requested_complements y cualquier omisión de los cuatro predeterminados en omit_default_complements al crear el pedido.
+- Los "kilos a domicilio" además incluyen tortillas sin costo extra.
 - No inventes productos ni precios: usa siempre la herramienta buscar_producto para confirmar nombre/precio real antes de agregar algo al pedido. Puedes recomendar productos populares o combinaciones típicas si el cliente no sabe qué pedir.
 - No vendas cantidades sueltas de un producto marcado "(orden de N)" — es un paquete fijo, no piezas individuales (ver paso 4).
 - Si dice "(1/2 orden)", es una versión de medio paquete que ya existe como su propio producto — ofrécela si el cliente quiere menos cantidad en vez de inventar una fracción tú mismo.
@@ -168,11 +181,11 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
    - IMPORTANTE, revísalo ANTES de confirmar cantidad con el cliente: cada resultado trae pack_size. "Individual" (pack_size 1) significa que el precio es por pieza y puede comprar todas las piezas que quiera; jamás lo interpretes como máximo una. Los tacos de bistec (pack_size 3) solo se venden en órdenes de 3: siempre que los mencionen, dilo de inmediato, aunque hayan pedido una cantidad válida. Si piden 3, confirma 1 orden; si piden 6, confirma 2 órdenes. Si piden 1, 2, 4, 5 u otro no múltiplo, ofrece ajustar al múltiplo válido más cercano. El precio mostrado es el del paquete completo.
    - Si buscar_producto devuelve más de un producto real parecido a lo que pidió el cliente (ej. "Guacamole" el platillo completo vs. "Extra Guacamole" la porción chica) y no está claro cuál quiere, no elijas tú solo — dile los nombres y precios de las opciones y que el cliente escoja.
    - Si el cliente pide alguna instrucción especial para algún producto o para el pedido (ej. "sin cebolla", "que no pique", "toca el timbre y no el interfón"), guárdala tal cual la dijo en el parámetro notes de crear_pedido — no basta con repetirla en el chat, tiene que quedar en el pedido para que cocina/repartidor la vean. Confírmale al cliente que la anotaste.
-5. Antes de cerrar: pregunta si quiere agregar algo extra — frijoles charros, guacamole, tortillas, ensalada o alguna salsa en específico. Ninguno de estos viene incluido gratis con los tacos, son productos aparte con su propio costo (confirma nombre y precio real con buscar_producto si el cliente quiere alguno). La única excepción son los "kilos a domicilio": esos SÍ incluyen salsa roja, salsa verde, limones y tortillas sin costo extra — no lo confundas con los pedidos de tacos normales.
-6. Llama a cotizar_pedido con los product_id reales y requested_quantity tal como la confirmó el cliente. Solo si responde con éxito, di exactamente el resumen y total devueltos; nunca calcules tú. Luego pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos terminal física al momento de la entrega.
-7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los mismos product_id y requested_quantity usados en la cotización, el branch_slug confirmado, payment_method y notes si aplica. Nunca mandes quantity ni conviertas piezas a paquetes tú — el servidor lo hace. Este es el paso más importante: un pedido no existe hasta que la herramienta responde con éxito. No llames si todavía falta nombre, dirección, sucursal o confirmación del cliente.
+5. Antes de cerrar, pregunta si quiere agregar algo más. Frijoles charros, guacamole, tortillas o ensalada sí son productos y se confirman con buscar_producto. Los complementos no cobrables siguen la regla anterior: verde, roja, limones y cebolla van por defecto; habanero y crema de ajo solo si los pide. No busques ni cobres esos seis complementos.
+6. Llama a cotizar_pedido con product_id Y product_name exactos devueltos por buscar_producto, además de requested_quantity. Solo si responde con éxito, di exactamente el resumen y total devueltos; nunca calcules tú. Luego pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos terminal física al momento de la entrega.
+7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los mismos product_id, product_name y requested_quantity usados en la cotización, el branch_slug confirmado, payment_method, complementos y notes si aplica. Nunca mandes quantity ni conviertas piezas a paquetes tú — el servidor lo hace. Este es el paso más importante: un pedido no existe hasta que la herramienta responde con éxito. No llames si todavía falta nombre, dirección, sucursal o confirmación del cliente.
 8. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige — no sigas adelante sin que haya quedado creado con éxito.
-9. Solo hasta que el pedido ya quedó creado con éxito: confirma que ya se mandó a cocina y da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).`
+9. Solo hasta que el pedido ya quedó creado con éxito: confirma que ya se mandó a cocina y da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).`;
 
 // Mismo valor que corría hardcodeado antes de que existiera la tabla — se
 // usa si `whatsapp_agent_config` todavía no tiene fila para el restaurante,
@@ -183,7 +196,7 @@ export const FALLBACK_CONFIG: WhatsAppAgentConfig = {
   tone_style: "calido_cercano",
   llm_model: MODEL_DEFAULT,
   temperature: 0,
-}
+};
 
 export async function getAgentConfig(
   supabase: any,
@@ -194,31 +207,30 @@ export async function getAgentConfig(
       .from("whatsapp_agent_config")
       .select("system_prompt, tone_style, llm_model, temperature")
       .eq("restaurant_id", restaurantId)
-      .maybeSingle()
+      .maybeSingle();
     if (error || !data) {
       if (error) {
         console.error(
           "whatsapp_agent_config: no se pudo leer, usando fallback:",
           error,
-        )
+        );
       }
-      return FALLBACK_CONFIG
+      return FALLBACK_CONFIG;
     }
     return {
       system_prompt: data.system_prompt || FALLBACK_CONFIG.system_prompt,
       tone_style: data.tone_style || FALLBACK_CONFIG.tone_style,
       llm_model: data.llm_model || FALLBACK_CONFIG.llm_model,
-      temperature:
-        typeof data.temperature === "number"
-          ? data.temperature
-          : FALLBACK_CONFIG.temperature,
-    }
+      temperature: typeof data.temperature === "number"
+        ? data.temperature
+        : FALLBACK_CONFIG.temperature,
+    };
   } catch (err) {
     console.error(
       "whatsapp_agent_config: excepción al leer, usando fallback:",
       err,
-    )
-    return FALLBACK_CONFIG
+    );
+    return FALLBACK_CONFIG;
   }
 }
 
@@ -293,6 +305,11 @@ export const TOOLS = [
               type: "object",
               properties: {
                 product_id: { type: "string" },
+                product_name: {
+                  type: "string",
+                  description:
+                    "Nombre exacto devuelto por buscar_producto. Debe acompañar siempre al product_id para recuperar con seguridad un UUID que el modelo copie mal.",
+                },
                 requested_quantity: {
                   type: "integer",
                   description:
@@ -305,7 +322,7 @@ export const TOOLS = [
                     "Obligatorio para cada producto de tacos: elección confirmada de tortilla. Omitir únicamente si el producto no es taco.",
                 },
               },
-              required: ["product_id", "requested_quantity"],
+              required: ["product_id", "product_name", "requested_quantity"],
             },
           },
           adult_confirmed: {
@@ -340,6 +357,11 @@ export const TOOLS = [
               type: "object",
               properties: {
                 product_id: { type: "string" },
+                product_name: {
+                  type: "string",
+                  description:
+                    "Nombre exacto del mismo renglón devuelto por buscar_producto y usado al cotizar.",
+                },
                 requested_quantity: {
                   type: "integer",
                   description:
@@ -352,13 +374,28 @@ export const TOOLS = [
                     "Obligatorio para cada producto de tacos y debe coincidir con la cotización. Omitir únicamente si no es taco.",
                 },
               },
-              required: ["product_id", "requested_quantity"],
+              required: ["product_id", "product_name", "requested_quantity"],
             },
           },
           notes: {
             type: "string",
             description:
               "Instrucciones especiales del cliente para este pedido, tal cual las dijo (ej. 'sin cebolla en los tacos de bistec', 'tocar el timbre, no el intercomunicador'). Opcional — solo si el cliente pidió algo especial.",
+          },
+          requested_complements: {
+            type: "array",
+            items: { type: "string", enum: ["salsa_habanero", "crema_ajo"] },
+            description:
+              "Solo los complementos que el cliente pidió explícitamente. Son gratis y no se buscan como productos.",
+          },
+          omit_default_complements: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["salsa_verde", "salsa_roja", "limones", "cebolla"],
+            },
+            description:
+              "Complementos predeterminados que el cliente pidió NO recibir. Omitir el campo si acepta los cuatro.",
           },
           payment_method: {
             type: "string",
@@ -405,64 +442,67 @@ export const TOOLS = [
       },
     },
   },
-]
+];
 
 export function customerContextBlock(customer: any): string {
   if (customer.is_new) {
-    return "Cliente nuevo — nunca ha pedido antes por este número. Pide su nombre y su dirección de entrega; se guardan solos en su perfil al cerrar el pedido, no hace falta hacer nada extra."
+    return "Cliente nuevo — nunca ha pedido antes por este número. Pide su nombre y su dirección de entrega; se guardan solos en su perfil al cerrar el pedido, no hace falta hacer nada extra.";
   }
-  const lines: string[] = []
+  const lines: string[] = [];
   lines.push(
     `Cliente conocido${
       customer.name
         ? `: ${customer.name}`
         : " (sin nombre guardado todavía — pídeselo)"
     }.`,
-  )
+  );
   lines.push(
     `Ha pedido ${customer.order_count} ${
       customer.order_count === 1 ? "vez" : "veces"
     } antes.`,
-  )
-  const nota = vipNote(customer.tier ?? null)
-  if (nota) lines.push(nota)
+  );
+  const nota = vipNote(customer.tier ?? null);
+  if (nota) lines.push(nota);
   if (customer.addresses?.length) {
-    const def =
-      customer.addresses.find((a: { is_default: boolean }) => a.is_default) ??
-      customer.addresses[0]
-    lines.push(`Dirección guardada por defecto: "${def.address}".`)
+    const def = customer.addresses.find((a: { is_default: boolean }) =>
+      a.is_default
+    ) ??
+      customer.addresses[0];
+    lines.push(`Dirección guardada por defecto: "${def.address}".`);
     if (customer.addresses.length > 1) {
       lines.push(
-        `También tiene otras direcciones guardadas: ${customer.addresses
-          .slice(1)
-          .map((a: { address: string }) => `"${a.address}"`)
-          .join(", ")}.`,
-      )
+        `También tiene otras direcciones guardadas: ${
+          customer.addresses
+            .slice(1)
+            .map((a: { address: string }) => `"${a.address}"`)
+            .join(", ")
+        }.`,
+      );
     }
   } else {
-    lines.push("No tiene dirección guardada todavía — pídesela.")
+    lines.push("No tiene dirección guardada todavía — pídesela.");
   }
   if (customer.last_order_items?.length) {
     const items = customer.last_order_items
       .map(
         (i: { name: string; quantity: number }) => `${i.quantity}x ${i.name}`,
       )
-      .join(", ")
-    lines.push(`Su último pedido fue: ${items}.`)
+      .join(", ");
+    lines.push(`Su último pedido fue: ${items}.`);
   }
   if (customer.frequent_items?.length) {
     const items = customer.frequent_items
       .map((i: { name: string; quantity: number }) => i.name)
-      .join(", ")
+      .join(", ");
     lines.push(
       `Lo que más pide (across todo su historial real, no solo el último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`,
-    )
+    );
   } else if (customer.last_order_items?.length) {
     lines.push(
       `Puedes usar su último pedido para sugerir "¿lo de siempre?" si aplica.`,
-    )
+    );
   }
-  return lines.join("\n")
+  return lines.join("\n");
 }
 
 export async function runAgentTurn(
@@ -473,43 +513,44 @@ export async function runAgentTurn(
   restaurantId: string,
   idempotencyKey?: string,
 ): Promise<{
-  reply: string
-  updatedMessages: typeof inputMessages
-  orderId: string | null
-  branchId: string | null
+  reply: string;
+  updatedMessages: typeof inputMessages;
+  orderId: string | null;
+  branchId: string | null;
 }> {
   // Keep the caller's snapshot immutable. Both WhatsApp entry points use its
   // original length to persist only the assistant/tool messages produced in
   // this turn. Mutating it here made that slice empty and silently erased the
   // agent's context between messages.
-  const messages = structuredClone(inputMessages)
-  const safeReply = (reply: string) => enforceBistecPackNotice(reply, messages)
+  const messages = structuredClone(inputMessages);
+  const safeReply = (reply: string) => enforceBistecPackNotice(reply, messages);
   // A complete agent turn may invoke the provider more than once after tool
   // calls. Bound the whole turn, not only each individual HTTP request.
-  const turnDeadline = Date.now() + 45_000
-  let orderId: string | null = null
-  let branchId: string | null = null
-  let huboFalloDeHerramienta = false // dispara el escalón caro en el siguiente turno
+  const turnDeadline = Date.now() + 45_000;
+  let orderId: string | null = null;
+  let branchId: string | null = null;
+  let huboFalloDeHerramienta = false; // dispara el escalón caro en el siguiente turno
   // Config real leída en vivo de whatsapp_agent_config (con fallback si la
   // fila no existe todavía o falla la lectura) — prompt, tono, modelo y
   // temperatura, todos editables desde el admin sin tocar código.
-  const agentConfig = await getAgentConfig(supabase, restaurantId)
-  const systemPrompt = `${agentConfig.system_prompt}\n\n${ORDER_QUANTITY_RULES}\n\nTONO DE VOZ REQUERIDO: ${
-    TONE_INSTRUCTIONS[agentConfig.tone_style] ??
-    TONE_INSTRUCTIONS.calido_cercano
-  }\n\nSALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHoraMerida()}"\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(
-    customer,
-  )}`
-  const openRouterKey = await getOpenRouterKey(supabase)
+  const agentConfig = await getAgentConfig(supabase, restaurantId);
+  const systemPrompt =
+    `${agentConfig.system_prompt}\n\n${ORDER_QUANTITY_RULES}\n\n${ORDER_IDENTITY_AND_COMPLEMENT_RULES}\n\nTONO DE VOZ REQUERIDO: ${
+      TONE_INSTRUCTIONS[agentConfig.tone_style] ??
+        TONE_INSTRUCTIONS.calido_cercano
+    }\n\nSALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHoraMerida()}"\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${
+      customerContextBlock(
+        customer,
+      )
+    }`;
+  const openRouterKey = await getOpenRouterKey(supabase);
   if (!openRouterKey) {
     return {
-      reply: safeReply(
-        "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
-      ),
+      reply: safeReply(providerFailureReply(orderId)),
       updatedMessages: messages,
       orderId,
       branchId,
-    }
+    };
   }
 
   for (let turn = 0; turn < 4; turn++) {
@@ -519,34 +560,38 @@ export async function runAgentTurn(
     // el modelo del turno normal.
     const modeloDeEsteTurno = huboFalloDeHerramienta
       ? MODEL_ESCALADO
-      : agentConfig.llm_model
-    const remainingMs = turnDeadline - Date.now()
+      : agentConfig.llm_model;
+    const remainingMs = turnDeadline - Date.now();
     if (remainingMs <= 0) {
-      console.error("OpenRouter turn deadline exhausted")
+      console.error("OpenRouter turn deadline exhausted");
       return {
-        reply: safeReply(
-          "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
-        ),
+        reply: safeReply(providerFailureReply(orderId)),
         updatedMessages: messages,
         orderId,
         branchId,
-      }
+      };
     }
     // Escalera acotada por costo y proveedor:
     // 1) modelo principal barato (Luna por defecto),
     // 2) si una tool falló, modelo de razonamiento Terra,
     // 3) si el proveedor elegido cae/limita o devuelve una respuesta rota,
     //    un único respaldo cross-provider Gemini. Nunca reintenta en loop.
-    const candidateModels = [...new Set([
-      modeloDeEsteTurno,
-      MODEL_RESPALDO,
-    ])]
-    let data: any = null
-    let providerFailure = ""
-    for (let candidateIndex = 0; candidateIndex < candidateModels.length; candidateIndex++) {
-      const model = candidateModels[candidateIndex]
-      const requestRemainingMs = turnDeadline - Date.now()
-      if (requestRemainingMs <= 0) break
+    const candidateModels = [
+      ...new Set([
+        modeloDeEsteTurno,
+        MODEL_RESPALDO,
+      ]),
+    ];
+    let data: any = null;
+    let providerFailure = "";
+    for (
+      let candidateIndex = 0;
+      candidateIndex < candidateModels.length;
+      candidateIndex++
+    ) {
+      const model = candidateModels[candidateIndex];
+      const requestRemainingMs = turnDeadline - Date.now();
+      if (requestRemainingMs <= 0) break;
       try {
         const res = await fetchWithTimeout(
           "https://openrouter.ai/api/v1/chat/completions",
@@ -563,75 +608,80 @@ export async function runAgentTurn(
               model,
               max_tokens: 1024,
               temperature: agentConfig.temperature,
-              messages: [{ role: "system", content: systemPrompt }, ...messages],
+              messages: [
+                { role: "system", content: systemPrompt },
+                ...messages,
+              ],
               tools: TOOLS,
             }),
           },
           Math.min(30_000, requestRemainingMs),
-        )
+        );
         if (!res.ok) {
-          providerFailure = `HTTP ${res.status}: ${await res.text()}`
+          providerFailure = `HTTP ${res.status}: ${await res.text()}`;
           const retryable = res.status === 408 || res.status === 429 ||
-            res.status >= 500
-          if (retryable && candidateIndex + 1 < candidateModels.length) continue
-          break
+            res.status >= 500;
+          if (retryable && candidateIndex + 1 < candidateModels.length) {
+            continue;
+          }
+          break;
         }
-        const parsed = await res.json()
+        const parsed = await res.json();
         if (!parsed?.choices?.[0]?.message) {
-          providerFailure = "respuesta sin choices"
-          if (candidateIndex + 1 < candidateModels.length) continue
-          break
+          providerFailure = "respuesta sin choices";
+          if (candidateIndex + 1 < candidateModels.length) continue;
+          break;
         }
-        data = parsed
-        break
+        data = parsed;
+        break;
       } catch (error) {
-        providerFailure = error instanceof Error ? error.message : String(error)
-        if (candidateIndex + 1 < candidateModels.length) continue
-        break
+        providerFailure = error instanceof Error
+          ? error.message
+          : String(error);
+        if (candidateIndex + 1 < candidateModels.length) continue;
+        break;
       }
     }
 
-    const msg = data?.choices?.[0]?.message
+    const msg = data?.choices?.[0]?.message;
     if (!msg) {
-      console.error("OpenRouter cascade exhausted:", providerFailure)
+      console.error("OpenRouter cascade exhausted:", providerFailure);
       return {
-        reply: safeReply(
-          "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.",
-        ),
+        reply: safeReply(providerFailureReply(orderId)),
         updatedMessages: messages,
         orderId,
         branchId,
-      }
+      };
     }
     messages.push({
       role: "assistant",
       content: msg.content ?? "",
       tool_calls: msg.tool_calls,
-    })
+    });
 
     const toolCalls = msg.tool_calls as
       | Array<{ id: string; function: { name: string; arguments: string } }>
-      | undefined
+      | undefined;
     if (!toolCalls || toolCalls.length === 0) {
-      const reply = safeReply(msg.content || "¿Me puedes repetir tu pedido?")
-      messages[messages.length - 1].content = reply
+      const reply = safeReply(msg.content || "¿Me puedes repetir tu pedido?");
+      messages[messages.length - 1].content = reply;
       return {
         reply,
         updatedMessages: messages,
         orderId,
         branchId,
-      }
+      };
     }
 
     for (const call of toolCalls) {
-      let result: unknown
-      let input: Record<string, unknown> = {}
+      let result: unknown;
+      let input: Record<string, unknown> = {};
       try {
-        input = JSON.parse(call.function.arguments || "{}")
+        input = JSON.parse(call.function.arguments || "{}");
       } catch {
         result = {
           error: "No entendí bien los datos, ¿puedes repetir el pedido?",
-        }
+        };
       }
       if (result === undefined) {
         try {
@@ -642,22 +692,22 @@ export async function runAgentTurn(
                 p_restaurant_id: restaurantId,
                 p_colonia: String(input.colonia ?? ""),
               },
-            )
-            if (sucursalError) throw sucursalError
-            const match = matches?.[0]
+            );
+            if (sucursalError) throw sucursalError;
+            const match = matches?.[0];
             result = match
               ? {
-                  encontrada: true,
-                  branch_slug: match.branch_slug,
-                  branch_name: match.branch_name,
-                  distancia_km: match.distancia_km,
-                  colonia_reconocida: match.colonia_encontrada,
-                }
+                encontrada: true,
+                branch_slug: match.branch_slug,
+                branch_name: match.branch_name,
+                distancia_km: match.distancia_km,
+                colonia_reconocida: match.colonia_encontrada,
+              }
               : {
-                  encontrada: false,
-                  mensaje:
-                    "No reconozco esa colonia — pide al cliente otra referencia cercana (colonia vecina, cruce de calles, plaza conocida) e intenta de nuevo.",
-                }
+                encontrada: false,
+                mensaje:
+                  "No reconozco esa colonia — pide al cliente otra referencia cercana (colonia vecina, cruce de calles, plaza conocida) e intenta de nuevo.",
+              };
           } else if (call.function.name === "buscar_producto") {
             // Precio real de la sucursal confirmada — branch_products, no el
             // precio plano de `products` (los precios sí varían de verdad
@@ -666,12 +716,12 @@ export async function runAgentTurn(
               .from("branches")
               .select("id")
               .eq("slug", input.branch_slug as string)
-              .maybeSingle()
+              .maybeSingle();
             if (!branch) {
               result = {
                 error:
                   "branch_slug desconocido — confirma la sucursal antes de buscar productos",
-              }
+              };
             } else {
               // Búsqueda compartida con el agente de voz (buscar-producto/index.ts)
               // — ver create-order-core.ts (buscarProductosCore) para el
@@ -681,20 +731,21 @@ export async function runAgentTurn(
                 branchId: branch.id,
                 restaurantId,
                 query: String(input.query ?? ""),
-              })
+              });
             }
           } else if (call.function.name === "cotizar_pedido") {
             const quote = await quoteOrderCore(supabase, {
               branch_slug: input.branch_slug as string,
               items: input.items as Array<{
-                product_id: string
-                requested_quantity: number
-                tortilla?: "maiz" | "harina"
+                product_id: string;
+                product_name: string;
+                requested_quantity: number;
+                tortilla?: "maiz" | "harina";
               }>,
               adult_confirmed: input.adult_confirmed === true,
-            })
-            branchId = quote.branch_id
-            result = { quote }
+            });
+            branchId = quote.branch_id;
+            result = { quote };
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
               branch_slug: input.branch_slug as string,
@@ -702,20 +753,27 @@ export async function runAgentTurn(
               customer_phone: phone,
               customer_address: input.customer_address as string,
               items: input.items as Array<{
-                product_id: string
-                requested_quantity: number
-                tortilla?: "maiz" | "harina"
+                product_id: string;
+                product_name: string;
+                requested_quantity: number;
+                tortilla?: "maiz" | "harina";
               }>,
               source: "whatsapp",
               notes: (input.notes as string) || undefined,
+              requested_complements: input.requested_complements as
+                | Array<"salsa_habanero" | "crema_ajo">
+                | undefined,
+              omit_default_complements: input.omit_default_complements as
+                | Array<"salsa_verde" | "salsa_roja" | "limones" | "cebolla">
+                | undefined,
               payment_method:
                 (input.payment_method as "efectivo" | "tarjeta") || undefined,
               adult_confirmed: input.adult_confirmed === true,
               idempotency_key: idempotencyKey,
-            })
-            orderId = order.id
-            branchId = order.branch_id ?? null
-            result = { order }
+            });
+            orderId = order.id;
+            branchId = order.branch_id ?? null;
+            result = { order };
           } else if (call.function.name === "registrar_contacto") {
             const callbackRequest = {
               restaurant_id: restaurantId,
@@ -726,27 +784,31 @@ export async function runAgentTurn(
               message: (input.message as string) ?? null,
               source: "whatsapp",
               source_event_id: idempotencyKey ?? null,
-            }
+            };
             const { error } = idempotencyKey
-              ? await supabase.from("callback_requests").upsert(callbackRequest, {
-                onConflict: "restaurant_id,source_event_id",
-                ignoreDuplicates: true,
-              })
-              : await supabase.from("callback_requests").insert(callbackRequest)
-            if (error) throw error
-            result = { ok: true }
+              ? await supabase.from("callback_requests").upsert(
+                callbackRequest,
+                {
+                  onConflict: "restaurant_id,source_event_id",
+                  ignoreDuplicates: true,
+                },
+              )
+              : await supabase.from("callback_requests").insert(
+                callbackRequest,
+              );
+            if (error) throw error;
+            result = { ok: true };
           } else {
             result = {
               error: `Herramienta desconocida: ${call.function.name}`,
-            }
+            };
           }
         } catch (err) {
           result = {
-            error:
-              err instanceof OrderValidationError
-                ? err.message
-                : "Error interno al ejecutar la herramienta",
-          }
+            error: err instanceof OrderValidationError
+              ? err.message
+              : "Error interno al ejecutar la herramienta",
+          };
         }
       }
       // crear_pedido fallando es justo el caso que el escalón caro existe
@@ -759,13 +821,13 @@ export async function runAgentTurn(
         typeof result === "object" &&
         "error" in result
       ) {
-        huboFalloDeHerramienta = true
+        huboFalloDeHerramienta = true;
       }
       messages.push({
         role: "tool",
         tool_call_id: call.id,
         content: JSON.stringify(result),
-      })
+      });
     }
   }
 
@@ -779,18 +841,24 @@ export async function runAgentTurn(
   // decimos con éxito en vez de sonar a error.
   if (orderId) {
     return {
-      reply: safeReply(
-        "¡Listo! Tu pedido ya quedó registrado y se mandó a cocina. Tiempo estimado: 40-50 minutos (1h-1h20 si llueve).",
-      ),
+      reply: safeReply(providerFailureReply(orderId)),
       updatedMessages: messages,
       orderId,
       branchId,
-    }
+    };
   }
   return {
-    reply: safeReply("Se me complicó procesar tu pedido, un momento por favor."),
+    reply: safeReply(
+      "Se me complicó procesar tu pedido, un momento por favor.",
+    ),
     updatedMessages: messages,
     orderId,
     branchId,
-  }
+  };
+}
+
+export function providerFailureReply(orderId: string | null): string {
+  return orderId
+    ? "¡Listo! Tu pedido ya quedó registrado y se mandó a cocina. Tiempo estimado: 40-50 minutos (1h-1h20 si llueve)."
+    : "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
 }

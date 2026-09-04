@@ -15,6 +15,7 @@ const AGENT_ACTIONS = new Set([
   "get_raw",
   "get",
   "signed_url",
+  "mark_preview_conversation",
   "update",
 ]);
 const CONVERSATION_ACTIONS = new Set([

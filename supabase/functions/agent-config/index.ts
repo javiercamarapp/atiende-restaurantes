@@ -41,12 +41,22 @@
 //   { action: "get_conversation", conversation_id }   -> transcript completo turno-por-turno de
 //                                                        una llamada real, incluyendo qué tools
 //                                                        se llamaron y qué respondieron
+//   { action: "mark_preview_conversation", agent_id, conversation_id } ->
+//                                                        marca por 30 minutos una conversación
+//                                                        iniciada desde el panel admin para que
+//                                                        crear_pedido simule sin escribir.
 //
 // Nunca devuelve ni acepta nada de costos/créditos — eso es infraestructura
 // interna, no algo que el dueño del restaurante deba ver.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import { authorizeAgentConfig } from "../_shared/agent-config-auth.ts";
+import {
+  isValidVoiceConversationId,
+  OrderConflictError,
+  OrderValidationError,
+  registerVoicePreviewSession,
+} from "../_shared/create-order-core.ts";
 import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts";
 import {
   HttpInputError,
@@ -64,24 +74,33 @@ import {
 // panel se etiqueta con el restaurante que la creó — mis_voces solo
 // devuelve las que traen esa etiqueta exacta, nunca todas las clonadas de
 // la cuenta.
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Agent-scoped operations derive their tenant from our own branches table;
 // account-scoped operations must state a tenant explicitly. Never trust an
 // arbitrary restaurant id when an agent id supplies the authoritative link.
-// deno-lint-ignore no-explicit-any
-async function resolveRestaurantId(supabase: any, body: Record<string, unknown>): Promise<string | null> {
-  const requested = typeof body.restaurant_id === "string" && UUID_PATTERN.test(body.restaurant_id)
+async function resolveRestaurantId(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  body: Record<string, unknown>,
+): Promise<string | null> {
+  const requested = typeof body.restaurant_id === "string" &&
+      UUID_PATTERN.test(body.restaurant_id)
     ? body.restaurant_id
     : null;
   if (typeof body.agent_id !== "string") return requested;
-  const { data, error } = await supabase.from("branches").select("restaurant_id")
+  const { data, error } = await supabase.from("branches").select(
+    "restaurant_id",
+  )
     .eq("elevenlabs_agent_id", body.agent_id);
   if (error || !data?.length) return null;
   // Un restaurante puede reutilizar el mismo agente en varias sucursales.
   // Eso sigue siendo un tenant inequívoco; solo se rechaza si el agente está
   // vinculado accidentalmente a restaurantes distintos.
-  const restaurantIds = new Set(data.map((row: { restaurant_id: string }) => row.restaurant_id));
+  const restaurantIds = new Set(
+    data.map((row: { restaurant_id: string }) => row.restaurant_id),
+  );
   if (restaurantIds.size !== 1) return null;
   const derived = restaurantIds.values().next().value as string;
   return requested && requested !== derived ? null : derived;
@@ -91,8 +110,12 @@ async function resolveRestaurantId(supabase: any, body: Record<string, unknown>)
 // is still scoped by the authorization check that runs before Vault access.
 // deno-lint-ignore no-explicit-any
 async function getApiKey(supabase: any): Promise<string> {
-  const { data, error } = await supabase.rpc("get_secret", { secret_name: "ELEVENLABS_API_KEY" });
-  if (error || !data) throw new Error("No se encontró la API key de ElevenLabs en Vault");
+  const { data, error } = await supabase.rpc("get_secret", {
+    secret_name: "ELEVENLABS_API_KEY",
+  });
+  if (error || !data) {
+    throw new Error("No se encontró la API key de ElevenLabs en Vault");
+  }
   return data as string;
 }
 
@@ -128,6 +151,46 @@ Deno.serve(async (req: Request) => {
       restaurantId,
     );
     if (authz.status !== 200) return json({ error: authz.error }, authz.status);
+    if (action === "mark_preview_conversation") {
+      if (!authz.userId) return json({ error: "No autenticado" }, 401);
+      const { agent_id, conversation_id } = body as {
+        agent_id?: string;
+        conversation_id?: string;
+      };
+      if (
+        typeof agent_id !== "string" ||
+        !/^agent_[a-z0-9]{10,190}$/i.test(agent_id) ||
+        !isValidVoiceConversationId(conversation_id)
+      ) {
+        return json({
+          error: "agent_id y conversation_id válidos son requeridos",
+        }, 400);
+      }
+      const apiKey = await getApiKey(supabase);
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversations/${conversation_id}`,
+        { headers: { "xi-api-key": apiKey } },
+      );
+      if (!res.ok) {
+        return json({
+          error: "No se pudo verificar la conversación con ElevenLabs",
+        }, res.status);
+      }
+      const stored = await registerVoicePreviewSession(supabase, {
+        conversation_id,
+        restaurant_id: restaurantId,
+        agent_id,
+        created_by: authz.userId,
+      }, await res.json());
+      return json({
+        ok: true,
+        expires_in_seconds: Math.max(
+          0,
+          Math.floor((Date.parse(stored.expires_at) - Date.now()) / 1000),
+        ),
+      });
+    }
+
     const apiKey = await getApiKey(supabase);
 
     if (action === "llm_list") {
@@ -144,22 +207,42 @@ Deno.serve(async (req: Request) => {
         // deno-lint-ignore no-explicit-any
         tool?: any;
       };
-      if (!agent_id || !tool?.name) return json({ error: "agent_id y tool (con name) son requeridos" }, 400);
+      if (!agent_id || !tool?.name) {
+        return json(
+          { error: "agent_id y tool (con name) son requeridos" },
+          400,
+        );
+      }
 
-      const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        headers: { "xi-api-key": apiKey },
-      });
-      if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+      const getRes = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
+      if (!getRes.ok) {
+        return json({ error: await getRes.text() }, getRes.status);
+      }
       const current = await getRes.json();
       // deno-lint-ignore no-explicit-any
-      const tools: any[] = current.conversation_config?.agent?.prompt?.tools ?? [];
-      if (tools.some((t) => t.name === tool.name)) return json({ ok: true, already_existed: true });
+      const tools: any[] = current.conversation_config?.agent?.prompt?.tools ??
+        [];
+      if (tools.some((t) => t.name === tool.name)) {
+        return json({ ok: true, already_existed: true });
+      }
 
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        method: "PATCH",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_config: { agent: { prompt: { tools: [...tools, tool] } } } }),
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_config: {
+              agent: { prompt: { tools: [...tools, tool] } },
+            },
+          }),
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
     }
@@ -173,13 +256,23 @@ Deno.serve(async (req: Request) => {
         // deno-lint-ignore no-explicit-any
         tools?: any[];
       };
-      if (!agent_id || !Array.isArray(tools)) return json({ error: "agent_id y tools (arreglo) son requeridos" }, 400);
+      if (!agent_id || !Array.isArray(tools)) {
+        return json(
+          { error: "agent_id y tools (arreglo) son requeridos" },
+          400,
+        );
+      }
 
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        method: "PATCH",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_config: { agent: { prompt: { tools } } } }),
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_config: { agent: { prompt: { tools } } },
+          }),
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
     }
@@ -193,11 +286,14 @@ Deno.serve(async (req: Request) => {
       const { text, name } = body as { text?: string; name?: string };
       if (!text) return json({ error: "text es requerido" }, 400);
 
-      const res = await fetch("https://api.elevenlabs.io/v1/convai/knowledge-base/text", {
-        method: "POST",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ text, ...(name ? { name } : {}) }),
-      });
+      const res = await fetch(
+        "https://api.elevenlabs.io/v1/convai/knowledge-base/text",
+        {
+          method: "POST",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ text, ...(name ? { name } : {}) }),
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       const data = await res.json();
       return json({ id: data.id, name: data.name });
@@ -238,19 +334,31 @@ Deno.serve(async (req: Request) => {
       }
       const LIMITE_BYTES = 20 * 1024 * 1024; // 20 MB — tope defensivo del lado de esta función, no un límite real confirmado de ElevenLabs
       if (base64Decodificable.length > LIMITE_BYTES) {
-        return json({ error: "El archivo pesa más de 20 MB — intenta con uno más ligero" }, 400);
+        return json({
+          error: "El archivo pesa más de 20 MB — intenta con uno más ligero",
+        }, 400);
       }
-      const binario = Uint8Array.from(base64Decodificable, (c) => c.charCodeAt(0));
+      const binario = Uint8Array.from(
+        base64Decodificable,
+        (c) => c.charCodeAt(0),
+      );
 
       const form = new FormData();
-      form.append("file", new Blob([binario], { type: mime_type || "application/octet-stream" }), file_name);
+      form.append(
+        "file",
+        new Blob([binario], { type: mime_type || "application/octet-stream" }),
+        file_name,
+      );
       form.append("name", file_name);
 
-      const res = await fetch("https://api.elevenlabs.io/v1/convai/knowledge-base/file", {
-        method: "POST",
-        headers: { "xi-api-key": apiKey },
-        body: form,
-      });
+      const res = await fetch(
+        "https://api.elevenlabs.io/v1/convai/knowledge-base/file",
+        {
+          method: "POST",
+          headers: { "xi-api-key": apiKey },
+          body: form,
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       const data = await res.json();
       return json({ id: data.id, name: data.name });
@@ -267,14 +375,21 @@ Deno.serve(async (req: Request) => {
         knowledge_base?: any[];
       };
       if (!agent_id || !Array.isArray(knowledge_base)) {
-        return json({ error: "agent_id y knowledge_base (arreglo) son requeridos" }, 400);
+        return json({
+          error: "agent_id y knowledge_base (arreglo) son requeridos",
+        }, 400);
       }
 
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        method: "PATCH",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_config: { agent: { prompt: { knowledge_base } } } }),
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_config: { agent: { prompt: { knowledge_base } } },
+          }),
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
     }
@@ -293,12 +408,23 @@ Deno.serve(async (req: Request) => {
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
       const ahora = new Date();
-      const fechaTexto = ahora.toLocaleString("es-MX", { dateStyle: "long", timeStyle: "short", timeZone: "America/Merida" });
+      const fechaTexto = ahora.toLocaleString("es-MX", {
+        dateStyle: "long",
+        timeStyle: "short",
+        timeZone: "America/Merida",
+      });
       const formatoMXN = (n: number) =>
-        (n || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2 });
-      const desde7 = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const desde30 = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const desde90 = new Date(ahora.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        (n || 0).toLocaleString("es-MX", {
+          style: "currency",
+          currency: "MXN",
+          minimumFractionDigits: 2,
+        });
+      const desde7 = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000)
+        .toISOString();
+      const desde30 = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000)
+        .toISOString();
+      const desde90 = new Date(ahora.getTime() - 90 * 24 * 60 * 60 * 1000)
+        .toISOString();
 
       const [
         { data: restauranteRow },
@@ -313,23 +439,49 @@ Deno.serve(async (req: Request) => {
         { data: itemsRecientes },
         { data: colonias },
       ] = await Promise.all([
-        supabase.from("restaurants").select("name").eq("id", restaurantId).maybeSingle(),
-        supabase.from("branches").select("id, name, address, phone, hours, is_active, voice_agent_active, whatsapp_agent_active, lat, lng").eq("restaurant_id", restaurantId).order("display_order"),
-        supabase.from("categories").select("id, name, display_order").eq("restaurant_id", restaurantId).order("display_order"),
-        supabase.from("products").select("id, name, description, price, category_id, is_available, is_popular").eq("restaurant_id", restaurantId).order("display_order"),
-        supabase.from("branch_products").select("id, branches!inner(restaurant_id)", { count: "exact", head: true }).eq("branches.restaurant_id", restaurantId),
-        supabase.from("restaurant_staff").select("role, user_id").eq("restaurant_id", restaurantId),
-        supabase.from("customers").select("id", { count: "exact", head: true }).eq("restaurant_id", restaurantId),
-        supabase.from("customers").select("name, order_count, last_order_at").eq("restaurant_id", restaurantId).order("order_count", { ascending: false }).limit(10),
+        supabase.from("restaurants").select("name").eq("id", restaurantId)
+          .maybeSingle(),
+        supabase.from("branches").select(
+          "id, name, address, phone, hours, is_active, voice_agent_active, whatsapp_agent_active, lat, lng",
+        ).eq("restaurant_id", restaurantId).order("display_order"),
+        supabase.from("categories").select("id, name, display_order").eq(
+          "restaurant_id",
+          restaurantId,
+        ).order("display_order"),
+        supabase.from("products").select(
+          "id, name, description, price, category_id, is_available, is_popular",
+        ).eq("restaurant_id", restaurantId).order("display_order"),
+        supabase.from("branch_products").select(
+          "id, branches!inner(restaurant_id)",
+          { count: "exact", head: true },
+        ).eq("branches.restaurant_id", restaurantId),
+        supabase.from("restaurant_staff").select("role, user_id").eq(
+          "restaurant_id",
+          restaurantId,
+        ),
+        supabase.from("customers").select("id", { count: "exact", head: true })
+          .eq("restaurant_id", restaurantId),
+        supabase.from("customers").select("name, order_count, last_order_at")
+          .eq("restaurant_id", restaurantId).order("order_count", {
+            ascending: false,
+          }).limit(10),
         // Agregados reales de TODO el histórico — columnas angostas nada más
         // (total/status/source/branch_id/created_at), no el pedido completo,
         // con un tope defensivo por si el volumen crece mucho más.
-        supabase.from("orders").select("total, status, source, branch_id, created_at").eq("restaurant_id", restaurantId).limit(200000),
+        supabase.from("orders").select(
+          "total, status, source, branch_id, created_at",
+        ).eq("restaurant_id", restaurantId).limit(200000),
         // Top de productos: acotado a los ~90 días y 10,000 pedidos más
         // recientes (no los 90,000 históricos completos) — un aggregate
         // real y representativo, no cada fila cruda del histórico completo.
-        supabase.from("orders").select("items").eq("restaurant_id", restaurantId).gte("created_at", desde90).order("created_at", { ascending: false }).limit(10000),
-        supabase.from("merida_colonias").select("nombre, lat, lng").order("nombre"),
+        supabase.from("orders").select("items").eq(
+          "restaurant_id",
+          restaurantId,
+        ).gte("created_at", desde90).order("created_at", { ascending: false })
+          .limit(10000),
+        supabase.from("merida_colonias").select("nombre, lat, lng").order(
+          "nombre",
+        ),
       ]);
 
       const nombreRestaurante = restauranteRow?.name ?? "el restaurante";
@@ -340,15 +492,33 @@ Deno.serve(async (req: Request) => {
         ? await supabase.from("repartidor_perfil")
           .select("user_id, nombre_completo, tipo_vehiculo, fecha_alta")
           .in("user_id", staffUserIds)
-        : { data: [] as { user_id: string; nombre_completo: string; tipo_vehiculo: string; fecha_alta: string }[] };
+        : {
+          data: [] as {
+            user_id: string;
+            nombre_completo: string;
+            tipo_vehiculo: string;
+            fecha_alta: string;
+          }[],
+        };
       const repartidoresDelTenant = repartidoresTenant ?? [];
       const { data: staffPerfiles } = staffUserIds.length
-        ? await supabase.from("profiles").select("user_id, nombre, email, telefono").in("user_id", staffUserIds)
-        : { data: [] as { user_id: string; nombre: string | null; email: string; telefono: string | null }[] };
+        ? await supabase.from("profiles").select(
+          "user_id, nombre, email, telefono",
+        ).in("user_id", staffUserIds)
+        : {
+          data: [] as {
+            user_id: string;
+            nombre: string | null;
+            email: string;
+            telefono: string | null;
+          }[],
+        };
 
       // --- Documento 1: menú, precios y categorías -----------------------
-      // deno-lint-ignore no-explicit-any
-      const categoriasOrdenadas = [...(categorias ?? [])].sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0));
+      const categoriasOrdenadas = [...(categorias ?? [])].sort((
+        a: { display_order?: number },
+        b: { display_order?: number },
+      ) => (a.display_order ?? 0) - (b.display_order ?? 0));
       // deno-lint-ignore no-explicit-any
       const productosPorCategoria = new Map<string, any[]>();
       // deno-lint-ignore no-explicit-any
@@ -357,38 +527,59 @@ Deno.serve(async (req: Request) => {
         if (!productosPorCategoria.has(key)) productosPorCategoria.set(key, []);
         productosPorCategoria.get(key)!.push(p);
       }
-      let textoMenu = `# Menú, precios y categorías — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      let textoMenu =
+        `# Menú, precios y categorías — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
       // deno-lint-ignore no-explicit-any
       for (const cat of categoriasOrdenadas as any[]) {
         const items = productosPorCategoria.get(cat.id) ?? [];
         if (items.length === 0) continue;
         textoMenu += `## ${cat.name}\n`;
         for (const p of items) {
-          const estado = p.is_available === false ? " (no disponible actualmente)" : "";
+          const estado = p.is_available === false
+            ? " (no disponible actualmente)"
+            : "";
           const popular = p.is_popular ? " ⭐ popular" : "";
-          textoMenu += `- ${p.name} — ${formatoMXN(Number(p.price))}${estado}${popular}${p.description ? ` — ${p.description}` : ""}\n`;
+          textoMenu += `- ${p.name} — ${
+            formatoMXN(Number(p.price))
+          }${estado}${popular}${p.description ? ` — ${p.description}` : ""}\n`;
         }
         textoMenu += `\n`;
       }
       const sinCategoria = productosPorCategoria.get("sin-categoria") ?? [];
       if (sinCategoria.length > 0) {
         textoMenu += `## Sin categoría\n`;
-        for (const p of sinCategoria) textoMenu += `- ${p.name} — ${formatoMXN(Number(p.price))}\n`;
+        for (const p of sinCategoria) {
+          textoMenu += `- ${p.name} — ${formatoMXN(Number(p.price))}\n`;
+        }
         textoMenu += `\n`;
       }
-      textoMenu += `---\nEstos son los precios BASE del restaurante. ${overridesSucursal ?? 0} combinaciones producto-sucursal tienen un precio o disponibilidad distinto a esta lista — antes de confirmar un precio con el cliente, confírmalo siempre con la herramienta buscar_producto para la sucursal exacta.\n`;
+      textoMenu += `---\nEstos son los precios BASE del restaurante. ${
+        overridesSucursal ?? 0
+      } combinaciones producto-sucursal tienen un precio o disponibilidad distinto a esta lista — antes de confirmar un precio con el cliente, confírmalo siempre con la herramienta buscar_producto para la sucursal exacta.\n`;
 
       // --- Documento 2: sucursales, horarios y contacto -------------------
-      let textoSucursales = `# Sucursales, horarios y contacto — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      let textoSucursales =
+        `# Sucursales, horarios y contacto — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
       // deno-lint-ignore no-explicit-any
       for (const s of (sucursales ?? []) as any[]) {
         textoSucursales += `## ${s.name}\n`;
-        textoSucursales += `- Dirección: ${s.address ?? "sin dirección registrada"}\n`;
-        textoSucursales += `- Teléfono: ${s.phone ?? "sin teléfono registrado"}\n`;
-        textoSucursales += `- Horario: ${s.hours ?? "sin horario registrado"}\n`;
+        textoSucursales += `- Dirección: ${
+          s.address ?? "sin dirección registrada"
+        }\n`;
+        textoSucursales += `- Teléfono: ${
+          s.phone ?? "sin teléfono registrado"
+        }\n`;
+        textoSucursales += `- Horario: ${
+          s.hours ?? "sin horario registrado"
+        }\n`;
         textoSucursales += `- Estado: ${s.is_active ? "activa" : "inactiva"}\n`;
-        const canales = [s.voice_agent_active ? "llamadas de voz" : null, s.whatsapp_agent_active ? "WhatsApp" : null].filter(Boolean);
-        textoSucursales += `- Canales de pedido con agente activo: ${canales.length ? canales.join(" y ") : "ninguno activo actualmente"}\n\n`;
+        const canales = [
+          s.voice_agent_active ? "llamadas de voz" : null,
+          s.whatsapp_agent_active ? "WhatsApp" : null,
+        ].filter(Boolean);
+        textoSucursales += `- Canales de pedido con agente activo: ${
+          canales.length ? canales.join(" y ") : "ninguno activo actualmente"
+        }\n\n`;
       }
 
       // --- Documento 3: estadísticas reales de ventas y pedidos -----------
@@ -401,31 +592,57 @@ Deno.serve(async (req: Request) => {
       const ingresoPorFuente = new Map<string, number>();
       const conteoPorSucursal = new Map<string, number>();
       const ingresoPorSucursal = new Map<string, number>();
-      let ingresoBruto = 0, ingreso7 = 0, pedidos7 = 0, ingreso30 = 0, pedidos30 = 0;
+      let ingresoBruto = 0,
+        ingreso7 = 0,
+        pedidos7 = 0,
+        ingreso30 = 0,
+        pedidos30 = 0;
       for (const o of ordenes) {
         const total = Number(o.total) || 0;
         ingresoBruto += total;
         const estado = o.status ?? "sin_estado";
         conteoPorEstado.set(estado, (conteoPorEstado.get(estado) ?? 0) + 1);
-        ingresoPorEstado.set(estado, (ingresoPorEstado.get(estado) ?? 0) + total);
+        ingresoPorEstado.set(
+          estado,
+          (ingresoPorEstado.get(estado) ?? 0) + total,
+        );
         const fuente = o.source ?? "desconocido";
         conteoPorFuente.set(fuente, (conteoPorFuente.get(fuente) ?? 0) + 1);
-        ingresoPorFuente.set(fuente, (ingresoPorFuente.get(fuente) ?? 0) + total);
+        ingresoPorFuente.set(
+          fuente,
+          (ingresoPorFuente.get(fuente) ?? 0) + total,
+        );
         if (o.branch_id) {
-          conteoPorSucursal.set(o.branch_id, (conteoPorSucursal.get(o.branch_id) ?? 0) + 1);
-          ingresoPorSucursal.set(o.branch_id, (ingresoPorSucursal.get(o.branch_id) ?? 0) + total);
+          conteoPorSucursal.set(
+            o.branch_id,
+            (conteoPorSucursal.get(o.branch_id) ?? 0) + 1,
+          );
+          ingresoPorSucursal.set(
+            o.branch_id,
+            (ingresoPorSucursal.get(o.branch_id) ?? 0) + total,
+          );
         }
         if (o.created_at) {
-          if (o.created_at >= desde7) { ingreso7 += total; pedidos7++; }
-          if (o.created_at >= desde30) { ingreso30 += total; pedidos30++; }
+          if (o.created_at >= desde7) {
+            ingreso7 += total;
+            pedidos7++;
+          }
+          if (o.created_at >= desde30) {
+            ingreso30 += total;
+            pedidos30++;
+          }
         }
       }
-      const entregados = (conteoPorEstado.get("entregado") ?? 0) + (conteoPorEstado.get("completado") ?? 0);
-      const ingresoEntregado = (ingresoPorEstado.get("entregado") ?? 0) + (ingresoPorEstado.get("completado") ?? 0);
+      const entregados = (conteoPorEstado.get("entregado") ?? 0) +
+        (conteoPorEstado.get("completado") ?? 0);
+      const ingresoEntregado = (ingresoPorEstado.get("entregado") ?? 0) +
+        (ingresoPorEstado.get("completado") ?? 0);
       const ingresoCancelado = ingresoPorEstado.get("cancelado") ?? 0;
       const ticketPromedio = entregados > 0 ? ingresoEntregado / entregados : 0;
-      // deno-lint-ignore no-explicit-any
-      const nombreSucursalPorId = new Map(((sucursales ?? []) as any[]).map((s) => [s.id, s.name]));
+      const nombreSucursalPorId = new Map(
+        // deno-lint-ignore no-explicit-any
+        ((sucursales ?? []) as any[]).map((s) => [s.id, s.name]),
+      );
 
       const conteoProductos = new Map<string, number>();
       // deno-lint-ignore no-explicit-any
@@ -434,64 +651,134 @@ Deno.serve(async (req: Request) => {
         const items = (o.items ?? []) as any[];
         for (const it of items) {
           const key = it.name ?? it.id ?? "—";
-          conteoProductos.set(key, (conteoProductos.get(key) ?? 0) + (Number(it.quantity) || 0));
+          conteoProductos.set(
+            key,
+            (conteoProductos.get(key) ?? 0) + (Number(it.quantity) || 0),
+          );
         }
       }
-      const topProductos = [...conteoProductos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+      const topProductos = [...conteoProductos.entries()].sort((a, b) =>
+        b[1] - a[1]
+      ).slice(0, 15);
 
-      let textoEstadisticas = `# Estadísticas reales de ventas y pedidos — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
-      textoEstadisticas += `## Volumen histórico\n- Pedidos totales registrados: ${totalPedidos.toLocaleString("es-MX")}\n`;
-      for (const [estado, n] of [...conteoPorEstado.entries()].sort((a, b) => b[1] - a[1])) {
+      let textoEstadisticas =
+        `# Estadísticas reales de ventas y pedidos — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      textoEstadisticas +=
+        `## Volumen histórico\n- Pedidos totales registrados: ${
+          totalPedidos.toLocaleString("es-MX")
+        }\n`;
+      for (
+        const [estado, n] of [...conteoPorEstado.entries()].sort((a, b) =>
+          b[1] - a[1]
+        )
+      ) {
         textoEstadisticas += `  - ${estado}: ${n.toLocaleString("es-MX")}\n`;
       }
       textoEstadisticas += `\n## Ingresos\n`;
-      textoEstadisticas += `- Ingreso bruto (todos los pedidos, incluidos cancelados): ${formatoMXN(ingresoBruto)}\n`;
-      textoEstadisticas += `- Ingreso real (pedidos entregados/completados): ${formatoMXN(ingresoEntregado)}\n`;
-      textoEstadisticas += `- Monto perdido en pedidos cancelados: ${formatoMXN(ingresoCancelado)}\n`;
-      textoEstadisticas += `- Ticket promedio (pedidos entregados): ${formatoMXN(ticketPromedio)}\n`;
-      textoEstadisticas += `- Ingreso en los últimos 7 días: ${formatoMXN(ingreso7)} (${pedidos7} pedidos)\n`;
-      textoEstadisticas += `- Ingreso en los últimos 30 días: ${formatoMXN(ingreso30)} (${pedidos30} pedidos)\n\n`;
+      textoEstadisticas +=
+        `- Ingreso bruto (todos los pedidos, incluidos cancelados): ${
+          formatoMXN(ingresoBruto)
+        }\n`;
+      textoEstadisticas += `- Ingreso real (pedidos entregados/completados): ${
+        formatoMXN(ingresoEntregado)
+      }\n`;
+      textoEstadisticas += `- Monto perdido en pedidos cancelados: ${
+        formatoMXN(ingresoCancelado)
+      }\n`;
+      textoEstadisticas += `- Ticket promedio (pedidos entregados): ${
+        formatoMXN(ticketPromedio)
+      }\n`;
+      textoEstadisticas += `- Ingreso en los últimos 7 días: ${
+        formatoMXN(ingreso7)
+      } (${pedidos7} pedidos)\n`;
+      textoEstadisticas += `- Ingreso en los últimos 30 días: ${
+        formatoMXN(ingreso30)
+      } (${pedidos30} pedidos)\n\n`;
       textoEstadisticas += `## Por canal\n`;
-      for (const [fuente, n] of [...conteoPorFuente.entries()].sort((a, b) => b[1] - a[1])) {
-        const pct = totalPedidos > 0 ? ((n / totalPedidos) * 100).toFixed(1) : "0";
-        textoEstadisticas += `- ${fuente}: ${n.toLocaleString("es-MX")} pedidos (${pct}%) — ${formatoMXN(ingresoPorFuente.get(fuente) ?? 0)}\n`;
+      for (
+        const [fuente, n] of [...conteoPorFuente.entries()].sort((a, b) =>
+          b[1] - a[1]
+        )
+      ) {
+        const pct = totalPedidos > 0
+          ? ((n / totalPedidos) * 100).toFixed(1)
+          : "0";
+        textoEstadisticas += `- ${fuente}: ${
+          n.toLocaleString("es-MX")
+        } pedidos (${pct}%) — ${
+          formatoMXN(ingresoPorFuente.get(fuente) ?? 0)
+        }\n`;
       }
       textoEstadisticas += `\n## Por sucursal\n`;
-      for (const [branchId, n] of [...conteoPorSucursal.entries()].sort((a, b) => b[1] - a[1])) {
+      for (
+        const [branchId, n] of [...conteoPorSucursal.entries()].sort((a, b) =>
+          b[1] - a[1]
+        )
+      ) {
         const nombre = nombreSucursalPorId.get(branchId) ?? branchId;
-        textoEstadisticas += `- ${nombre}: ${n.toLocaleString("es-MX")} pedidos — ${formatoMXN(ingresoPorSucursal.get(branchId) ?? 0)}\n`;
+        textoEstadisticas += `- ${nombre}: ${
+          n.toLocaleString("es-MX")
+        } pedidos — ${formatoMXN(ingresoPorSucursal.get(branchId) ?? 0)}\n`;
       }
-      textoEstadisticas += `\n## Productos más pedidos (agregado real de los pedidos más recientes, hasta 10,000/últimos ~90 días)\n`;
-      for (const [nombre, cantidad] of topProductos) textoEstadisticas += `- ${nombre}: ${cantidad.toLocaleString("es-MX")} unidades\n`;
+      textoEstadisticas +=
+        `\n## Productos más pedidos (agregado real de los pedidos más recientes, hasta 10,000/últimos ~90 días)\n`;
+      for (const [nombre, cantidad] of topProductos) {
+        textoEstadisticas += `- ${nombre}: ${
+          cantidad.toLocaleString("es-MX")
+        } unidades\n`;
+      }
       textoEstadisticas += `\n## Clientes\n`;
-      textoEstadisticas += `- Clientes registrados: ${(totalClientes ?? 0).toLocaleString("es-MX")}\n`;
-      textoEstadisticas += `- Clientes más frecuentes por número de pedidos (sin teléfono aquí por privacidad — usa la herramienta buscar_cliente en vivo para identificar a alguien por su número):\n`;
+      textoEstadisticas += `- Clientes registrados: ${
+        (totalClientes ?? 0).toLocaleString("es-MX")
+      }\n`;
+      textoEstadisticas +=
+        `- Clientes más frecuentes por número de pedidos (sin teléfono aquí por privacidad — usa la herramienta buscar_cliente en vivo para identificar a alguien por su número):\n`;
       // deno-lint-ignore no-explicit-any
       for (const c of (topClientes ?? []) as any[]) {
-        textoEstadisticas += `  - ${c.name ?? "Cliente sin nombre registrado"}: ${c.order_count} pedidos${c.last_order_at ? `, último el ${new Date(c.last_order_at).toLocaleDateString("es-MX")}` : ""}\n`;
+        textoEstadisticas += `  - ${
+          c.name ?? "Cliente sin nombre registrado"
+        }: ${c.order_count} pedidos${
+          c.last_order_at
+            ? `, último el ${
+              new Date(c.last_order_at).toLocaleDateString("es-MX")
+            }`
+            : ""
+        }\n`;
       }
 
       // --- Documento 4: personal y equipo ---------------------------------
-      let textoPersonal = `# Personal y equipo — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      let textoPersonal =
+        `# Personal y equipo — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
       textoPersonal += `## Equipo administrativo\n`;
       if ((staffRows ?? []).length === 0) {
-        textoPersonal += `Sin personal administrativo dado de alta en el sistema.\n\n`;
+        textoPersonal +=
+          `Sin personal administrativo dado de alta en el sistema.\n\n`;
       } else {
         // deno-lint-ignore no-explicit-any
         for (const s of (staffRows ?? []) as any[]) {
           // deno-lint-ignore no-explicit-any
-          const perfil = ((staffPerfiles ?? []) as any[]).find((p) => p.user_id === s.user_id);
-          textoPersonal += `- ${perfil?.nombre ?? "Sin nombre registrado"} — rol: ${s.role}${perfil?.email ? ` — ${perfil.email}` : ""}${perfil?.telefono ? ` — ${perfil.telefono}` : ""}\n`;
+          const perfil = ((staffPerfiles ?? []) as any[]).find((p) =>
+            p.user_id === s.user_id
+          );
+          textoPersonal += `- ${
+            perfil?.nombre ?? "Sin nombre registrado"
+          } — rol: ${s.role}${perfil?.email ? ` — ${perfil.email}` : ""}${
+            perfil?.telefono ? ` — ${perfil.telefono}` : ""
+          }\n`;
         }
         textoPersonal += `\n`;
       }
       textoPersonal += `## Repartidores\n`;
       if (repartidoresDelTenant.length === 0) {
-        textoPersonal += `Actualmente no hay repartidores dados de alta en el sistema (repartidor_perfil está vacía). Cuando se registre uno real, este documento lo reflejará la próxima vez que se sincronice la base de conocimiento — no hay datos de repartidores que mostrar hoy.\n`;
+        textoPersonal +=
+          `Actualmente no hay repartidores dados de alta en el sistema (repartidor_perfil está vacía). Cuando se registre uno real, este documento lo reflejará la próxima vez que se sincronice la base de conocimiento — no hay datos de repartidores que mostrar hoy.\n`;
       } else {
         // deno-lint-ignore no-explicit-any
         for (const r of repartidoresDelTenant as any[]) {
-          textoPersonal += `- ${r.nombre_completo} — vehículo: ${r.tipo_vehiculo} — de alta desde ${new Date(r.fecha_alta).toLocaleDateString("es-MX")}\n`;
+          textoPersonal +=
+            `- ${r.nombre_completo} — vehículo: ${r.tipo_vehiculo} — de alta desde ${
+              new Date(r.fecha_alta).toLocaleDateString("es-MX")
+            }\n`;
         }
       }
 
@@ -506,69 +793,135 @@ Deno.serve(async (req: Request) => {
       // reales, como referencia de auditoría para el equipo — no reemplaza
       // la herramienta en vivo (los datos pueden cambiar entre sync), pero
       // deja a la vista cualquier asignación que no cuadre a simple vista.
-      const distanciaKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+      const distanciaKm = (
+        lat1: number,
+        lng1: number,
+        lat2: number,
+        lng2: number,
+      ) => {
         const rad = Math.PI / 180;
-        const cosVal =
-          Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos(lng2 * rad - lng1 * rad) +
+        const cosVal = Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+            Math.cos(lng2 * rad - lng1 * rad) +
           Math.sin(lat1 * rad) * Math.sin(lat2 * rad);
         const clamped = Math.min(1, Math.max(-1, cosVal));
         return Math.round(6371 * Math.acos(clamped) * 10) / 10;
       };
       // deno-lint-ignore no-explicit-any
-      const sucursalesConCoords = ((sucursales ?? []) as any[]).filter((s) => s.is_active && s.lat != null && s.lng != null);
-      let textoColonias = `# Colonias y su sucursal más cercana — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
-      textoColonias += `Calculado con las coordenadas reales de cada colonia y cada sucursal — mismo cálculo real que usa la herramienta buscar_sucursal_cercana en cada llamada/chat real. Referencia de auditoría; si una colonia real falta aquí, agrégala primero a la base de datos, no la inventes en este documento.\n\n`;
+      const sucursalesConCoords = ((sucursales ?? []) as any[]).filter((s) =>
+        s.is_active && s.lat != null && s.lng != null
+      );
+      let textoColonias =
+        `# Colonias y su sucursal más cercana — ${nombreRestaurante}\nActualizado: ${fechaTexto}\n\n`;
+      textoColonias +=
+        `Calculado con las coordenadas reales de cada colonia y cada sucursal — mismo cálculo real que usa la herramienta buscar_sucursal_cercana en cada llamada/chat real. Referencia de auditoría; si una colonia real falta aquí, agrégala primero a la base de datos, no la inventes en este documento.\n\n`;
       // deno-lint-ignore no-explicit-any
       for (const c of (colonias ?? []) as any[]) {
         if (c.lat == null || c.lng == null) continue;
         const distancias = sucursalesConCoords
-          .map((s) => ({ nombre: s.name, km: distanciaKm(Number(c.lat), Number(c.lng), Number(s.lat), Number(s.lng)) }))
+          .map((s) => ({
+            nombre: s.name,
+            km: distanciaKm(
+              Number(c.lat),
+              Number(c.lng),
+              Number(s.lat),
+              Number(s.lng),
+            ),
+          }))
           .sort((a, b) => a.km - b.km);
         const [primera, segunda] = distancias;
         if (!primera) continue;
-        const aviso = segunda && segunda.km - primera.km < 1 ? "  ⚠️ muy cerca de la 2ª opción, revisar coordenadas si algo se ve raro" : "";
-        textoColonias += `- ${c.nombre} → **${primera.nombre}** (${primera.km} km)${segunda ? `, 2ª más cercana: ${segunda.nombre} (${segunda.km} km)` : ""}${aviso}\n`;
+        const aviso = segunda && segunda.km - primera.km < 1
+          ? "  ⚠️ muy cerca de la 2ª opción, revisar coordenadas si algo se ve raro"
+          : "";
+        textoColonias +=
+          `- ${c.nombre} → **${primera.nombre}** (${primera.km} km)${
+            segunda
+              ? `, 2ª más cercana: ${segunda.nombre} (${segunda.km} km)`
+              : ""
+          }${aviso}\n`;
       }
 
       // --- Subir y reemplazar solo los documentos [Auto] ------------------
       const PREFIJO_AUTO = "[Auto] ";
       const documentosGenerados = [
         { name: `${PREFIJO_AUTO}Menú, precios y categorías`, text: textoMenu },
-        { name: `${PREFIJO_AUTO}Sucursales, horarios y contacto`, text: textoSucursales },
-        { name: `${PREFIJO_AUTO}Estadísticas de ventas y pedidos`, text: textoEstadisticas },
+        {
+          name: `${PREFIJO_AUTO}Sucursales, horarios y contacto`,
+          text: textoSucursales,
+        },
+        {
+          name: `${PREFIJO_AUTO}Estadísticas de ventas y pedidos`,
+          text: textoEstadisticas,
+        },
         { name: `${PREFIJO_AUTO}Personal y equipo`, text: textoPersonal },
-        { name: `${PREFIJO_AUTO}Colonias y sucursal más cercana`, text: textoColonias },
+        {
+          name: `${PREFIJO_AUTO}Colonias y sucursal más cercana`,
+          text: textoColonias,
+        },
       ];
 
-      const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        headers: { "xi-api-key": apiKey },
-      });
-      if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+      const getRes = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
+      if (!getRes.ok) {
+        return json({ error: await getRes.text() }, getRes.status);
+      }
       const agenteActual = await getRes.json();
       // deno-lint-ignore no-explicit-any
-      const kbActual: any[] = agenteActual.conversation_config?.agent?.prompt?.knowledge_base ?? [];
-      const documentosManuales = kbActual.filter((k) => !String(k.name ?? "").startsWith(PREFIJO_AUTO));
-      const documentosAutoViejos = kbActual.filter((k) => String(k.name ?? "").startsWith(PREFIJO_AUTO));
+      const kbActual: any[] =
+        agenteActual.conversation_config?.agent?.prompt?.knowledge_base ?? [];
+      const documentosManuales = kbActual.filter((k) =>
+        !String(k.name ?? "").startsWith(PREFIJO_AUTO)
+      );
+      const documentosAutoViejos = kbActual.filter((k) =>
+        String(k.name ?? "").startsWith(PREFIJO_AUTO)
+      );
 
       const documentosNuevos: { id: string; name: string; type: string }[] = [];
       for (const doc of documentosGenerados) {
-        const subeRes = await fetch("https://api.elevenlabs.io/v1/convai/knowledge-base/text", {
-          method: "POST",
-          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ text: doc.text, name: doc.name }),
-        });
-        if (!subeRes.ok) return json({ error: `No se pudo subir "${doc.name}": ${await subeRes.text()}` }, subeRes.status);
+        const subeRes = await fetch(
+          "https://api.elevenlabs.io/v1/convai/knowledge-base/text",
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: doc.text, name: doc.name }),
+          },
+        );
+        if (!subeRes.ok) {
+          return json({
+            error: `No se pudo subir "${doc.name}": ${await subeRes.text()}`,
+          }, subeRes.status);
+        }
         const subida = await subeRes.json();
-        documentosNuevos.push({ id: subida.id, name: subida.name, type: "text" });
+        documentosNuevos.push({
+          id: subida.id,
+          name: subida.name,
+          type: "text",
+        });
       }
 
       const kbFinal = [...documentosManuales, ...documentosNuevos];
-      const patchRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        method: "PATCH",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_config: { agent: { prompt: { knowledge_base: kbFinal } } } }),
-      });
-      if (!patchRes.ok) return json({ error: await patchRes.text() }, patchRes.status);
+      const patchRes = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_config: {
+              agent: { prompt: { knowledge_base: kbFinal } },
+            },
+          }),
+        },
+      );
+      if (!patchRes.ok) {
+        return json({ error: await patchRes.text() }, patchRes.status);
+      }
 
       // Solo ahora, con el agente ya apuntando a los documentos nuevos, se
       // borran del store los [Auto] de la sincronización anterior —
@@ -577,12 +930,18 @@ Deno.serve(async (req: Request) => {
       for (const viejo of documentosAutoViejos) {
         if (!viejo?.id) continue;
         try {
-          await fetch(`https://api.elevenlabs.io/v1/convai/knowledge-base/${viejo.id}`, {
-            method: "DELETE",
-            headers: { "xi-api-key": apiKey },
-          });
+          await fetch(
+            `https://api.elevenlabs.io/v1/convai/knowledge-base/${viejo.id}`,
+            {
+              method: "DELETE",
+              headers: { "xi-api-key": apiKey },
+            },
+          );
         } catch (err) {
-          console.error(`sync_knowledge_base: no se pudo borrar el documento viejo ${viejo.id}:`, err);
+          console.error(
+            `sync_knowledge_base: no se pudo borrar el documento viejo ${viejo.id}:`,
+            err,
+          );
         }
       }
 
@@ -611,17 +970,26 @@ Deno.serve(async (req: Request) => {
         language_detection_enabled?: boolean;
       };
       if (!agent_id || !Array.isArray(languages)) {
-        return json({ error: "agent_id y languages (arreglo de códigos de idioma) son requeridos" }, 400);
+        return json({
+          error:
+            "agent_id y languages (arreglo de códigos de idioma) son requeridos",
+        }, 400);
       }
 
-      const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        headers: { "xi-api-key": apiKey },
-      });
-      if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+      const getRes = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
+      if (!getRes.ok) {
+        return json({ error: await getRes.text() }, getRes.status);
+      }
       const current = await getRes.json();
 
       // deno-lint-ignore no-explicit-any
-      const presetsActuales: Record<string, any> = current.conversation_config?.language_presets ?? {};
+      const presetsActuales: Record<string, any> =
+        current.conversation_config?.language_presets ?? {};
       // deno-lint-ignore no-explicit-any
       const nuevosPresets: Record<string, any> = {};
       for (const codigo of languages) {
@@ -632,7 +1000,8 @@ Deno.serve(async (req: Request) => {
       }
 
       // deno-lint-ignore no-explicit-any
-      const builtInToolsActuales: Record<string, any> = current.conversation_config?.agent?.prompt?.built_in_tools ?? {};
+      const builtInToolsActuales: Record<string, any> =
+        current.conversation_config?.agent?.prompt?.built_in_tools ?? {};
       const nuevoBuiltInTools = {
         ...builtInToolsActuales,
         language_detection: language_detection_enabled
@@ -645,16 +1014,19 @@ Deno.serve(async (req: Request) => {
           : null,
       };
 
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        method: "PATCH",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversation_config: {
-            language_presets: nuevosPresets,
-            agent: { prompt: { built_in_tools: nuevoBuiltInTools } },
-          },
-        }),
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_config: {
+              language_presets: nuevosPresets,
+              agent: { prompt: { built_in_tools: nuevoBuiltInTools } },
+            },
+          }),
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
     }
@@ -662,9 +1034,12 @@ Deno.serve(async (req: Request) => {
     if (action === "get_raw") {
       const { agent_id } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        headers: { "xi-api-key": apiKey },
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json(await res.json());
     }
@@ -686,19 +1061,30 @@ Deno.serve(async (req: Request) => {
       if (agent_id) params.set("agent_id", agent_id);
       params.set("page_size", String(page_size ?? 20));
       if (call_successful) params.set("call_successful", call_successful);
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/conversations?${params}`, {
-        headers: { "xi-api-key": apiKey },
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversations?${params}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json(await res.json());
     }
 
     if (action === "get_conversation") {
-      const { conversation_id, agent_id } = body as { conversation_id?: string; agent_id?: string };
-      if (!conversation_id || !agent_id) return json({ error: "conversation_id y agent_id requeridos" }, 400);
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${conversation_id}`, {
-        headers: { "xi-api-key": apiKey },
-      });
+      const { conversation_id, agent_id } = body as {
+        conversation_id?: string;
+        agent_id?: string;
+      };
+      if (!conversation_id || !agent_id) {
+        return json({ error: "conversation_id y agent_id requeridos" }, 400);
+      }
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversations/${conversation_id}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       const conversation = await res.json();
       // Defense in depth: never return a transcript if ElevenLabs associates
@@ -712,9 +1098,12 @@ Deno.serve(async (req: Request) => {
     if (action === "get") {
       const { agent_id } = body;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        headers: { "xi-api-key": apiKey },
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          headers: { "xi-api-key": apiKey },
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       const data = await res.json();
       const agent = data.conversation_config?.agent ?? {};
@@ -725,8 +1114,11 @@ Deno.serve(async (req: Request) => {
         name: data.name,
         first_message: agent.first_message ?? "",
         language: agent.language ?? "es",
-        additional_languages: Object.keys(data.conversation_config?.language_presets ?? {}),
-        language_detection_enabled: !!(agent.prompt?.built_in_tools?.language_detection),
+        additional_languages: Object.keys(
+          data.conversation_config?.language_presets ?? {},
+        ),
+        language_detection_enabled:
+          !!(agent.prompt?.built_in_tools?.language_detection),
         prompt: agent.prompt?.prompt ?? "",
         temperature: agent.prompt?.temperature ?? 0.4,
         llm: agent.prompt?.llm ?? "",
@@ -739,11 +1131,19 @@ Deno.serve(async (req: Request) => {
         background_sound_id: backgroundSound.source_id ?? null,
         background_sound_volume: backgroundSound.volume ?? 0.15,
         background_sound_crossfade: backgroundSound.crossfade_loop ?? true,
-        first_message_interruptible: agent.disable_first_message_interruptions !== true,
+        first_message_interruptible:
+          agent.disable_first_message_interruptions !== true,
         // deno-lint-ignore no-explicit-any
-        tools: (agent.prompt?.tools ?? []).map((t: any) => ({ type: t.type, name: t.name })),
+        tools: (agent.prompt?.tools ?? []).map((t: any) => ({
+          type: t.type,
+          name: t.name,
+        })),
         // deno-lint-ignore no-explicit-any
-        knowledge_base: (agent.prompt?.knowledge_base ?? []).map((k: any) => ({ id: k.id, name: k.name, type: k.type })),
+        knowledge_base: (agent.prompt?.knowledge_base ?? []).map((k: any) => ({
+          id: k.id,
+          name: k.name,
+          type: k.type,
+        })),
       });
     }
 
@@ -753,7 +1153,9 @@ Deno.serve(async (req: Request) => {
         return json({ error: "agent_id requerido" }, 400);
       }
       const res = await fetch(
-        `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agent_id)}`,
+        `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${
+          encodeURIComponent(agent_id)
+        }`,
         { headers: { "xi-api-key": apiKey } },
       );
       if (!res.ok) return json({ error: await res.text() }, res.status);
@@ -781,9 +1183,10 @@ Deno.serve(async (req: Request) => {
       // deno-lint-ignore no-explicit-any
       const voces = todas.filter((v: any) => {
         const acento = (v.accent ?? "").toLowerCase();
-        return acento.includes("latin") || acento.includes("mexic") || acento.includes("colomb")
-          || acento.includes("argentin") || acento.includes("neutral");
-      // deno-lint-ignore no-explicit-any
+        return acento.includes("latin") || acento.includes("mexic") ||
+          acento.includes("colomb") ||
+          acento.includes("argentin") || acento.includes("neutral");
+        // deno-lint-ignore no-explicit-any
       }).map((v: any) => ({
         voice_id: v.voice_id,
         public_owner_id: v.public_owner_id,
@@ -806,7 +1209,10 @@ Deno.serve(async (req: Request) => {
       // las voces personales de Javier ni las de otro restaurante que
       // comparta la misma cuenta de ElevenLabs.
       // deno-lint-ignore no-explicit-any
-      const voces = (data.voices ?? []).filter((v: any) => v.category === "cloned" && v.labels?.restaurant_id === restaurantId).map((v: any) => ({
+      const voces = (data.voices ?? []).filter((v: any) =>
+        v.category === "cloned" && v.labels?.restaurant_id === restaurantId
+        // deno-lint-ignore no-explicit-any
+      ).map((v: any) => ({
         voice_id: v.voice_id,
         public_owner_id: "",
         name: v.name,
@@ -819,19 +1225,36 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "clone_voice") {
-      // deno-lint-ignore no-explicit-any
-      const { name, samples, remove_background_noise } = body as { name?: string; samples?: any[]; remove_background_noise?: boolean };
-      if (!name || !samples || !Array.isArray(samples) || samples.length === 0) {
-        return json({ error: "name y samples (al menos 1 audio) son requeridos" }, 400);
+      const { name, samples, remove_background_noise } = body as {
+        name?: string;
+        // deno-lint-ignore no-explicit-any
+        samples?: any[];
+        remove_background_noise?: boolean;
+      };
+      if (
+        !name || !samples || !Array.isArray(samples) || samples.length === 0
+      ) {
+        return json({
+          error: "name y samples (al menos 1 audio) son requeridos",
+        }, 400);
       }
 
       const form = new FormData();
       form.append("name", name);
       form.append("labels", JSON.stringify({ restaurant_id: restaurantId }));
-      if (remove_background_noise !== undefined) form.append("remove_background_noise", String(remove_background_noise));
+      if (remove_background_noise !== undefined) {
+        form.append("remove_background_noise", String(remove_background_noise));
+      }
       samples.forEach((s, i) => {
-        const binario = Uint8Array.from(atob(s.audio_base64), (c) => c.charCodeAt(0));
-        form.append("files", new Blob([binario], { type: s.mime_type || "audio/webm" }), `muestra-${i + 1}.webm`);
+        const binario = Uint8Array.from(
+          atob(s.audio_base64),
+          (c) => c.charCodeAt(0),
+        );
+        form.append(
+          "files",
+          new Blob([binario], { type: s.mime_type || "audio/webm" }),
+          `muestra-${i + 1}.webm`,
+        );
       });
 
       const res = await fetch("https://api.elevenlabs.io/v1/voices/add", {
@@ -846,21 +1269,49 @@ Deno.serve(async (req: Request) => {
 
     if (action === "update") {
       const {
-        agent_id, name, first_message, language, prompt, temperature, voice_id, voice_public_owner_id, speed, stability, similarity_boost,
-        background_sound_id, background_sound_volume, background_sound_crossfade, first_message_interruptible,
-        llm, backup_llm, reasoning_effort, dynamic_variable_placeholders,
-      } = body as { dynamic_variable_placeholders?: Record<string, string> } & Record<string, unknown>;
+        agent_id,
+        name,
+        first_message,
+        language,
+        prompt,
+        temperature,
+        voice_id,
+        voice_public_owner_id,
+        speed,
+        stability,
+        similarity_boost,
+        background_sound_id,
+        background_sound_volume,
+        background_sound_crossfade,
+        first_message_interruptible,
+        llm,
+        backup_llm,
+        reasoning_effort,
+        dynamic_variable_placeholders,
+      } = body as
+        & { dynamic_variable_placeholders?: Record<string, string> }
+        & Record<string, unknown>;
       if (!agent_id) return json({ error: "agent_id requerido" }, 400);
 
       if (voice_id && voice_public_owner_id) {
-        const addRes = await fetch(`https://api.elevenlabs.io/v1/voices/add/${voice_public_owner_id}/${voice_id}`, {
-          method: "POST",
-          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ new_name: `Voz — Los Taquitos de PM` }),
-        });
+        const addRes = await fetch(
+          `https://api.elevenlabs.io/v1/voices/add/${voice_public_owner_id}/${voice_id}`,
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ new_name: `Voz — Los Taquitos de PM` }),
+          },
+        );
         if (!addRes.ok) {
           const detalle = await addRes.text();
-          if (!detalle.includes("already")) return json({ error: `No se pudo añadir la voz a tu biblioteca: ${detalle}` }, addRes.status);
+          if (!detalle.includes("already")) {
+            return json({
+              error: `No se pudo añadir la voz a tu biblioteca: ${detalle}`,
+            }, addRes.status);
+          }
         }
       }
 
@@ -868,7 +1319,10 @@ Deno.serve(async (req: Request) => {
       const agentPatch: Record<string, any> = {};
       if (first_message !== undefined) agentPatch.first_message = first_message;
       if (language !== undefined) agentPatch.language = language;
-      if (first_message_interruptible !== undefined) agentPatch.disable_first_message_interruptions = !first_message_interruptible;
+      if (first_message_interruptible !== undefined) {
+        agentPatch.disable_first_message_interruptions =
+          !first_message_interruptible;
+      }
       // Bug real confirmado 4-sep-2026: first_message con una variable
       // {{saludo}} sin default rompe CUALQUIER llamada real que no la mande
       // explícita (ej. el widget <elevenlabs-convai> embebido, que nunca
@@ -880,44 +1334,73 @@ Deno.serve(async (req: Request) => {
       // "Missing required dynamic variables in tools" en llamadas telefónicas
       // o widgets que no mandan conversation initiation data.
       if (dynamic_variable_placeholders !== undefined) {
-        const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-          headers: { "xi-api-key": apiKey },
-        });
-        if (!getRes.ok) return json({ error: await getRes.text() }, getRes.status);
+        const getRes = await fetch(
+          `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+          {
+            headers: { "xi-api-key": apiKey },
+          },
+        );
+        if (!getRes.ok) {
+          return json({ error: await getRes.text() }, getRes.status);
+        }
         const current = await getRes.json();
-        const existentes = current?.conversation_config?.agent?.dynamic_variables?.dynamic_variable_placeholders ?? {};
+        const existentes =
+          current?.conversation_config?.agent?.dynamic_variables
+            ?.dynamic_variable_placeholders ?? {};
         agentPatch.dynamic_variables = {
-          dynamic_variable_placeholders: { ...existentes, ...dynamic_variable_placeholders },
+          dynamic_variable_placeholders: {
+            ...existentes,
+            ...dynamic_variable_placeholders,
+          },
         };
         // deno-lint-ignore no-explicit-any
-        const toolsActuales: any[] = current?.conversation_config?.agent?.prompt?.tools ?? [];
+        const toolsActuales: any[] =
+          current?.conversation_config?.agent?.prompt?.tools ?? [];
         if (toolsActuales.length > 0) {
           agentPatch.prompt = {
-            tools: toolsActuales.map((tool) => tool.type === "webhook" ? {
-              ...tool,
-              dynamic_variables: {
-                ...(tool.dynamic_variables ?? {}),
-                dynamic_variable_placeholders: {
-                  ...(tool.dynamic_variables?.dynamic_variable_placeholders ?? {}),
-                  ...dynamic_variable_placeholders,
-                },
-              },
-            } : tool),
+            tools: toolsActuales.map((tool) =>
+              tool.type === "webhook"
+                ? {
+                  ...tool,
+                  dynamic_variables: {
+                    ...(tool.dynamic_variables ?? {}),
+                    dynamic_variable_placeholders: {
+                      ...(tool.dynamic_variables
+                        ?.dynamic_variable_placeholders ?? {}),
+                      ...dynamic_variable_placeholders,
+                    },
+                  },
+                }
+                : tool
+            ),
           };
         }
       }
-      if (prompt !== undefined || temperature !== undefined || llm !== undefined || backup_llm !== undefined || reasoning_effort !== undefined) {
+      if (
+        prompt !== undefined || temperature !== undefined ||
+        llm !== undefined || backup_llm !== undefined ||
+        reasoning_effort !== undefined
+      ) {
         agentPatch.prompt ??= {};
         if (prompt !== undefined) agentPatch.prompt.prompt = prompt;
-        if (temperature !== undefined) agentPatch.prompt.temperature = temperature;
+        if (temperature !== undefined) {
+          agentPatch.prompt.temperature = temperature;
+        }
         if (llm !== undefined) agentPatch.prompt.llm = llm;
-        if (backup_llm !== undefined) agentPatch.prompt.backup_llm_config = { preference: "override", order: [backup_llm] };
+        if (backup_llm !== undefined) {
+          agentPatch.prompt.backup_llm_config = {
+            preference: "override",
+            order: [backup_llm],
+          };
+        }
         // Modelos "thinking" (ej. gemini-3.5-flash-lite) exponen razonamiento
         // visible si reasoning_effort queda sin definir — se coló texto de
         // planeación interna dentro de la respuesta hablada real en una
         // llamada de prueba en vivo. "minimal" apaga ese razonamiento visible
         // sin tener que cambiar de modelo.
-        if (reasoning_effort !== undefined) agentPatch.prompt.reasoning_effort = reasoning_effort;
+        if (reasoning_effort !== undefined) {
+          agentPatch.prompt.reasoning_effort = reasoning_effort;
+        }
       }
 
       // deno-lint-ignore no-explicit-any
@@ -925,11 +1408,17 @@ Deno.serve(async (req: Request) => {
       if (voice_id !== undefined) ttsPatch.voice_id = voice_id;
       if (speed !== undefined) ttsPatch.speed = speed;
       if (stability !== undefined) ttsPatch.stability = stability;
-      if (similarity_boost !== undefined) ttsPatch.similarity_boost = similarity_boost;
+      if (similarity_boost !== undefined) {
+        ttsPatch.similarity_boost = similarity_boost;
+      }
 
       // deno-lint-ignore no-explicit-any
       const conversationPatch: Record<string, any> = {};
-      if (background_sound_id !== undefined || background_sound_volume !== undefined || background_sound_crossfade !== undefined) {
+      if (
+        background_sound_id !== undefined ||
+        background_sound_volume !== undefined ||
+        background_sound_crossfade !== undefined
+      ) {
         conversationPatch.background_sound = {
           source_type: background_sound_id ? "preset" : null,
           source_id: background_sound_id ?? null,
@@ -940,19 +1429,26 @@ Deno.serve(async (req: Request) => {
 
       // deno-lint-ignore no-explicit-any
       const conversation_config: Record<string, any> = {};
-      if (Object.keys(agentPatch).length) conversation_config.agent = agentPatch;
+      if (Object.keys(agentPatch).length) {
+        conversation_config.agent = agentPatch;
+      }
       if (Object.keys(ttsPatch).length) conversation_config.tts = ttsPatch;
-      if (Object.keys(conversationPatch).length) conversation_config.conversation = conversationPatch;
+      if (Object.keys(conversationPatch).length) {
+        conversation_config.conversation = conversationPatch;
+      }
 
       // deno-lint-ignore no-explicit-any
       const patchBody: Record<string, any> = { conversation_config };
       if (name !== undefined) patchBody.name = name;
 
-      const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
-        method: "PATCH",
-        headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify(patchBody),
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${agent_id}`,
+        {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(patchBody),
+        },
+      );
       if (!res.ok) return json({ error: await res.text() }, res.status);
       return json({ ok: true });
     }
@@ -962,6 +1458,12 @@ Deno.serve(async (req: Request) => {
     console.error("agent-config error:", err);
     if (err instanceof HttpInputError) {
       return json({ error: err.message }, err.status);
+    }
+    if (err instanceof OrderValidationError) {
+      return json(
+        { error: err.message },
+        err instanceof OrderConflictError ? 409 : 400,
+      );
     }
     return json({ error: "Error interno" }, 500);
   }

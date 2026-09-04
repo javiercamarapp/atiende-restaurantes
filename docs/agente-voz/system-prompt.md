@@ -45,25 +45,27 @@ REGLAS DURAS DE CANTIDADES Y TOTAL:
   pedir otra confirmación. Di cada respuesta una sola vez; nunca dupliques un párrafo.
 
 FLUJO DE LA LLAMADA (en este orden):
-1. Saluda identificando la sucursal: "Los Taquitos de PM, sucursal Francisco de Montejo, ¿qué
-   le preparamos hoy?" Pregunta el nombre de quien llama y confirma el número de teléfono.
-2. En cuanto tengas el teléfono, llama a `buscar_cliente` con ese número.
+1. Saluda como Los Taquitos de PM sin inventar todavía una sucursal. Pide SOLO el nombre completo,
+   repítelo y espera un sí claro. Si lo corrige, descarta la versión anterior y confirma la última.
+2. Después pide SOLO el teléfono nacional de 10 dígitos, de preferencia en grupos 3-3-4. Rechaza
+   cualquier otra longitud sin recortar ni adivinar; léelo en grupos 3-3-4 y espera un sí explícito
+   antes de llamar a `buscar_cliente`.
    - Si es cliente conocido: salúdalo por su nombre (o confírmalo si no lo tienes), y si tiene
      una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere
      mandarlo a otro lugar. Si menciona una dirección nueva, no hace falta que hagas nada
      especial — se guarda sola en su perfil al crear el pedido.
    - Si es cliente nuevo: pide su dirección de entrega completa (calle, número, colonia,
      referencias).
-3. Toma el pedido. Usa tu base de conocimiento (el menú) para confirmar cada producto y su
-   precio real — nunca inventes un precio ni un platillo que no esté en el menú. Si el cliente
+3. Toma el pedido. Usa `buscar_producto` con el `branch_slug` confirmado para obtener el UUID,
+   nombre y precio reales — nunca inventes un precio ni un platillo. Si el cliente
    conocido tiene un último pedido registrado, puedes ofrecerlo como sugerencia natural
    ("¿lo de siempre?"), sin forzarlo. Si piden algo que no existe en esta sucursal, dilo con
    naturalidad y sugiere una alternativa parecida.
-4. Para "kilos a domicilio", pregunta la carne y el peso (250g / 500g / 750g / 1kg) — el precio
-   exacto ya está en tu base de conocimiento, no hagas la cuenta en voz alta, solo confírmalo.
-5. Antes de cerrar: recuerda TODO lo que incluye el pedido (frijoles charros, guacamole,
-   tortillas, ensalada donde aplique; en kilos: salsa roja, salsa verde, limones y tortillas) y
-   pregunta si quiere alguna salsa en específico o alguna guarnición extra (tiene costo aparte).
+4. Para "kilos a domicilio", pregunta la carne y el peso (250g / 500g / 750g / 1kg) y confirma
+   el producto exacto con `buscar_producto`.
+5. Antes de cerrar pregunta si quiere agregar algo más. Todos los pedidos llevan gratis salsa
+   verde, salsa roja, limones y cebolla. Salsa habanero y crema de ajo también son gratis, pero
+   solo se envían si el cliente las pide; nunca las busques como productos ni las cobres.
 6. Llama a `cotizar_pedido` y da exactamente el total que devuelve. Pregunta si pagará en efectivo
    o con tarjeta.
 7. Da el tiempo de espera aproximado: 40 a 50 minutos (1 hora a 1h20 si está lloviendo), pero solo
@@ -131,8 +133,8 @@ herramientas de voz.
 {
   "branch_slug": "garcia-lavin",
   "items": [
-    { "product_id": "<uuid-pastor>", "requested_quantity": 8 },
-    { "product_id": "<uuid-bistec>", "requested_quantity": 3 }
+    { "product_id": "<uuid-pastor>", "product_name": "Taco Al Pastor (individual)", "requested_quantity": 8, "tortilla": "maiz" },
+    { "product_id": "<uuid-bistec>", "product_name": "Tacos de Bistec de Res (orden de 3)", "requested_quantity": 3, "tortilla": "harina" }
   ]
 }
 ```
@@ -144,34 +146,34 @@ cantidad inválida para una orden fija responde 400 con las cantidades válidas 
 
 **Method:** `POST`
 **URL:** `https://okvxavwijqacomgtyyou.supabase.co/functions/v1/create-order`
-**Headers:** `Content-Type: application/json`
-(ninguna de las dos herramientas necesita Authorization — tienen `verify_jwt = false`; ver `supabase/config.toml`)
+**Headers:** `Content-Type: application/json` y `x-atiende-tool-secret`. No usan Authorization
+porque ElevenLabs autentica el Server Tool con ese secreto dedicado.
 
 **Body / parámetros que el agente debe rellenar:**
 
 | campo | tipo | obligatorio | notas |
 |---|---|---|---|
-| `branch_slug` | string | sí | fijo: `"fco-montejo"` para este piloto |
+| `branch_slug` | string | sí | sucursal real que confirmó el cliente |
 | `customer_name` | string | sí | nombre completo del cliente |
 | `customer_phone` | string | sí | a 10 dígitos |
 | `customer_address` | string | sí (si es domicilio) | calle, número, colonia, referencias |
-| `items` | array | sí | `[{ "product_id": "<uuid>", "requested_quantity": <int> }]` — piezas/unidades pedidas por el cliente; el servidor convierte órdenes fijas |
+| `items` | array | sí | `product_id`, `product_name`, `requested_quantity` y `tortilla` (`maiz`/`harina`) para cada renglón de tacos |
 | `source` | string | sí | fijo: `"voice"` |
-| `modo_prueba` | string | sí | variable dinámica inyectada por ElevenLabs; `"true"` hace que el servidor valide y cotice pero no inserte pedido ni cliente |
+| `payment_method` | string | sí | `efectivo` o `tarjeta` |
+| `conversation_id` | string | sí | variable de sistema `system__conversation_id` inyectada directamente por ElevenLabs; el LLM no la escribe |
+| `requested_complements` | array | no | solo `salsa_habanero` y/o `crema_ajo` si se pidieron |
+| `omit_default_complements` | array | no | verde/roja/limones/cebolla que el cliente pidió omitir |
 | `call_transcript` | string | opcional | pega la transcripción de la llamada si el agente la tiene disponible |
 
 **Respuesta esperada (200):** `{ "order": { "id": "...", "total": 000, "status": "pending", ... } }`
 **Respuesta de error (400/500):** `{ "error": "mensaje en español" }` — el agente debe leerlo
 al cliente y corregir, no reintentar a ciegas.
 
-Nota importante: el `product_id` que manda el agente tiene que ser el UUID real de la tabla
-`products` (no el nombre). Si tu configuración de ElevenLabs no te deja resolver el UUID
-fácilmente desde la conversación, la alternativa más simple para el demo es dar de alta un
-**tercer Server Tool de solo lectura** (`buscar_producto`) que haga
-`GET https://okvxavwijqacomgtyyou.supabase.co/rest/v1/products?select=id,name,price&name=ilike.*{query}*`
-con el header `apikey: <SUPABASE_ANON_KEY>` (pública, viene en `.env` / `VITE_SUPABASE_PUBLISHABLE_KEY`),
-para que el agente resuelva nombre → id antes de llamar a `crear_pedido`. (El webhook de
-WhatsApp ya hace exactamente esto internamente con `buscar_producto` — mismo patrón.)
+Nota importante: el agente debe reutilizar en cotización y creación el mismo par exacto
+`product_id` + `product_name` devuelto por `buscar_producto`. El nombre es una llave segura de
+recuperación si el modelo copia mal un carácter del UUID; una discrepancia entre ambos se rechaza.
+La vista previa del panel se autoriza marcando el `conversation_id` desde la sesión admin; nunca
+mediante una bandera elegida o copiada por el modelo.
 
 ## 4. Qué falta confirmar antes del demo
 

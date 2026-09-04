@@ -17,9 +17,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
 import {
   createOrderCore,
   CreateOrderPayload,
-  isTrustedVoicePreview,
+  isValidVoiceConversationId,
+  OrderConflictError,
   OrderValidationError,
-  quoteOrderCore,
+  prepareCreateOrder,
+  resolveVoicePreviewRestaurant,
+  validateCreateOrderPayload,
 } from "../_shared/create-order-core.ts";
 import {
   consumeRateLimit,
@@ -55,10 +58,24 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "source inválido" }, 400);
     }
     // The authenticated channel, not a client-controlled field, decides provenance.
-    const payload: CreateOrderPayload = {
+    if (
+      toolAuthorized && !isValidVoiceConversationId(incoming.conversation_id)
+    ) {
+      throw new OrderValidationError(
+        "conversation_id válido es requerido para voz",
+      );
+    }
+    const conversationId = toolAuthorized ? incoming.conversation_id! : null;
+    const payload = validateCreateOrderPayload({
       ...incoming,
       source: toolAuthorized ? "voice" : "web",
-    };
+      // ElevenLabs inyecta el ID de conversación en el body del Server Tool.
+      // Un reintento del mismo intento de compra queda idempotente sin pedirle
+      // al LLM que invente o copie otra llave.
+      idempotency_key: toolAuthorized && conversationId
+        ? `voice:${conversationId}`
+        : incoming.idempotency_key,
+    });
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -76,38 +93,31 @@ Deno.serve(async (req: Request) => {
         "Retry-After": "60",
       });
     }
-    if (isTrustedVoicePreview(toolAuthorized, incoming.modo_prueba)) {
-      if (!payload.branch_slug) {
-        throw new OrderValidationError(
-          "branch_slug es requerido para una simulación",
+    const previewRestaurantId = toolAuthorized
+      ? await resolveVoicePreviewRestaurant(supabase, conversationId)
+      : null;
+    if (previewRestaurantId) {
+      const quote = await prepareCreateOrder(supabase, payload);
+      if (quote.branch.restaurant_id !== previewRestaurantId) {
+        return jsonResponse(
+          req,
+          { error: "La vista previa no pertenece a este restaurante" },
+          403,
         );
       }
-      const quote = await quoteOrderCore(supabase, {
-        branch_slug: payload.branch_slug,
-        adult_confirmed: payload.adult_confirmed,
-        items: payload.items.map((item) => ({
-          product_id: item.product_id,
-          requested_quantity: item.requested_quantity as number,
-          tortilla: item.tortilla,
-        })),
-      });
       return jsonResponse(req, {
         order: {
           id: `preview-${crypto.randomUUID()}`,
           status: "simulated",
           simulated: true,
-          branch_id: quote.branch_id,
-          branch: quote.branch_name,
+          branch_id: quote.branch.id,
+          branch: quote.branch.name,
           total: quote.total,
           source: "voice",
           payment_method: payload.payment_method ?? null,
-          items: quote.lines.map((line) => ({
-            id: line.product_id,
-            name: line.name,
-            price: line.price,
-            quantity: line.quantity,
-            ...(line.tortilla ? { tortilla: line.tortilla } : {}),
-          })),
+          requested_complements: payload.requested_complements ?? [],
+          omit_default_complements: payload.omit_default_complements ?? [],
+          items: quote.orderItems,
         },
       });
     }
@@ -118,6 +128,8 @@ Deno.serve(async (req: Request) => {
     console.error("create-order error:", err);
     const status = err instanceof HttpInputError
       ? err.status
+      : err instanceof OrderConflictError
+      ? 409
       : err instanceof OrderValidationError
       ? 400
       : 500;
