@@ -24,3 +24,9 @@ supabase/.temp/
 *.sln
 *.sw?
 *.tsbuildinfo
+
+# Local credentials and Supabase CLI state
+.env
+.env.*
+!.env.example
+supabase/.branches/
