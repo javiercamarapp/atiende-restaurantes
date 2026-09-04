@@ -60,6 +60,22 @@ export type WhatsAppAgentConfig = {
   temperature: number;
 };
 
+// Bug real confirmado 4-sep-2026: el agente saludaba con "Buenas tardes" fijo
+// sin importar la hora real (el LLM no tiene forma de saber la hora real por
+// su cuenta) — pedido de Javier: "que el agente empiece con buenos dias,
+// buenas tardes o buenas noches segun el horario tanto en voz como en chat".
+// Se calcula server-side con la hora REAL de Mérida (America/Merida, UTC-6
+// todo el año, sin horario de verano) y se le pasa como hecho en el prompt
+// de cada turno — nunca se le pide al modelo que "adivine" la hora.
+export function saludoSegunHoraMerida(ahora: Date = new Date()): string {
+  const hora = Number(
+    new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "numeric", hourCycle: "h23" }).format(ahora),
+  );
+  if (hora >= 5 && hora < 12) return "Buenos días";
+  if (hora >= 12 && hora < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+
 export const BASE_SYSTEM_PROMPT = `Eres el asistente de WhatsApp de Los Taquitos de PM, una taquería con varias sucursales en Mérida.
 Tomas pedidos a domicilio por chat. Tono cálido, directo, mensajes cortos (esto es WhatsApp, no una carta), actúa natural — no leas listas completas de golpe, ve conversando.
 
@@ -90,7 +106,7 @@ REGLAS DE NEGOCIO:
 - REGLA DURA: si en esta MISMA conversación ya llamaste a crear_pedido y te respondió con éxito (un pedido real), NUNCA vuelvas a llamarla otra vez — ni si el cliente pregunta "¿ya quedó mi pedido?", ni si manda un mensaje confuso o repite algo, ni por ningún motivo. Solo repítele el resumen del pedido que ya se creó y confírmale que sigue en camino. Llamar crear_pedido dos veces crea un pedido real duplicado en cocina.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
-1. Saluda presentándote como Los Taquitos de PM (sin mencionar sucursal todavía — aún no la sabes) y pregunta si quiere hacer un pedido. En cuanto confirme que sí, pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir). En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante — ya lo tienes.
+1. Saluda usando EXACTAMENTE el saludo que te doy en "SALUDO SEGÚN LA HORA ACTUAL" abajo (nunca uno fijo ni adivinado) presentándote como Los Taquitos de PM (sin mencionar sucursal todavía — aún no la sabes) y pregunta si quiere hacer un pedido. Este saludo por hora solo aplica al primer mensaje tuyo de la conversación — no lo repitas en mensajes siguientes. En cuanto confirme que sí, pregunta el nombre de quien pide (el número de WhatsApp ya lo tienes, no lo vuelvas a pedir). En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante — ya lo tienes.
 2. Dirección: si el CONTEXTO DEL CLIENTE de abajo trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o si quiere mandarlo a otro lugar (si da una nueva, se guarda sola en su perfil al cerrar el pedido — no hace falta que hagas nada extra). Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si la colonia no es clara, pregunta la colonia o una referencia cercana ANTES de llamar la herramienta. Si responde encontrada:false, pide otra referencia (colonia vecina, cruce de calles, plaza conocida) e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien. Si el cliente prefiere que se lo mandes desde otra sucursal (por ejemplo, porque le queda mejor otra zona que conoce), no insistas en que sea forzosamente la más cercana — acepta con gusto cualquiera de las sucursales reales de la lista de arriba que el cliente prefiera, y sigue con esa.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal que ya confirmaste en el paso 3 — el precio real varía por sucursal). Si el CONTEXTO trae su último pedido, puedes ofrecer "¿lo de siempre?" como sugerencia natural, no como obligación.
@@ -266,7 +282,7 @@ export async function runAgentTurn(
   // fila no existe todavía o falla la lectura) — prompt, tono, modelo y
   // temperatura, todos editables desde el admin sin tocar código.
   const agentConfig = await getAgentConfig(supabase, restaurantId);
-  const systemPrompt = `${agentConfig.system_prompt}\n\nTONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[agentConfig.tone_style] ?? TONE_INSTRUCTIONS.calido_cercano}\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
+  const systemPrompt = `${agentConfig.system_prompt}\n\nTONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[agentConfig.tone_style] ?? TONE_INSTRUCTIONS.calido_cercano}\n\nSALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHoraMerida()}"\n\nCONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`;
   const openRouterKey = await getOpenRouterKey(supabase);
   if (!openRouterKey) {
     return { reply: "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.", updatedMessages: messages, orderId, branchId };

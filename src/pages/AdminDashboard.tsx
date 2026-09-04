@@ -1457,6 +1457,23 @@ function VistaPreviaAgentePantallaCompleta({
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // Bug real confirmado 4-sep-2026: el agente saludaba con "Buenas tardes"
+  // fijo (era el first_message estático del agente en ElevenLabs) sin
+  // importar la hora real de la llamada. Ahora first_message usa la
+  // plantilla "{{saludo}}, Los Taquitos de PM..." y esta función calcula el
+  // saludo real con la hora de Mérida (America/Merida, UTC-6 todo el año)
+  // para mandarlo como dynamic variable — mismo cálculo que
+  // saludoSegunHoraMerida() en whatsapp-agent-core.ts, para que voz y chat
+  // nunca queden desalineados.
+  const saludoSegunHoraMerida = (): string => {
+    const hora = Number(
+      new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "numeric", hourCycle: "h23" }).format(new Date()),
+    );
+    if (hora >= 5 && hora < 12) return "Buenos días";
+    if (hora >= 12 && hora < 19) return "Buenas tardes";
+    return "Buenas noches";
+  };
+
   // Llamada real vía el SDK oficial (@elevenlabs/client), no el widget
   // pre-armado — nos da control real de iniciar/terminar y transcripción
   // real por callback (onMessage), en vez de simular un click sobre un
@@ -1484,7 +1501,7 @@ function VistaPreviaAgentePantallaCompleta({
         // debe registrar el pedido de verdad, sólo simular el flujo
         // completo. La llamada real desde el widget público en producción
         // nunca manda esta variable, así que ahí SÍ registra de verdad.
-        dynamicVariables: { modo_prueba: 'true' },
+        dynamicVariables: { modo_prueba: 'true', saludo: saludoSegunHoraMerida() },
         onConnect: () => setLlamadaActiva(true),
         onDisconnect: () => { setLlamadaActiva(false); conversacionRef.current = null; },
         onMessage: ({ message, role }) => {
