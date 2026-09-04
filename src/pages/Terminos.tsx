@@ -53,7 +53,7 @@ const SECCIONES: SeccionLegal[] = [
   {
     titulo: "7. Servicios de terceros que hacen posible el servicio",
     parrafos: [
-      "Para operar, atiende.ai se apoya en proveedores externos: telefonía y mensajería de WhatsApp (Twilio), conversión de voz (ElevenLabs), el modelo de lenguaje que conduce la conversación de WhatsApp (Anthropic), la base de datos y autenticación (Supabase) y el hosting del panel (Vercel).",
+      "Para operar, atiende.ai se apoya en proveedores externos: telefonía y mensajería de WhatsApp (Twilio), voz conversacional (ElevenLabs), enrutamiento de modelos de lenguaje (OpenRouter), proveedores de modelos como OpenAI y Google, la base de datos y autenticación (Supabase) y el hosting del panel (Vercel).",
       "La disponibilidad del servicio depende, en parte, de la disponibilidad de estos proveedores. Una caída de alguno de ellos puede interrumpir temporalmente la toma de pedidos por voz o WhatsApp.",
     ],
   },

@@ -5,7 +5,11 @@ const assetDir = join(process.cwd(), "dist", "assets");
 // These budgets sit just above the measured route chunks. Shared vendor
 // chunks remain separate; forcing them into AdminDashboard regressed it by
 // more than 1 MB during the audit and is intentionally rejected here.
-const budgets = { "AdminDashboard": 2_100_000, "SuperAdminDashboard": 30_000 };
+const budgets = {
+  "AdminDashboard": 400_000,
+  "SuperAdminDashboard": 30_000,
+  "voice-": 600_000,
+};
 const files = readdirSync(assetDir);
 for (const [name, budget] of Object.entries(budgets)) {
   const file = files.find((f) => f.startsWith(name) && f.endsWith(".js"));

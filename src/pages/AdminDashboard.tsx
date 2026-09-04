@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Conversation } from "@elevenlabs/client";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -1431,7 +1430,7 @@ function VistaPreviaAgentePantallaCompleta({
   const [conectando, setConectando] = useState(false);
   const [mensajes, setMensajes] = useState<{ texto: string; propio: boolean }[]>([]);
   const videoOrbeRef = useRef<HTMLVideoElement>(null);
-  const conversacionRef = useRef<Conversation | null>(null);
+  const conversacionRef = useRef<{ endSession: () => Promise<void> } | null>(null);
 
   // El video de 4s generado con Higgsfield no cierra en loop perfecto (se
   // nota el corte al reiniciar) — en vez de eso lo reproducimos como
@@ -1490,6 +1489,9 @@ function VistaPreviaAgentePantallaCompleta({
     if (!agentId || conectando) return;
     setConectando(true);
     try {
+      // El SDK de voz es pesado y solo hace falta cuando el administrador
+      // inicia una llamada de prueba; no debe penalizar la carga del panel.
+      const { Conversation } = await import("@elevenlabs/client");
       const { data, error } = await supabase.functions.invoke('agent-config', {
         body: { action: 'signed_url', agent_id: agentId },
       });

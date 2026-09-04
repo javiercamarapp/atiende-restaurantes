@@ -34,7 +34,7 @@ const SECCIONES: SeccionLegal[] = [
   {
     titulo: "4. Con quién se comparten",
     parrafos: [
-      "Con los proveedores que hacen posible el servicio, únicamente en la medida necesaria para operarlo: **Twilio** (telefonía y WhatsApp), **ElevenLabs** (voz del agente), **Anthropic** (el modelo de lenguaje que conduce la conversación de WhatsApp), **Supabase** (base de datos y autenticación) y **Vercel** (hosting del panel).",
+      "Con los proveedores que hacen posible el servicio, únicamente en la medida necesaria para operarlo: **Twilio** (telefonía y WhatsApp), **ElevenLabs** (voz conversacional), **OpenRouter** (enrutamiento del agente de WhatsApp), proveedores de modelos como **OpenAI** y **Google**, **Supabase** (base de datos y autenticación) y **Vercel** (hosting del panel).",
       "No se comparten los datos de los clientes de un restaurante con otro restaurante distinto dado de alta en la plataforma — cada restaurante solo ve sus propios pedidos y clientes.",
     ],
   },
