@@ -37,8 +37,13 @@ interface CustomerRow {
   order_count: number;
   last_order_at: string | null;
 }
-
-const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
+interface PlatformStats {
+  restaurant_count: number;
+  active_restaurant_count: number;
+  customer_count: number;
+  orders_today: number;
+  revenue_today: number;
+}
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
@@ -47,8 +52,9 @@ const SuperAdminDashboard = () => {
   const [nombreSaludo, setNombreSaludo] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [platformStats, setPlatformStats] = useState<PlatformStats>({ restaurant_count: 0, active_restaurant_count: 0, customer_count: 0, orders_today: 0, revenue_today: 0 });
+  const [restaurantStats, setRestaurantStats] = useState<Record<string, { orders: number; revenue: number; customers: number; pending: number }>>({});
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState<"resumen" | "restaurantes" | "clientes" | "pregunta">("resumen");
   const [pregunta, setPregunta] = useState("");
@@ -81,17 +87,20 @@ const SuperAdminDashboard = () => {
       }
       setUserEmail(session.user.email ?? "");
 
-      const [{ data: r }, { data: o }, { data: c }, { data: profile }] = await Promise.all([
-        supabase.from("restaurants").select("id, name, slug, is_active").order("created_at"),
-        supabase.from("orders").select("restaurant_id, total, status, created_at"),
-        supabase.from("customers").select("restaurant_id, name, phone, order_count, last_order_at").order("last_order_at", { ascending: false }),
+      const [{ data: r }, { data: c }, { data: stats }, { data: profile }] = await Promise.all([
+        supabase.rpc("superadmin_restaurants_page", { p_page_size: 100, p_page: 0 }),
+        supabase.rpc("superadmin_customers_page", { p_search: null, p_page_size: 50, p_page: 0 }),
+        supabase.rpc("superadmin_platform_stats"),
         supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle(),
       ]);
       const nombreCompleto = profile?.nombre || (session.user.email ?? "").split("@")[0];
       setUserName(nombreCompleto.split(" ")[0]);
       setNombreSaludo(nombreCompleto.split(" ").slice(0, 2).join(" "));
-      setRestaurants(r ?? []);
-      setOrders(o ?? []);
+      setRestaurants((r ?? []) as Restaurant[]);
+      setPlatformStats((stats?.[0] ?? {}) as PlatformStats);
+      setRestaurantStats(Object.fromEntries((r ?? []).map((x: any) => [x.id, {
+        orders: Number(x.order_count), revenue: Number(x.revenue), customers: Number(x.customer_count), pending: Number(x.pending_order_count),
+      }])));
       setCustomers(c ?? []);
       setLoading(false);
     };
@@ -110,18 +119,10 @@ const SuperAdminDashboard = () => {
     return 'Buenas noches';
   };
 
-  const ordersToday = orders.filter((o) => isToday(o.created_at));
-  const revenueToday = ordersToday.reduce((sum, o) => sum + Number(o.total), 0);
+  const revenueToday = platformStats.revenue_today;
 
   const statsByRestaurant = (id: string) => {
-    const rOrders = orders.filter((o) => o.restaurant_id === id);
-    const rCustomers = customers.filter((c) => c.restaurant_id === id);
-    return {
-      orders: rOrders.length,
-      revenue: rOrders.reduce((s, o) => s + Number(o.total), 0),
-      customers: rCustomers.length,
-      pending: rOrders.filter((o) => o.status === "pending" || o.status === "preparando").length,
-    };
+    return restaurantStats[id] ?? { orders: 0, revenue: 0, customers: 0, pending: 0 };
   };
 
   // Búsqueda simple y determinista sobre los datos ya cargados de TODA la
@@ -145,29 +146,42 @@ const SuperAdminDashboard = () => {
     }
 
     const needle = q.toLowerCase();
+    // Las preguntas de filas consultan una ventana acotada en Postgres; no
+    // reutilizan un dump local ni descargan la tabla completa.
+    const since = needle.includes('hoy') || needle.includes('vendido') || needle.includes('ingreso')
+      ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString() : null;
+    const status = needle.includes('pendiente') ? 'pending' : null;
+    const { data: queriedOrders } = await supabase.rpc('superadmin_orders_page', {
+      p_status: status, p_since: since, p_search: null, p_page_size: 100, p_page: 0,
+    });
+    const { data: queriedCustomers } = await supabase.rpc('superadmin_customers_page', {
+      p_search: needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas')) ? null : needle,
+      p_page_size: 50, p_page: 0,
+    });
+    const remoteOrders = (queriedOrders ?? []) as OrderRow[];
+    const remoteCustomers = (queriedCustomers ?? []) as CustomerRow[];
     let filas: (CustomerRow | OrderRow)[] | undefined;
     let texto: string;
 
     if (needle.includes('mrr') || needle.includes('ingreso mensual') || needle.includes('gasto') || needle.includes('costo de ia') || needle.includes('costos')) {
       texto = 'Todavía no rastreamos MRR, gastos ni costo de IA en este panel — sólo pedidos, restaurantes y clientes. En cuanto haya una fuente real (facturación, uso de LLM), se agrega aquí.';
     } else if (needle.includes('pendiente')) {
-      filas = orders.filter((o) => o.status === 'pending' || o.status === 'preparando');
+      filas = remoteOrders;
       const total = filas.reduce((s, o) => s + Number((o as OrderRow).total), 0);
       texto = filas.length > 0
         ? `Hay ${filas.length} pedido${filas.length === 1 ? '' : 's'} pendiente${filas.length === 1 ? '' : 's'} en toda la plataforma, por $${total.toLocaleString('es-MX')}.`
         : 'No hay pedidos pendientes en ningún restaurante en este momento.';
     } else if (needle.includes('hoy') || needle.includes('vendido') || needle.includes('ingreso')) {
-      filas = orders.filter((o) => isToday(o.created_at));
+      filas = remoteOrders;
       const total = filas.reduce((s, o) => s + Number((o as OrderRow).total), 0);
       texto = `Hoy entraron ${filas.length} pedido${filas.length === 1 ? '' : 's'} en toda la plataforma, por $${total.toLocaleString('es-MX')}.`;
     } else if (needle.includes('restaurante') || needle.includes('activo')) {
-      const activos = restaurants.filter((r) => r.is_active).length;
-      texto = `Tienes ${restaurants.length} restaurante${restaurants.length === 1 ? '' : 's'} dado${restaurants.length === 1 ? '' : 's'} de alta, ${activos} activo${activos === 1 ? '' : 's'}.`;
+      texto = `Tienes ${platformStats.restaurant_count} restaurante${platformStats.restaurant_count === 1 ? '' : 's'} dado${platformStats.restaurant_count === 1 ? '' : 's'} de alta, ${platformStats.active_restaurant_count} activo${platformStats.active_restaurant_count === 1 ? '' : 's'}.`;
     } else if (needle.includes('recurrente') || (needle.includes('cliente') && needle.includes('mas'))) {
-      filas = [...customers].sort((a, b) => b.order_count - a.order_count).slice(0, 10);
+      filas = [...remoteCustomers].sort((a, b) => b.order_count - a.order_count).slice(0, 10);
       texto = `Estos son tus clientes con más pedidos en toda la plataforma.`;
     } else {
-      filas = customers.filter((c) => (c.name ?? '').toLowerCase().includes(needle) || c.phone.includes(needle));
+      filas = remoteCustomers;
       texto = filas.length > 0
         ? `Encontré ${filas.length} cliente${filas.length === 1 ? '' : 's'} que coincide${filas.length === 1 ? '' : 'n'} con "${q}".`
         : `No encontré clientes que coincidan con "${q}". Pregúntame por pendientes, lo de hoy, restaurantes activos, tus clientes más recurrentes, o un nombre/teléfono.`;
@@ -349,10 +363,10 @@ const SuperAdminDashboard = () => {
               <p className="text-sm text-muted-foreground mb-6">Toda la plataforma en una pantalla — cifras reales, de todos los restaurantes</p>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <StatCard icon={Store} label="Restaurantes activos" value={String(restaurants.filter((r) => r.is_active).length)} />
-                <StatCard icon={Receipt} label="Pedidos hoy" value={String(ordersToday.length)} />
+                <StatCard icon={Store} label="Restaurantes activos" value={String(platformStats.active_restaurant_count)} />
+                <StatCard icon={Receipt} label="Pedidos hoy" value={String(platformStats.orders_today)} />
                 <StatCard icon={TrendingUp} label="Ingresos hoy" value={`$${revenueToday.toLocaleString("es-MX")}`} />
-                <StatCard icon={Users} label="Clientes totales" value={String(customers.length)} />
+                <StatCard icon={Users} label="Clientes totales" value={String(platformStats.customer_count)} />
               </div>
 
               <SectionCard title="Restaurantes">
