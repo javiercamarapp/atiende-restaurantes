@@ -33,6 +33,8 @@ Deno.test("origin allowlist is exact and server-to-server remains valid", () => 
 });
 
 Deno.test("production panel origins are allowed without accepting arbitrary previews", () => {
+  assert(originAllowed("https://app.useatiende.ai"), "software domain rejected");
+  assert(!originAllowed("https://app.useatiende.ai.evil.test"), "lookalike software domain accepted");
   assert(
     originAllowed("https://atiende-restaurantes.vercel.app"),
     "canonical production origin rejected",

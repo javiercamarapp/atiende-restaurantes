@@ -1,6 +1,7 @@
 import { correlationHeaders, correlationId } from "./observability.ts";
 
 const DEFAULT_ORIGINS = [
+  "https://app.useatiende.ai",
   "https://www.useatiende.ai",
   "https://useatiende.ai",
   "https://atiende-restaurantes.vercel.app",
