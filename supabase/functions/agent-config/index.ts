@@ -46,6 +46,7 @@
 // interna, no algo que el dueño del restaurante deba ver.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeAgentConfig } from "../_shared/agent-config-auth.ts";
 
 // La cuenta real de ElevenLabs es de Javier — ya tenía voces clonadas
 // personales suyas antes de este proyecto (Javier Cámara, Omar, Papá, etc.),
@@ -76,9 +77,19 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const apiKey = await getApiKey(supabase);
     const body = await req.json();
     const { action } = body;
+    // Authenticate and scope before touching Vault or any ElevenLabs API.
+    // The service-role client is intentionally used for the upstream calls,
+    // so this check is the actual tenant boundary for the public function.
+    const authz = await authorizeAgentConfig(
+      supabase,
+      req.headers.get("Authorization"),
+      body,
+      RESTAURANT_ID,
+    );
+    if (authz.status !== 200) return json({ error: authz.error }, authz.status);
+    const apiKey = await getApiKey(supabase);
 
     if (action === "llm_list") {
       const res = await fetch("https://api.elevenlabs.io/v1/convai/llm/list", {
@@ -648,13 +659,19 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "get_conversation") {
-      const { conversation_id } = body as { conversation_id?: string };
-      if (!conversation_id) return json({ error: "conversation_id requerido" }, 400);
+      const { conversation_id, agent_id } = body as { conversation_id?: string; agent_id?: string };
+      if (!conversation_id || !agent_id) return json({ error: "conversation_id y agent_id requeridos" }, 400);
       const res = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${conversation_id}`, {
         headers: { "xi-api-key": apiKey },
       });
       if (!res.ok) return json({ error: await res.text() }, res.status);
-      return json(await res.json());
+      const conversation = await res.json();
+      // Defense in depth: never return a transcript if ElevenLabs associates
+      // the conversation with a different agent than the one authorized above.
+      if (conversation?.agent_id !== agent_id) {
+        return json({ error: "Sin permisos" }, 403);
+      }
+      return json(conversation);
     }
 
     if (action === "get") {
