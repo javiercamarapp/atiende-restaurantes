@@ -16,7 +16,7 @@ cocina — todo antes de colgar o cerrar el chat.
   (`customers` + `customer_addresses`), pedidos con precio recalculado server-side.
 - **Agente de voz** (ElevenLabs Conversational AI): prompt y contrato de herramientas listos
   en `docs/agente-voz/system-prompt.md`.
-- **Agente de WhatsApp** (Twilio Sandbox + Claude): `supabase/functions/whatsapp-webhook`,
+- **Agente de WhatsApp** (Meta Cloud API + OpenRouter): `supabase/functions/whatsapp-webhook`,
   con memoria de cliente inyectada en cada turno — saluda, confirma dirección guardada, arma
   el pedido, recuerda qué incluye, da el total y el tiempo de espera.
 - **Sitio de pedidos + panel admin/repartidor**: heredado del piloto original de Taquitos DPM
@@ -29,21 +29,38 @@ cocina — todo antes de colgar o cerrar el chat.
 Frontend: Vite + React + TypeScript + shadcn/ui + Tailwind
 Backend: Supabase (Postgres + RLS + Edge Functions en Deno)
 Voz: ElevenLabs Conversational AI
-WhatsApp: Twilio + Claude (Anthropic)
+WhatsApp: Meta Cloud API + OpenRouter
 
 ## Desarrollo local
 
 ```bash
-npm install
+npm ci --ignore-scripts --no-audit --no-fund
 npm run dev
 ```
 
-Variables de entorno en `.env` (ya apuntan al proyecto Supabase de este producto, separado
-del proyecto original de Taquitos DPM).
+Copia `.env.example` a `.env` y completa únicamente credenciales del entorno local. `.env`
+no se versiona. Los secretos de proveedores viven en Supabase Vault o en secretos de Edge
+Functions, nunca en variables `VITE_*` ni en el repositorio.
+
+## Compuertas locales
+
+```bash
+npm run quality
+supabase start
+supabase db reset --local --no-seed
+npm run test:db
+```
+
+`quality` ejecuta lint, typecheck, pruebas unitarias Deno y build de producción. `test:db`
+comprueba aislamiento de tenants, rate limiting, entrega de WhatsApp, idempotencia serial y
+concurrente de pedidos, y agregados administrativos. El mismo flujo está versionado en
+`.github/workflows/quality.yml`.
 
 ## Documentación
 
 - `docs/agente-voz/system-prompt.md` — prompt y contrato de la herramienta del agente de voz
 - `docs/agente-voz/menu-fco-montejo.md` — base de conocimiento del menú real
-- `docs/agente-voz/whatsapp-setup.md` — cómo levantar el sandbox de WhatsApp
+- `docs/agente-voz/whatsapp-setup.md` — contrato y configuración segura de Meta Cloud API
+- `docs/runbooks/operacion.md` — restauración, incidentes e integraciones
+- `docs/audits/enterprise-remediation-2026-09-04.md` — auditoría y evidencia reproducible
 - `supabase/migrations/` — esquema completo (branches, productos, clientes, pedidos, conversaciones de WhatsApp)

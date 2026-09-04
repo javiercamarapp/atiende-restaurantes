@@ -1,7 +1,8 @@
-// Disparada por el trigger notificar_cambio_pedido() (pg_net) cada vez que
-// se crea un pedido o cambia su status. Busca, dentro del staff del
-// restaurante dueño del pedido, a quien tenga activada la preferencia de ese
-// evento concreto, y le manda el correo correspondiente por Resend.
+// Handler interno de correo por evento de pedido. Busca, dentro del staff del
+// tenant, destinatarios con la preferencia activa y llama a Resend. Este repo
+// todavía no versiona el dispatcher/outbox que deba invocarlo; por eso no se
+// debe afirmar que los correos son automáticos hasta cerrar INT-05 de la
+// auditoría y verificar el flujo en staging.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   correoPedidoCancelado,
