@@ -174,6 +174,7 @@ export type Database = {
           resolved: boolean
           restaurant_id: string
           source: string
+          source_event_id: string | null
         }
         Insert: {
           branch_id?: string | null
@@ -186,6 +187,7 @@ export type Database = {
           resolved?: boolean
           restaurant_id: string
           source?: string
+          source_event_id?: string | null
         }
         Update: {
           branch_id?: string | null
@@ -198,6 +200,7 @@ export type Database = {
           resolved?: boolean
           restaurant_id?: string
           source?: string
+          source_event_id?: string | null
         }
         Relationships: [
           {
@@ -935,6 +938,7 @@ export type Database = {
           processed_at: string | null
           restaurant_id: string
           status: string
+          user_message_appended: boolean
         }
         Insert: {
           attempts?: number
@@ -945,6 +949,7 @@ export type Database = {
           processed_at?: string | null
           restaurant_id: string
           status?: string
+          user_message_appended?: boolean
         }
         Update: {
           attempts?: number
@@ -955,6 +960,7 @@ export type Database = {
           processed_at?: string | null
           restaurant_id?: string
           status?: string
+          user_message_appended?: boolean
         }
         Relationships: [
           {
@@ -971,9 +977,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      append_whatsapp_user_message_once: {
+        Args: {
+          p_message_id: string
+          p_new_message: Json
+          p_phone: string
+          p_restaurant_id: string
+        }
+        Returns: Json
+      }
       calc_customer_tier: {
         Args: { p_customer_id: string; p_restaurant_id: string }
         Returns: Json
+      }
+      can_manage_restaurant: {
+        Args: { _restaurant_id: string; _user_id: string }
+        Returns: boolean
       }
       claim_whatsapp_conversation: {
         Args: {
@@ -1072,6 +1091,18 @@ export type Database = {
           colonia_encontrada: string
           distancia_km: number
         }[]
+      }
+      update_assigned_order_status: {
+        Args: { p_incident_note?: string; p_order_id: string; p_status: string }
+        Returns: boolean
+      }
+      update_my_notification_preference: {
+        Args: {
+          p_membership_id: string
+          p_preference: string
+          p_value: boolean
+        }
+        Returns: boolean
       }
       whatsapp_append_turn: {
         Args: {

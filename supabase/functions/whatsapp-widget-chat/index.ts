@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     const limited = await consumeRateLimit(
       supabase,
       "whatsapp-widget-chat",
-      requestActor(req, session_id),
+      requestActor(req),
       30,
       60,
     );

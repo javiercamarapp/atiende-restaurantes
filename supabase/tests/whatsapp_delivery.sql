@@ -7,8 +7,12 @@ do $$
 declare
   v_restaurant uuid := '51000000-0000-0000-0000-000000000001';
   v_hash text := repeat('a', 64);
+  v_messages jsonb;
 begin
   if not public.claim_whatsapp_message(v_restaurant, 'wamid.1', v_hash) then raise exception 'first message claim failed'; end if;
+  v_messages := public.append_whatsapp_user_message_once(v_restaurant, 'wamid.1', '+529990000000', '{"role":"user","content":"hello"}');
+  v_messages := public.append_whatsapp_user_message_once(v_restaurant, 'wamid.1', '+529990000000', '{"role":"user","content":"hello"}');
+  if jsonb_array_length(v_messages) <> 1 then raise exception 'retry duplicated persisted user message'; end if;
   if public.claim_whatsapp_message(v_restaurant, 'wamid.1', v_hash) then raise exception 'duplicate message claim succeeded'; end if;
   if not public.claim_whatsapp_conversation(v_restaurant, v_hash, 'wamid.1', 120) then raise exception 'first conversation lease failed'; end if;
   if public.claim_whatsapp_conversation(v_restaurant, v_hash, 'wamid.2', 120) then raise exception 'overlapping conversation lease succeeded'; end if;

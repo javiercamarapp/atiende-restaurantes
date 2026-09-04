@@ -65,7 +65,7 @@ Deno.serve(async (req: Request) => {
     const limited = await consumeRateLimit(
       supabase,
       "create-order",
-      requestActor(req, payload.customer_phone),
+      requestActor(req, toolAuthorized ? payload.customer_phone : ""),
       toolAuthorized ? 120 : 10,
       60,
     );

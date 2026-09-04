@@ -174,23 +174,15 @@ const RepartidorDashboard = () => {
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: newStatus })
-      .eq("id", orderId);
+    const { data: updated, error } = await supabase.rpc("update_assigned_order_status", {
+      p_order_id: orderId,
+      p_status: newStatus,
+      p_incident_note: null,
+    });
 
-    if (error) {
+    if (error || !updated) {
       toast.error("Error al actualizar el pedido");
       return;
-    }
-
-    // Marca de tiempo real de entrega, aparte del status — usada por
-    // "Entrega tardía" en el panel de Notificaciones del admin.
-    if (newStatus === "entregado") {
-      (supabase as any).from("orders").update({ delivered_at: new Date().toISOString() }).eq("id", orderId)
-        .then(({ error: errDelivered }: { error: unknown }) => {
-          if (errDelivered) console.warn("No se pudo guardar delivered_at", errDelivered);
-        });
     }
 
     toast.success(`Pedido ${newStatus === 'en_camino' ? 'en camino' : newStatus === 'entregado' ? 'entregado' : 'actualizado'}`);
@@ -204,12 +196,13 @@ const RepartidorDashboard = () => {
       return;
     }
     setReportandoIncidencia(true);
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: "problema", incident_note: incidenciaNota.trim() })
-      .eq("id", incidenciaAbierta.orderId);
+    const { data: updated, error } = await supabase.rpc("update_assigned_order_status", {
+      p_order_id: incidenciaAbierta.orderId,
+      p_status: "problema",
+      p_incident_note: incidenciaNota.trim(),
+    });
     setReportandoIncidencia(false);
-    if (error) {
+    if (error || !updated) {
       toast.error("No se pudo reportar la incidencia");
       return;
     }

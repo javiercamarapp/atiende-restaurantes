@@ -325,8 +325,12 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
     // siempre — el toggle correspondiente quedaba deshabilitado/girando por
     // el resto de la sesión.
     try {
-      const { error } = await supabase.from("restaurant_staff").update({ [key]: value }).eq("id", fila.id);
-      if (error) {
+      const { data: updated, error } = await supabase.rpc("update_my_notification_preference", {
+        p_membership_id: fila.id,
+        p_preference: key,
+        p_value: value,
+      });
+      if (error || !updated) {
         setFila(anterior);
         toast({
           title: "No se pudo guardar",

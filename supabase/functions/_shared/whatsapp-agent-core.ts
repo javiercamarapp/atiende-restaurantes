@@ -553,7 +553,7 @@ export async function runAgentTurn(
             branchId = order.branch_id ?? null
             result = { order }
           } else if (call.function.name === "registrar_contacto") {
-            const { error } = await supabase.from("callback_requests").insert({
+            const callbackRequest = {
               restaurant_id: restaurantId,
               branch_id: null,
               customer_name: input.customer_name as string,
@@ -561,7 +561,14 @@ export async function runAgentTurn(
               reason: (input.reason as string) ?? null,
               message: (input.message as string) ?? null,
               source: "whatsapp",
-            })
+              source_event_id: idempotencyKey ?? null,
+            }
+            const { error } = idempotencyKey
+              ? await supabase.from("callback_requests").upsert(callbackRequest, {
+                onConflict: "restaurant_id,source_event_id",
+                ignoreDuplicates: true,
+              })
+              : await supabase.from("callback_requests").insert(callbackRequest)
             if (error) throw error
             result = { ok: true }
           } else {

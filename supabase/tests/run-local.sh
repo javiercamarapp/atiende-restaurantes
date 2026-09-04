@@ -8,6 +8,7 @@ tests=(
   supabase/tests/whatsapp_delivery.sql
   supabase/tests/order_idempotency.sql
   supabase/tests/admin_channel_stats.sql
+  supabase/tests/privilege_escalation.sql
 )
 
 for test_file in "${tests[@]}"; do

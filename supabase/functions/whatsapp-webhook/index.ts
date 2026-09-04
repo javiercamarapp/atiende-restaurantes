@@ -220,10 +220,11 @@ Deno.serve(async (req: Request) => {
     // luego para lo que generó el turno.
     const userMessage = { role: "user", content: redactSensitiveInfo(body) }
     const { data: messagesAfterUser, error: appendUserError } =
-      await supabase.rpc("whatsapp_append_turn", {
+      await supabase.rpc("append_whatsapp_user_message_once", {
         p_restaurant_id: RESTAURANT_ID,
+        p_message_id: messageId,
         p_phone: phone,
-        p_new_messages: [userMessage],
+        p_new_message: userMessage,
       })
     if (appendUserError) throw appendUserError
     // deno-lint-ignore no-explicit-any
