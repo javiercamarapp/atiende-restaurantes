@@ -43,7 +43,6 @@ import { ModalProducto } from "@/components/ModalProducto";
 import { ModalCategoria } from "@/components/ModalCategoria";
 import { ModalRepartidor } from "@/components/ModalRepartidor";
 import { ModalCuenta } from "@/components/ModalCuenta";
-const ADMIN_EMAIL = "javiercamaraportepetit@gmail.com";
 interface Product {
   id: string;
   name: string;
@@ -2059,7 +2058,24 @@ const AdminDashboard = () => {
             session
           }
         } = await supabase.auth.getSession();
-        if (!session || session.user.email !== ADMIN_EMAIL) {
+        if (!session) {
+          navigate("/admin/login");
+          return;
+        }
+
+        const [{ data: platformRoles, error: rolesError }, {
+          data: memberships,
+          error: membershipsError,
+        }] = await Promise.all([
+          supabase.from("user_roles").select("role").eq("user_id", session.user.id),
+          supabase.from("restaurant_staff").select("restaurant_id, role").eq("user_id", session.user.id),
+        ]);
+        if (rolesError || membershipsError) throw rolesError ?? membershipsError;
+        const isSuperadmin = (platformRoles ?? []).some((row) => row.role === "superadmin");
+        const managedMembership = (memberships ?? []).find((row) =>
+          row.role === "owner" || row.role === "admin" || row.role === "staff"
+        );
+        if (!isSuperadmin && !managedMembership) {
           navigate("/admin/login");
           return;
         }
@@ -2072,16 +2088,11 @@ const AdminDashboard = () => {
         // Un superadmin llega aquí con "?restaurante=<id>" desde "Ver cuenta"
         // en su panel — ve esa cuenta puntual. Sin ese parámetro, se resuelve
         // el restaurante propio desde restaurant_staff (dueño/staff normal).
-        const paramRestaurantId = searchParams.get("restaurante");
-        let effectiveRestaurantId = paramRestaurantId;
-        if (!effectiveRestaurantId) {
-          const { data: staffRow } = await supabase
-            .from("restaurant_staff")
-            .select("restaurant_id")
-            .eq("user_id", session.user.id)
-            .maybeSingle();
-          effectiveRestaurantId = staffRow?.restaurant_id ?? null;
-        }
+        const paramRestaurantId = isSuperadmin
+          ? searchParams.get("restaurante")
+          : null;
+        const effectiveRestaurantId = paramRestaurantId ??
+          managedMembership?.restaurant_id ?? null;
         setRestaurantId(effectiveRestaurantId);
         if (effectiveRestaurantId) {
           const { data: r } = await supabase.from("restaurants").select("name").eq("id", effectiveRestaurantId).maybeSingle();
@@ -2106,7 +2117,7 @@ const AdminDashboard = () => {
         subscription
       }
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session || session.user?.email !== ADMIN_EMAIL) {
+      if (!session) {
         navigate("/admin/login");
       }
     });
