@@ -64,7 +64,12 @@ export async function authorizeAgentConfig(
   const isSuperadmin = (roles ?? []).some((r: { role: string }) =>
     r.role === "superadmin"
   );
-  const isStaff = (staff ?? []).length > 0;
+  // Couriers can read their assigned orders through dedicated policies/RPCs,
+  // but they must never mutate prompts, tools, voices or provider resources.
+  const isStaff = (staff ?? []).some((membership: { role?: string }) =>
+    membership.role === "owner" || membership.role === "admin" ||
+    membership.role === "staff"
+  );
   if (!isSuperadmin && !isStaff) return { status: 403, error: "Sin permisos" };
 
   const action = typeof body.action === "string" ? body.action : "";

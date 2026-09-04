@@ -48,6 +48,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAgentConfig } from "../_shared/agent-config-auth.ts";
 import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts";
+import {
+  HttpInputError,
+  jsonResponse,
+  originAllowed,
+  preflightResponse,
+  readJson,
+} from "../_shared/http-security.ts";
 
 // La cuenta real de ElevenLabs es de Javier — ya tenía voces clonadas
 // personales suyas antes de este proyecto (Javier Cámara, Omar, Papá, etc.),
@@ -59,26 +66,34 @@ import { fetchWithTimeout as fetch } from "../_shared/fetch-timeout.ts";
 // la cuenta.
 const RESTAURANT_ID = "be3fbdeb-80e7-4e7b-9b44-22b476c08298";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-async function getApiKey(supabase: ReturnType<typeof createClient>): Promise<string> {
+// The generated database type is not imported in Edge Functions; this client
+// is still scoped by the authorization check that runs before Vault access.
+// deno-lint-ignore no-explicit-any
+async function getApiKey(supabase: any): Promise<string> {
   const { data, error } = await supabase.rpc("get_secret", { secret_name: "ELEVENLABS_API_KEY" });
   if (error || !data) throw new Error("No se encontró la API key de ElevenLabs en Vault");
   return data as string;
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflightResponse(req);
+  if (!originAllowed(req.headers.get("Origin"))) {
+    return jsonResponse(req, { error: "Origen no permitido" }, 403);
+  }
+  if (req.method !== "POST") {
+    return jsonResponse(req, { error: "Método no permitido" }, 405, {
+      Allow: "POST, OPTIONS",
+    });
+  }
+
+  const json = (body: unknown, status = 200) => jsonResponse(req, body, status);
 
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const body = await req.json();
+    const body = await readJson<Record<string, unknown>>(req, 512 * 1024);
     const { action } = body;
     // Authenticate and scope before touching Vault or any ElevenLabs API.
     // The service-role client is intentionally used for the upstream calls,
@@ -711,8 +726,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "signed_url") {
-      const { agent_id } = body;
-      if (!agent_id) return json({ error: "agent_id requerido" }, 400);
+      const { agent_id } = body as { agent_id?: string };
+      if (typeof agent_id !== "string" || !agent_id) {
+        return json({ error: "agent_id requerido" }, 400);
+      }
       const res = await fetch(
         `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agent_id)}`,
         { headers: { "xi-api-key": apiKey } },
@@ -905,13 +922,9 @@ Deno.serve(async (req: Request) => {
     return json({ error: `Acción desconocida: ${action}` }, 400);
   } catch (err) {
     console.error("agent-config error:", err);
-    return json({ error: err instanceof Error ? err.message : "Error interno" }, 500);
+    if (err instanceof HttpInputError) {
+      return json({ error: err.message }, err.status);
+    }
+    return json({ error: "Error interno" }, 500);
   }
 });
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}

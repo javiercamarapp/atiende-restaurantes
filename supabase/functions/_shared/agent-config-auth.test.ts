@@ -70,6 +70,17 @@ Deno.test("staff no puede usar agente ajeno", async () => {
     403,
   );
 });
+Deno.test("repartidor no puede administrar el agente", async () => {
+  assertEquals(
+    (await authorizeAgentConfig(
+      db({ id: "u" }, [], [{ role: "repartidor" }], branch),
+      "Bearer ok",
+      { action: "update", agent_id: "agent-own" },
+      "r",
+    )).status,
+    403,
+  );
+});
 Deno.test("list_conversations exige agent_id", async () => {
   assertEquals(
     (await authorizeAgentConfig(
