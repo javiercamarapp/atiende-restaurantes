@@ -1679,6 +1679,48 @@ const AdminDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
+  // Campanita en vivo: bug real reportado por Javier el 4-sep-2026 ("que
+  // este se actualice conforme salen las notificaciones y se acumulan, y
+  // conforme se leen se borren") — `callbackRequests` (lo que cuenta el
+  // badge de la campanita) solo se traía una vez dentro de fetchData(), sin
+  // ninguna suscripción real: una notificación nueva no aparecía en el
+  // badge hasta el siguiente refresh completo, y marcar una como atendida
+  // desde Notificaciones (que tiene su PROPIO fetch/estado local, separado
+  // de este) tampoco se reflejaba aquí hasta ese mismo refresh. Suscripción
+  // real a INSERT/UPDATE de `callback_requests`: el badge sube solo al
+  // llegar una nueva, y baja solo en cuanto se marca resuelta desde
+  // cualquier lado (el filtro `!c.resolved` que ya arma el badge hace el
+  // resto).
+  useEffect(() => {
+    const canal = supabase
+      .channel(`callback-requests-live-${restaurantId ?? "todos"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "callback_requests",
+          ...(restaurantId ? { filter: `restaurant_id=eq.${restaurantId}` } : {}),
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const eliminado = payload.old as { id: string };
+            setCallbackRequests((prev) => prev.filter((c) => c.id !== eliminado.id));
+            return;
+          }
+          const fila = payload.new as CallbackRequest;
+          setCallbackRequests((prev) => {
+            const existe = prev.some((c) => c.id === fila.id);
+            if (existe) return prev.map((c) => (c.id === fila.id ? fila : c));
+            return [fila, ...prev];
+          });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId]);
+
   // filteredStats/salesTrendData ("Tus ventas" y "Tendencias" de
   // Estadísticas) — antes eran useMemo derivados de `orders` completo, pero
   // `orders` viene de un fetch con `.limit(50000)` que en la práctica NUNCA

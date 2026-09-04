@@ -26,7 +26,7 @@ import { es } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import OrderDetailDialog from "@/components/admin/OrderDetailDialog";
+import PedidoDetalleSection from "@/components/admin/PedidoDetalleSection";
 import {
   ShoppingCart, Search, Globe, Store, ChevronDown, Download, FileSpreadsheet,
   FileText, Loader2, AlertTriangle, CalendarDays, X,
@@ -112,9 +112,9 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
   const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Detalle real de un pedido — modal compartido, ver OrderDetailDialog.tsx
-  // (reusado también en Pedidos y Notificaciones, mismo componente en
-  // cualquier lugar donde se listen pedidos).
+  // Detalle real de un pedido — página completa compartida, ver
+  // PedidoDetalleSection.tsx (reusada también en Pedidos, Notificaciones y
+  // el panel del repartidor).
   const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const [sucursales, setSucursales] = useState<BranchOption[]>([]);
@@ -286,6 +286,14 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
     setBusqueda("");
     setBusquedaAplicada("");
   };
+
+  // Pedido real de Javier el 4-sep-2026: "no es un pop up, cada pedido
+  // tiene su página completa" — en vez de un modal, el detalle reemplaza
+  // por completo el contenido de esta sección mientras haya un pedido
+  // abierto; "Volver" regresa a la lista tal cual estaba.
+  if (detalleId) {
+    return <PedidoDetalleSection orderId={detalleId} onVolver={() => setDetalleId(null)} onSelect={setDetalleId} />;
+  }
 
   return (
     <div className="space-y-3">
@@ -513,7 +521,6 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
         )}
       </div>
 
-      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 }

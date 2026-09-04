@@ -762,7 +762,7 @@ const SucursalesSection = ({ restaurantId }: Props) => {
         subtitulo={modalHorario?.name}
         onGuardar={guardarHorario}
         guardando={guardandoHorario}
-        anchoClase="max-w-2xl"
+        anchoClase="max-w-3xl"
       >
         <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3">
           <div>
@@ -794,7 +794,7 @@ const SucursalesSection = ({ restaurantId }: Props) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="space-y-2"
+              className="grid grid-cols-1 md:grid-cols-2 gap-2"
             >
               {DIAS.map(({ id, etiqueta }, i) => (
                 <motion.div
@@ -853,17 +853,24 @@ function FilaHorarioDia({
   horario: HorarioDia;
   onCambiar: (cambios: Partial<HorarioDia>) => void;
 }) {
+  // Tarjeta (no fila de ancho completo) — pedido real de Javier el
+  // 4-sep-2026: "unificado horizontal como los otros pop up, con el ícono
+  // arriba y más ancho sin ser tan alto, compacto elegante". Etiqueta y
+  // toggle arriba, rango de horas debajo, para que dos tarjetas quepan
+  // lado a lado (grid de 2 columnas en el modal) con espacio real para los
+  // inputs de hora, en vez de una sola columna larga y angosta.
   return (
-    <div className={`flex items-center gap-3 rounded-xl border border-border px-4 py-2.5 transition-colors ${horario.cerrado ? "bg-muted/20" : "bg-card"}`}>
-      <p className="text-[12.5px] font-medium text-foreground w-[88px] shrink-0">{etiqueta}</p>
+    <div className={`rounded-xl border border-border px-3.5 py-2.5 space-y-2 transition-colors ${horario.cerrado ? "bg-muted/20" : "bg-card"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12.5px] font-medium text-foreground">{etiqueta}</p>
+        <label className="flex items-center gap-2 cursor-pointer shrink-0">
+          <span className="text-[11px] text-muted-foreground">{horario.cerrado ? "Cerrado" : "Abierto"}</span>
+          <Switch checked={!horario.cerrado} onCheckedChange={(v) => onCambiar({ cerrado: !v })} />
+        </label>
+      </div>
 
-      <label className="flex items-center gap-2 cursor-pointer shrink-0 w-[92px]">
-        <Switch checked={!horario.cerrado} onCheckedChange={(v) => onCambiar({ cerrado: !v })} />
-        <span className="text-[11px] text-muted-foreground">{horario.cerrado ? "Cerrado" : "Abierto"}</span>
-      </label>
-
-      {!horario.cerrado ? (
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+      {!horario.cerrado && (
+        <div className="flex items-center gap-2">
           <Input
             type="time"
             value={horario.abre}
@@ -880,8 +887,6 @@ function FilaHorarioDia({
             aria-label={`${etiqueta} — hora de cierre`}
           />
         </div>
-      ) : (
-        <div className="flex-1" />
       )}
     </div>
   );

@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import OrderDetailDialog from "@/components/admin/OrderDetailDialog";
+import PedidoDetalleSection from "@/components/admin/PedidoDetalleSection";
 import {
   ShoppingCart, AlertTriangle, PhoneCall, SlidersHorizontal,
   Mic, MessageCircle, Loader2, Package, CheckCircle2, Ban, Clock,
@@ -215,9 +215,9 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("recibidos");
-  // Pedido real de Javier el 4-sep-2026: "en todos los lados que salgan los
-  // pedidos, al apretarlo se abra detalles" — mismo modal compartido que
-  // Historial de Órdenes y Pedidos, ver OrderDetailDialog.tsx.
+  // Pedido real de Javier el 4-sep-2026: "no es un pop up, cada pedido
+  // tiene su página completa" — misma página compartida que Historial de
+  // Órdenes y Pedidos, ver PedidoDetalleSection.tsx.
   const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const [cargandoListas, setCargandoListas] = useState(true);
@@ -374,6 +374,10 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
         </p>
       </div>
     );
+  }
+
+  if (detalleId) {
+    return <PedidoDetalleSection orderId={detalleId} onVolver={() => setDetalleId(null)} onSelect={setDetalleId} />;
   }
 
   const conteos: Record<TabId, number> = {
@@ -715,8 +719,6 @@ const NotificacionesSection = ({ userId }: { userId: string | undefined }) => {
           ))}
         </div>
       </div>
-
-      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 };

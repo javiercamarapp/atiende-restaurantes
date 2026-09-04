@@ -17,11 +17,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import OrderDetailDialog from "@/components/admin/OrderDetailDialog";
+import PedidoDetalleSection from "@/components/admin/PedidoDetalleSection";
 import {
   ShoppingCart, MapPin, Bike, Clock, User, Package, Truck, CheckCircle2,
-  CalendarClock, Store, Loader2, Radar, AlertTriangle,
+  CalendarClock, Store, Loader2, Radar, AlertTriangle, X,
 } from "lucide-react";
 
 // Cada 60s: refresca pedidos y re-evalúa a qué pestaña pertenece cada
@@ -85,9 +89,9 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
   const [tab, setTab] = useState<Tab>("recibidas");
   const [ahora, setAhora] = useState(() => Date.now());
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  // Pedido real de Javier el 4-sep-2026: "en todos los lados que salgan los
-  // pedidos, al apretarlo se abra detalles" — modal compartido, ver
-  // OrderDetailDialog.tsx (mismo componente que usa Historial de Órdenes).
+  // Pedido real de Javier el 4-sep-2026: "no es un pop up, cada pedido
+  // tiene su página completa" — página completa compartida, ver
+  // PedidoDetalleSection.tsx (misma que usa Historial de Órdenes).
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [asignando, setAsignando] = useState<string | null>(null); // order.id en flujo de despacho
   const [repartidorElegido, setRepartidorElegido] = useState<Record<string, string>>({});
@@ -101,6 +105,30 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
   const [incidenciaAbierta, setIncidenciaAbierta] = useState<OrderRow | null>(null);
   const [incidenciaNota, setIncidenciaNota] = useState("");
   const [reportandoIncidencia, setReportandoIncidencia] = useState(false);
+
+  // Bug real reportado por Javier el 4-sep-2026: un pedido de prueba
+  // ("Javier Cámara") se quedó pegado en Recibidos ("ya no está y no se
+  // borra") — no había NINGUNA forma real de sacar un pedido pendiente de
+  // la cola activa desde la interfaz (solo asignar repartidor o reportar
+  // incidencia). "Cancelar pedido" pone status: 'cancelado' (el mismo
+  // estado real que ya existe en el vocabulario, no un borrado literal —
+  // conserva el registro en Historial) con una confirmación real, para que
+  // esto no vuelva a pasar.
+  const [cancelarConfirm, setCancelarConfirm] = useState<OrderRow | null>(null);
+  const [cancelando, setCancelando] = useState(false);
+  const confirmarCancelacion = async () => {
+    if (!cancelarConfirm) return;
+    setCancelando(true);
+    const { error } = await supabase.from("orders").update({ status: "cancelado" }).eq("id", cancelarConfirm.id);
+    setCancelando(false);
+    if (error) {
+      toast({ title: "No se pudo cancelar el pedido", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Pedido cancelado", description: `#${cancelarConfirm.order_number} se canceló.` });
+    setCancelarConfirm(null);
+    await cargar();
+  };
 
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const repartidorById = useMemo(() => new Map(repartidores.map((r) => [r.user_id, r])), [repartidores]);
@@ -315,6 +343,10 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
 
   const conteo = tab === "recibidas" ? recibidas.length : tab === "enviadas" ? enviadas.length : programadas.length;
 
+  if (detalleId) {
+    return <PedidoDetalleSection orderId={detalleId} onVolver={() => setDetalleId(null)} onSelect={setDetalleId} />;
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -500,6 +532,15 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
                                 <AlertTriangle className="w-3 h-3" />
                                 Incidencia
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 rounded-full px-3 text-[11.5px] text-red-700 border-red-500/30 hover:bg-red-500/10"
+                                onClick={(e) => { e.stopPropagation(); setCancelarConfirm(order); }}
+                              >
+                                <X className="w-3 h-3" />
+                                Cancelar pedido
+                              </Button>
                             </div>
                           )}
                         </div>
@@ -529,8 +570,6 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
         </div>
       )}
 
-      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
-
       {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
       <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>
         <DialogContent>
@@ -558,12 +597,33 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmación de "Cancelar pedido" — ver confirmarCancelacion() arriba */}
+      <AlertDialog open={!!cancelarConfirm} onOpenChange={(v) => !v && setCancelarConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar este pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelarConfirm ? `#${cancelarConfirm.order_number} — ${cancelarConfirm.customer_name}` : ""} pasará a "Cancelado" y saldrá de Recibidos. Sigue visible en Historial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelando}>Volver</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarCancelacion} disabled={cancelando} className="bg-destructive hover:bg-destructive/90">
+              {cancelando ? "Cancelando..." : "Sí, cancelar pedido"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 function PanelProgramadas({ orders, branchById }: { orders: OrderRow[]; branchById: Map<string, BranchRow> }) {
   const [detalleId, setDetalleId] = useState<string | null>(null);
+  if (detalleId) {
+    return <PedidoDetalleSection orderId={detalleId} onVolver={() => setDetalleId(null)} onSelect={setDetalleId} />;
+  }
   return (
     <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -630,7 +690,6 @@ function PanelProgramadas({ orders, branchById }: { orders: OrderRow[]; branchBy
             })}
         </div>
       )}
-      <OrderDetailDialog orderId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 }
