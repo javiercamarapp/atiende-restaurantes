@@ -10,6 +10,7 @@ tests=(
   supabase/tests/admin_channel_stats.sql
   supabase/tests/privilege_escalation.sql
   supabase/tests/messaging_outbox.sql
+  supabase/tests/privacy_dsar.sql
 )
 
 for test_file in "${tests[@]}"; do
