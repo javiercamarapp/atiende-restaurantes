@@ -16,12 +16,12 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
 import PedidoDetalleSection from "@/components/admin/PedidoDetalleSection";
 import {
   ShoppingCart, MapPin, Bike, Clock, User, Package, Truck, CheckCircle2,
@@ -570,33 +570,42 @@ export default function PedidosSection({ restaurantId }: { restaurantId: string 
         </div>
       )}
 
-      {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
-      <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reportar incidencia</DialogTitle>
-            <DialogDescription>
-              {incidenciaAbierta ? `Pedido #${incidenciaAbierta.order_number} — ${incidenciaAbierta.customer_name}` : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            placeholder="Ej. dirección incorrecta, cliente no contesta, queja del cliente..."
-            value={incidenciaNota}
-            onChange={(e) => setIncidenciaNota(e.target.value)}
-            rows={4}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>Cancelar</Button>
+      {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba.
+          Unificado al mismo lenguaje visual que ModalClonarVoz.tsx (barra de
+          gradiente, ícono circular arriba, título/subtítulo centrados) vía
+          ModalFormularioElegante, pedido real de Javier el 4-sep-2026: "que
+          se corrijan y se unifiquen como el recuadro de clona tu voz". */}
+      <ModalFormularioElegante
+        open={!!incidenciaAbierta}
+        onOpenChange={(v) => { if (!v) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}
+        icono={AlertTriangle}
+        titulo="Reportar incidencia"
+        subtitulo={incidenciaAbierta ? `#${incidenciaAbierta.order_number} — ${incidenciaAbierta.customer_name}` : undefined}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" className="rounded-full flex-1" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>
+              Cancelar
+            </Button>
             <Button
-              className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+              className="rounded-full flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
               onClick={reportarIncidencia}
               disabled={reportandoIncidencia}
             >
               {reportandoIncidencia ? "Reportando..." : "Reportar incidencia"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        <CampoFormulario id="incidencia-nota" label="¿Qué pasó?">
+          <Textarea
+            id="incidencia-nota"
+            placeholder="Ej. dirección incorrecta, cliente no contesta, queja del cliente..."
+            value={incidenciaNota}
+            onChange={(e) => setIncidenciaNota(e.target.value)}
+            rows={4}
+          />
+        </CampoFormulario>
+      </ModalFormularioElegante>
 
       {/* Confirmación de "Cancelar pedido" — ver confirmarCancelacion() arriba */}
       <AlertDialog open={!!cancelarConfirm} onOpenChange={(v) => !v && setCancelarConfirm(null)}>

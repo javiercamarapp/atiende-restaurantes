@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
 import {
   Package,
   MapPin,
@@ -906,33 +906,42 @@ const RepartidorDashboard = () => {
         </nav>
       </div>
 
-      {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba */}
-      <Dialog open={!!incidenciaAbierta} onOpenChange={(abierto) => { if (!abierto) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reportar incidencia</DialogTitle>
-            <DialogDescription>
-              {incidenciaAbierta ? `Pedido de ${incidenciaAbierta.clienteNombre}` : ""} — cuéntanos qué pasó, administración lo verá de inmediato.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            placeholder="Ej. la dirección no existe, el cliente no contesta, hubo un accidente..."
-            value={incidenciaNota}
-            onChange={(e) => setIncidenciaNota(e.target.value)}
-            rows={4}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>Cancelar</Button>
+      {/* Diálogo de "Reportar incidencia" — ver reportarIncidencia() arriba.
+          Unificado al mismo lenguaje visual que ModalClonarVoz.tsx (barra
+          de gradiente, ícono circular arriba, título/subtítulo centrados)
+          vía ModalFormularioElegante, pedido real de Javier el 4-sep-2026:
+          "que se corrijan y se unifiquen como el recuadro de clona tu voz". */}
+      <ModalFormularioElegante
+        open={!!incidenciaAbierta}
+        onOpenChange={(v) => { if (!v) { setIncidenciaAbierta(null); setIncidenciaNota(""); } }}
+        icono={AlertTriangle}
+        titulo="Reportar incidencia"
+        subtitulo={incidenciaAbierta ? `Pedido de ${incidenciaAbierta.clienteNombre} — administración lo verá de inmediato` : undefined}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" className="rounded-full flex-1" onClick={() => { setIncidenciaAbierta(null); setIncidenciaNota(""); }}>
+              Cancelar
+            </Button>
             <Button
-              className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+              className="rounded-full flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
               onClick={reportarIncidencia}
               disabled={reportandoIncidencia}
             >
               {reportandoIncidencia ? "Reportando..." : "Reportar incidencia"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        <CampoFormulario id="incidencia-nota-repartidor" label="¿Qué pasó?">
+          <Textarea
+            id="incidencia-nota-repartidor"
+            placeholder="Ej. la dirección no existe, el cliente no contesta, hubo un accidente..."
+            value={incidenciaNota}
+            onChange={(e) => setIncidenciaNota(e.target.value)}
+            rows={4}
+          />
+        </CampoFormulario>
+      </ModalFormularioElegante>
     </div>
   );
 };
