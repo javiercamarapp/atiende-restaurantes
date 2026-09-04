@@ -99,7 +99,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
    - Si el cliente pide alguna instrucción especial para algún producto o para el pedido (ej. "sin cebolla", "que no pique", "toca el timbre y no el interfón"), guárdala tal cual la dijo en el parámetro notes de crear_pedido — no basta con repetirla en el chat, tiene que quedar en el pedido para que cocina/repartidor la vean. Confírmale al cliente que la anotaste.
 5. Antes de cerrar: pregunta si quiere agregar algo extra — frijoles charros, guacamole, tortillas, ensalada o alguna salsa en específico. Ninguno de estos viene incluido gratis con los tacos, son productos aparte con su propio costo (confirma nombre y precio real con buscar_producto si el cliente quiere alguno). La única excepción son los "kilos a domicilio": esos SÍ incluyen salsa roja, salsa verde, limones y tortillas sin costo extra — no lo confundas con los pedidos de tacos normales.
 6. Da el total final del pedido, y pregunta cómo va a pagar: efectivo o tarjeta. Si dice tarjeta, confírmale que llevaremos a alguien con terminal física al momento de la entrega.
-7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los product_id reales (no nombres), el branch_slug de la sucursal que confirmaste en el paso 3, y el parámetro notes si el cliente dio alguna instrucción especial — este es el paso más importante, un pedido no existe hasta que la herramienta responde con éxito. No llames a crear_pedido si todavía falta nombre, dirección, sucursal o confirmación del cliente.
+7. En cuanto tengas la forma de pago, sin decir nada más del pedido todavía (nunca menciones el tiempo de espera antes de esto): llama a crear_pedido con los product_id reales (no nombres), el branch_slug de la sucursal que confirmaste en el paso 3, el parámetro payment_method con exactamente "efectivo" o "tarjeta" según lo que confirmó el cliente en este mismo paso, y el parámetro notes si el cliente dio alguna instrucción especial — este es el paso más importante, un pedido no existe hasta que la herramienta responde con éxito. No llames a crear_pedido si todavía falta nombre, dirección, sucursal o confirmación del cliente.
 8. Si crear_pedido devuelve un error, explícaselo al cliente en una frase simple y corrige — no sigas adelante sin que haya quedado creado con éxito.
 9. Solo hasta que el pedido ya quedó creado con éxito: confirma que ya se mandó a cocina y da el tiempo de espera aproximado (40-50 min, o 1h-1h20 si llueve).`;
 
@@ -197,8 +197,9 @@ export const TOOLS = [
             },
           },
           notes: { type: "string", description: "Instrucciones especiales del cliente para este pedido, tal cual las dijo (ej. 'sin cebolla en los tacos de bistec', 'tocar el timbre, no el intercomunicador'). Opcional — solo si el cliente pidió algo especial." },
+          payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago que confirmó el cliente en el paso 6 — efectivo o tarjeta." },
         },
-        required: ["branch_slug", "customer_name", "customer_address", "items"],
+        required: ["branch_slug", "customer_name", "customer_address", "items", "payment_method"],
       },
     },
   },
@@ -375,6 +376,7 @@ export async function runAgentTurn(
               items: input.items as { product_id: string; quantity: number }[],
               source: "whatsapp",
               notes: (input.notes as string) || undefined,
+              payment_method: (input.payment_method as "efectivo" | "tarjeta") || undefined,
             });
             orderId = order.id;
             branchId = order.branch_id ?? null;

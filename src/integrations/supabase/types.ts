@@ -334,6 +334,7 @@ export type Database = {
           items: Json
           notes: string | null
           order_number: number
+          payment_method: string | null
           restaurant_id: string
           scheduled_for: string | null
           source: string
@@ -359,6 +360,7 @@ export type Database = {
           items: Json
           notes?: string | null
           order_number?: number
+          payment_method?: string | null
           restaurant_id: string
           scheduled_for?: string | null
           source?: string
@@ -384,6 +386,7 @@ export type Database = {
           items?: Json
           notes?: string | null
           order_number?: number
+          payment_method?: string | null
           restaurant_id?: string
           scheduled_for?: string | null
           source?: string

@@ -24,6 +24,11 @@ export interface CreateOrderPayload {
   // timbre") — antes se reconocían y repetían en el chat pero nunca
   // llegaban a cocina porque `orders` no tenía dónde guardarlas.
   notes?: string;
+  // Pedido real de Javier el 4-sep-2026: el agente (voz y WhatsApp) SIEMPRE
+  // pregunta "efectivo o tarjeta" antes de crear el pedido (paso 6/7 del
+  // flujo real), pero esa respuesta nunca se guardaba en ningún lado —
+  // Historial de Órdenes no tenía nada real que mostrar como forma de pago.
+  payment_method?: "efectivo" | "tarjeta";
 }
 
 export class OrderValidationError extends Error {}
@@ -256,6 +261,7 @@ export async function createOrderCore(supabase: any, payload: CreateOrderPayload
       call_transcript: payload.call_transcript ?? null,
       call_recording_url: payload.call_recording_url ?? null,
       notes: payload.notes ?? null,
+      payment_method: payload.payment_method ?? null,
     })
     .select()
     .single();

@@ -26,9 +26,11 @@ import { es } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   ShoppingCart, Search, Globe, Store, ChevronDown, Download, FileSpreadsheet,
   FileText, Loader2, AlertTriangle, CalendarDays, X,
+  User, Phone, MapPin, CreditCard, Banknote, Wallet, StickyNote, Mic, MessageCircle,
 } from "lucide-react";
 
 interface OrderRow {
@@ -47,6 +49,21 @@ interface OrderRow {
 interface BranchOption {
   id: string;
   name: string;
+}
+
+// Pedido real de Javier el 4-sep-2026: quería que al hacer clic en un
+// pedido de Historial saliera todo detallado — productos, cantidad, monto,
+// cliente, dirección, teléfono, forma de pago, todo. `OrderRow` (arriba)
+// solo trae las columnas angostas que necesita la tabla; este detalle trae
+// la fila completa, pedida bajo demanda solo al abrir un pedido (no de
+// entrada, para no cargar `items`/notas de los 50 pedidos de la página a
+// la vez).
+interface OrderDetalle extends OrderRow {
+  customer_address: string | null;
+  items: { id?: string; name: string; quantity: number; price: number }[] | null;
+  notes: string | null;
+  payment_method: string | null;
+  delivered_at: string | null;
 }
 
 const PAGE_SIZE = 50;
@@ -111,6 +128,22 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
   const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Detalle real de un pedido, cargado bajo demanda al hacer clic en una
+  // fila — ver interfaz OrderDetalle arriba.
+  const [detalleAbierto, setDetalleAbierto] = useState<OrderDetalle | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const abrirDetalle = async (id: string) => {
+    setCargandoDetalle(true);
+    const { data, error: errDetalle } = await supabase
+      .from("orders")
+      .select("id, customer_name, customer_phone, customer_address, total, status, created_at, source, branch, branch_id, estimated_delivery_at, incident_note, items, notes, payment_method, delivered_at")
+      .eq("id", id)
+      .maybeSingle();
+    setCargandoDetalle(false);
+    if (errDetalle || !data) return;
+    setDetalleAbierto(data as unknown as OrderDetalle);
+  };
+
   const [sucursales, setSucursales] = useState<BranchOption[]>([]);
   const [sucursalId, setSucursalId] = useState<string>("todas");
   const [mostrarSucursales, setMostrarSucursales] = useState(false);
@@ -123,7 +156,17 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
   const [rangoBorrador, setRangoBorrador] = useState<DateRange | undefined>(undefined);
   const [mostrarCalendario, setMostrarCalendario] = useState(false);
 
-  const rangoActivo = rangoAplicado ?? rangoDesdePreset(presetRango);
+  // Bug real corregido el 4-sep-2026 (Historial de Órdenes se quedaba en
+  // "Cargando..." para siempre): rangoDesdePreset(presetRango) creaba
+  // objetos Date NUEVOS en cada render (nunca memoizado). Como rangoActivo
+  // entraba tal cual a las dependencias de construirQuery (useCallback), su
+  // identidad "cambiaba" en cada render aunque el preset fuera el mismo —
+  // eso recreaba construirQuery, luego cargarPrimeraPagina, y el useEffect
+  // que la llama disparaba una fetch nueva en CADA render, para siempre: un
+  // loop real de fetch→setState→render→fetch que nunca dejaba a `cargando`
+  // asentarse en false. Memoizar por presetRango corta el loop.
+  const rangoDesdePresetMemo = useMemo(() => rangoDesdePreset(presetRango), [presetRango]);
+  const rangoActivo = rangoAplicado ?? rangoDesdePresetMemo;
   const etiquetaRango = rangoAplicado
     ? `${format(rangoAplicado.from as Date, "d MMM", { locale: es })} – ${format((rangoAplicado.to ?? rangoAplicado.from) as Date, "d MMM yyyy", { locale: es })}`
     : (PRESETS_HISTORIAL.find((p) => p.id === presetRango)?.etiqueta ?? "Todo el historial");
@@ -447,7 +490,11 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
                   {ordenes.map((o) => {
                     const badge = badgeDeEstado(o.status);
                     return (
-                      <tr key={o.id} className="border-b border-dashed border-border last:border-0 hover:bg-muted/40 transition-colors">
+                      <tr
+                        key={o.id}
+                        onClick={() => abrirDetalle(o.id)}
+                        className="border-b border-dashed border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
+                      >
                         <td className="px-3 py-2.5">
                           <p className="text-[13px] font-medium text-foreground truncate max-w-[180px]">{o.customer_name}</p>
                           <p className="text-[11px] text-muted-foreground">{o.customer_phone}</p>
@@ -492,6 +539,127 @@ export default function HistorialOrdenesSection({ restaurantId }: Props) {
           </>
         )}
       </div>
+
+      {/* Detalle real de un pedido — ver abrirDetalle() arriba */}
+      <Dialog open={!!detalleAbierto || cargandoDetalle} onOpenChange={(abierto) => { if (!abierto) setDetalleAbierto(null); }}>
+        <DialogContent className="max-w-lg">
+          {cargandoDetalle && !detalleAbierto ? (
+            <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          ) : detalleAbierto ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {numeroPedido(detalleAbierto.id)}
+                  <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-medium ${badgeDeEstado(detalleAbierto.status).clase}`}>
+                    {badgeDeEstado(detalleAbierto.status).etiqueta}
+                  </span>
+                </DialogTitle>
+                <DialogDescription>
+                  {detalleAbierto.created_at ? format(new Date(detalleAbierto.created_at), "d MMM yyyy, HH:mm", { locale: es }) : "—"}
+                  {" · "}{nombreSucursal(detalleAbierto)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3 text-[13px]">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-start gap-2">
+                    <User className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-foreground truncate">{detalleAbierto.customer_name}</p>
+                      <p className="text-[11px] text-muted-foreground">Cliente</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-foreground truncate">{detalleAbierto.customer_phone}</p>
+                      <p className="text-[11px] text-muted-foreground">Teléfono</p>
+                    </div>
+                  </div>
+                  {detalleAbierto.customer_address && (
+                    <div className="flex items-start gap-2 col-span-2">
+                      <MapPin className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-foreground">{detalleAbierto.customer_address}</p>
+                        <p className="text-[11px] text-muted-foreground">Dirección de entrega</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2">
+                    {detalleAbierto.source === "voice" ? <Mic className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" /> : detalleAbierto.source === "whatsapp" ? <MessageCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" /> : <Globe className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />}
+                    <div className="min-w-0">
+                      <p className="text-foreground capitalize">{detalleAbierto.source === "voice" ? "Llamada" : detalleAbierto.source === "whatsapp" ? "WhatsApp" : detalleAbierto.source}</p>
+                      <p className="text-[11px] text-muted-foreground">Canal</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    {detalleAbierto.payment_method === "tarjeta" ? <CreditCard className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" /> : detalleAbierto.payment_method === "efectivo" ? <Banknote className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" /> : <Wallet className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />}
+                    <div className="min-w-0">
+                      <p className="text-foreground capitalize">{detalleAbierto.payment_method ?? "No registrada"}</p>
+                      <p className="text-[11px] text-muted-foreground">Forma de pago</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-muted/40 border-b border-border">
+                        <th className="px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">Producto</th>
+                        <th className="px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground text-right">Cant.</th>
+                        <th className="px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground text-right">P. unit.</th>
+                        <th className="px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground text-right">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(detalleAbierto.items ?? []).map((it, idx) => (
+                        <tr key={it.id ?? idx} className="border-b border-dashed border-border last:border-0">
+                          <td className="px-2.5 py-1.5 text-foreground">{it.name}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-foreground">{it.quantity}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-muted-foreground">{formatoMXN(Number(it.price))}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-foreground font-medium">{formatoMXN(Number(it.price) * it.quantity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-muted/40">
+                        <td colSpan={3} className="px-2.5 py-2 text-right text-[11px] font-mono uppercase tracking-wide text-muted-foreground">Total</td>
+                        <td className="px-2.5 py-2 text-right font-display text-[14px] font-semibold tabular-nums text-foreground">{formatoMXN(Number(detalleAbierto.total))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {detalleAbierto.notes && (
+                  <div className="flex items-start gap-2 rounded-xl border border-border p-2.5">
+                    <StickyNote className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-foreground">{detalleAbierto.notes}</p>
+                      <p className="text-[11px] text-muted-foreground">Instrucciones especiales</p>
+                    </div>
+                  </div>
+                )}
+
+                {detalleAbierto.status === "problema" && detalleAbierto.incident_note && (
+                  <div className="flex items-start gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-fuchsia-700 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-foreground">{detalleAbierto.incident_note}</p>
+                      <p className="text-[11px] text-fuchsia-700">Incidencia reportada</p>
+                    </div>
+                  </div>
+                )}
+
+                {detalleAbierto.delivered_at && (
+                  <p className="text-[11.5px] text-muted-foreground">
+                    Entregado el {format(new Date(detalleAbierto.delivered_at), "d MMM yyyy, HH:mm", { locale: es })}
+                  </p>
+                )}
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
