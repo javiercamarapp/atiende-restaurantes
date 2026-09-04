@@ -19,6 +19,19 @@ voz o WhatsApp contra credenciales reales sin un ambiente aislado y autorizació
 Un warning de bundle, una prueba omitida o una integración no verificable debe quedar en el
 registro de release; no se convierte en verde por ausencia de evidencia.
 
+### Upgrade de un proyecto existente
+
+El reset local demuestra que el historial completo construye una base vacía, pero no prueba
+el ledger de un proyecto alojado. Antes de aplicar la migración forward fechada
+`20260901000000` sobre un proyecto que ya tenga migraciones posteriores:
+
+1. Exportar y revisar `supabase migration list` y un backup recuperable del staging.
+2. Ejecutar `supabase db push --include-all --dry-run` contra staging, nunca producción.
+3. Comparar el plan con el inventario aprobado y detenerse ante cualquier migración inesperada.
+4. Aplicar en staging, repetir contratos SQL sobre una copia segura y validar rollback lógico.
+5. Autorizar producción únicamente con evidencia del ensayo. No usar `migration repair` para
+   ocultar divergencias sin una reconciliación explícita y revisada.
+
 ## Restauración
 
 RPO/RTO de producción no están definidos en este repositorio. Para validar recuperabilidad
@@ -56,9 +69,10 @@ backup, punto restaurado, duración, conteos, hashes de artefactos y responsable
 
 ## Incidente: proveedor externo lento
 
-Todas las llamadas versionadas pasan por un deadline de 30 segundos. Alertar por proveedor
-si la tasa de timeout supera 1% durante 10 minutos o si hay cinco fallos consecutivos. La
-alerta y el canal on-call todavía requieren configuración fuera del repositorio.
+Cada llamada versionada tiene un máximo de 30 segundos; un turno completo del agente tiene
+un presupuesto global de 45 segundos. Alertar por proveedor si la tasa de timeout supera 1%
+durante 10 minutos o si hay cinco fallos consecutivos. La alerta y el canal on-call todavía
+requieren configuración fuera del repositorio.
 
 ## Secretos y rotación
 
@@ -76,4 +90,3 @@ alerta y el canal on-call todavía requieren configuración fuera del repositori
 - Rechazos por rate limit y por firma.
 - Pedidos deduplicados, pedidos por canal y fallos de creación.
 - Retraso de notificaciones y antigüedad del último backup restaurado.
-
