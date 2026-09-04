@@ -7,16 +7,19 @@ if (!agentId) {
 }
 
 const modoPrueba = process.env.ATIENDE_VOICE_TEST_MODE !== "false";
+const omitirVariables = process.env.ATIENDE_VOICE_SKIP_DYNAMIC === "true";
 const saludo = process.env.ATIENDE_VOICE_GREETING ?? "Buenos días";
 let closed = false;
 
 const conversation = await Conversation.startSession({
   agentId,
   textOnly: true,
-  dynamicVariables: {
-    modo_prueba: modoPrueba ? "true" : "false",
-    saludo,
-  },
+  ...(omitirVariables ? {} : {
+    dynamicVariables: {
+      modo_prueba: modoPrueba ? "true" : "false",
+      saludo,
+    },
+  }),
   toolMockConfig: {
     mockingStrategy: "none",
     fallbackStrategy: "call_real_tool",

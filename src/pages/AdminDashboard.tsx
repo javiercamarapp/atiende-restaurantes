@@ -445,6 +445,7 @@ function DashboardAgente({
   type DocumentoKB = { id: string; name: string; type: string };
   type ConfigAgente = {
     first_message: string; language: string; prompt: string; temperature: number;
+    llm: string; backup_llm: string; backup_llms: string[];
     voice_id: string | null; voice_public_owner_id?: string | null; speed: number; stability: number; similarity_boost: number;
     background_sound_id: string | null; background_sound_volume: number; background_sound_crossfade: boolean;
     first_message_interruptible: boolean;
@@ -534,6 +535,12 @@ function DashboardAgente({
     return true;
   });
   const traducirGenero = (g: string) => (g === 'male' ? 'Hombre' : g === 'female' ? 'Mujer' : g);
+  const nombreModelo = (modelo: string) => (({
+    'gpt-5.6-luna': 'GPT-5.6 Luna',
+    'gpt-5.6-terra': 'GPT-5.6 Terra',
+    'gemini-3.6-flash': 'Gemini 3.6 Flash',
+    'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
+  } as Record<string, string>)[modelo] ?? modelo) || 'Sin configurar';
   // `accent` puede venir null/undefined desde ElevenLabs (típico en voces
   // clonadas — IVC — y en algunas entradas del catálogo compartido que no
   // traen ese campo). Sin este guard, `.toLowerCase()` sobre null/undefined
@@ -1026,8 +1033,14 @@ function DashboardAgente({
             {pestana === 'comportamiento' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2.5">
-                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor="Gemini 3.5 Flash-Lite" indice={0} texto />
-                  <TileDashboardVoz icon={Settings2} label="Respaldo si falla" valor="GPT-5.6 Terra" indice={1} texto />
+                  <TileDashboardVoz icon={Settings2} label="Modelo (LLM)" valor={nombreModelo(borrador.llm)} indice={0} texto />
+                  <TileDashboardVoz
+                    icon={Settings2}
+                    label="Respaldo si falla"
+                    valor={(borrador.backup_llms.length ? borrador.backup_llms : [borrador.backup_llm]).filter(Boolean).map(nombreModelo).join(' → ') || 'Sin configurar'}
+                    indice={1}
+                    texto
+                  />
                 </div>
                 <div className="rounded-xl border border-border bg-card p-3.5">
                   <p className="text-[13px] font-medium text-foreground mb-1">Temperatura</p>

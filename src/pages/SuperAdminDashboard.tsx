@@ -45,6 +45,14 @@ interface PlatformStats {
   revenue_today: number;
 }
 
+const EMPTY_PLATFORM_STATS: PlatformStats = {
+  restaurant_count: 0,
+  active_restaurant_count: 0,
+  customer_count: 0,
+  orders_today: 0,
+  revenue_today: 0,
+};
+
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState("");
@@ -53,9 +61,10 @@ const SuperAdminDashboard = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [platformStats, setPlatformStats] = useState<PlatformStats>({ restaurant_count: 0, active_restaurant_count: 0, customer_count: 0, orders_today: 0, revenue_today: 0 });
+  const [platformStats, setPlatformStats] = useState<PlatformStats>(EMPTY_PLATFORM_STATS);
   const [restaurantStats, setRestaurantStats] = useState<Record<string, { orders: number; revenue: number; customers: number; pending: number }>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [section, setSection] = useState<"resumen" | "restaurantes" | "clientes" | "pregunta">("resumen");
   const [pregunta, setPregunta] = useState("");
   const [mensajesChat, setMensajesChat] = useState<{ rol: 'usuario' | 'asistente'; texto: string; filas?: (CustomerRow | OrderRow)[] }[]>([]);
@@ -87,22 +96,43 @@ const SuperAdminDashboard = () => {
       }
       setUserEmail(session.user.email ?? "");
 
-      const [{ data: r }, { data: c }, { data: stats }, { data: profile }] = await Promise.all([
-        supabase.rpc("superadmin_restaurants_page", { p_page_size: 100, p_page: 0 }),
-        supabase.rpc("superadmin_customers_page", { p_search: null, p_page_size: 50, p_page: 0 }),
-        supabase.rpc("superadmin_platform_stats"),
-        supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle(),
-      ]);
-      const nombreCompleto = profile?.nombre || (session.user.email ?? "").split("@")[0];
-      setUserName(nombreCompleto.split(" ")[0]);
-      setNombreSaludo(nombreCompleto.split(" ").slice(0, 2).join(" "));
-      setRestaurants((r ?? []) as Restaurant[]);
-      setPlatformStats((stats?.[0] ?? {}) as PlatformStats);
-      setRestaurantStats(Object.fromEntries((r ?? []).map((x: any) => [x.id, {
-        orders: Number(x.order_count), revenue: Number(x.revenue), customers: Number(x.customer_count), pending: Number(x.pending_order_count),
-      }])));
-      setCustomers(c ?? []);
-      setLoading(false);
+      try {
+        const [restaurantsResult, customersResult, statsResult, profileResult] = await Promise.all([
+          supabase.rpc("superadmin_restaurants_page", { p_page_size: 100, p_page: 0 }),
+          supabase.rpc("superadmin_customers_page", { p_search: null, p_page_size: 50, p_page: 0 }),
+          supabase.rpc("superadmin_platform_stats"),
+          supabase.from("profiles").select("nombre").eq("user_id", session.user.id).maybeSingle(),
+        ]);
+        const failedResults = [restaurantsResult, customersResult, statsResult].filter((result) => result.error);
+        if (failedResults.length > 0) {
+          console.error("No se pudieron cargar todas las métricas del superadmin", failedResults.map((result) => result.error));
+          setLoadError(true);
+        }
+
+        const r = restaurantsResult.data ?? [];
+        const c = customersResult.data ?? [];
+        const stats = statsResult.data?.[0];
+        const nombreCompleto = profileResult.data?.nombre || (session.user.email ?? "").split("@")[0];
+        setUserName(nombreCompleto.split(" ")[0]);
+        setNombreSaludo(nombreCompleto.split(" ").slice(0, 2).join(" "));
+        setRestaurants(r as Restaurant[]);
+        setPlatformStats(stats ? {
+          restaurant_count: Number(stats.restaurant_count ?? 0),
+          active_restaurant_count: Number(stats.active_restaurant_count ?? 0),
+          customer_count: Number(stats.customer_count ?? 0),
+          orders_today: Number(stats.orders_today ?? 0),
+          revenue_today: Number(stats.revenue_today ?? 0),
+        } : EMPTY_PLATFORM_STATS);
+        setRestaurantStats(Object.fromEntries(r.map((x: any) => [x.id, {
+          orders: Number(x.order_count), revenue: Number(x.revenue), customers: Number(x.customer_count), pending: Number(x.pending_order_count),
+        }])));
+        setCustomers(c);
+      } catch (error) {
+        console.error("No se pudo cargar el superadmin", error);
+        setLoadError(true);
+      } finally {
+        setLoading(false);
+      }
     };
     load();
   }, [navigate]);
@@ -119,7 +149,7 @@ const SuperAdminDashboard = () => {
     return 'Buenas noches';
   };
 
-  const revenueToday = platformStats.revenue_today;
+  const revenueToday = Number(platformStats.revenue_today ?? 0);
 
   const statsByRestaurant = (id: string) => {
     return restaurantStats[id] ?? { orders: 0, revenue: 0, customers: 0, pending: 0 };
@@ -363,6 +393,11 @@ const SuperAdminDashboard = () => {
         )}
 
         <div className="w-full flex-1 overflow-auto bg-muted/30 p-6">
+          {loadError && (
+            <div role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Algunas métricas no respondieron. El panel sigue disponible con los datos que sí pudieron cargarse.
+            </div>
+          )}
           {loading ? (
             <p className="text-sm text-muted-foreground">Cargando…</p>
           ) : section === "resumen" ? (

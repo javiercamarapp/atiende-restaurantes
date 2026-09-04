@@ -129,7 +129,7 @@ export default function PedidoDetalleSection({
   }, [detalle?.restaurant_id, detalle?.id]);
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="w-full min-w-0 space-y-4">
       <button
         onClick={onVolver}
         className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors"

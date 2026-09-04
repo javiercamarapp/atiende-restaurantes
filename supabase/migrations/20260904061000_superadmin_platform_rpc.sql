@@ -18,7 +18,8 @@ begin
     select count(*)::bigint, count(*) filter (where is_active)::bigint,
       (select count(*)::bigint from public.customers),
       (select count(*)::bigint from public.orders where created_at >= current_date),
-      (select coalesce(sum(total), 0) from public.orders where created_at >= current_date);
+      (select coalesce(sum(total), 0) from public.orders where created_at >= current_date)
+    from public.restaurants;
 end;
 $$;
 

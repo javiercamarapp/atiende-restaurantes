@@ -76,9 +76,14 @@ async function resolveRestaurantId(supabase: any, body: Record<string, unknown>)
     : null;
   if (typeof body.agent_id !== "string") return requested;
   const { data, error } = await supabase.from("branches").select("restaurant_id")
-    .eq("elevenlabs_agent_id", body.agent_id).limit(2);
-  if (error || data?.length !== 1) return null;
-  const derived = data[0].restaurant_id as string;
+    .eq("elevenlabs_agent_id", body.agent_id);
+  if (error || !data?.length) return null;
+  // Un restaurante puede reutilizar el mismo agente en varias sucursales.
+  // Eso sigue siendo un tenant inequívoco; solo se rechaza si el agente está
+  // vinculado accidentalmente a restaurantes distintos.
+  const restaurantIds = new Set(data.map((row: { restaurant_id: string }) => row.restaurant_id));
+  if (restaurantIds.size !== 1) return null;
+  const derived = restaurantIds.values().next().value as string;
   return requested && requested !== derived ? null : derived;
 }
 
@@ -724,6 +729,9 @@ Deno.serve(async (req: Request) => {
         language_detection_enabled: !!(agent.prompt?.built_in_tools?.language_detection),
         prompt: agent.prompt?.prompt ?? "",
         temperature: agent.prompt?.temperature ?? 0.4,
+        llm: agent.prompt?.llm ?? "",
+        backup_llm: agent.prompt?.backup_llm_config?.order?.[0] ?? "",
+        backup_llms: agent.prompt?.backup_llm_config?.order ?? [],
         voice_id: tts.voice_id ?? null,
         speed: tts.speed ?? 1.0,
         stability: tts.stability ?? 0.5,
@@ -866,11 +874,11 @@ Deno.serve(async (req: Request) => {
       // explícita (ej. el widget <elevenlabs-convai> embebido, que nunca
       // manda dynamic_variables propias) con "Missing required dynamic
       // variables in first message" — la llamada ni siquiera arranca. Fix:
-      // declarar un default a nivel de agente (dynamic_variable_placeholders,
-      // mismo mecanismo ya usado para modo_prueba) para que CUALQUIER llamada
-      // que no mande la variable use ese default en vez de tronar. Se
-      // MERGEA con los placeholders existentes (nunca se pisa modo_prueba)
-      // trayendo primero el estado real del agente.
+      // declarar defaults tanto a nivel de agente como dentro de cada webhook
+      // tool. ElevenLabs valida por separado las variables usadas en tools:
+      // un placeholder solo en `agent.dynamic_variables` no evita
+      // "Missing required dynamic variables in tools" en llamadas telefónicas
+      // o widgets que no mandan conversation initiation data.
       if (dynamic_variable_placeholders !== undefined) {
         const getRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agent_id}`, {
           headers: { "xi-api-key": apiKey },
@@ -881,9 +889,25 @@ Deno.serve(async (req: Request) => {
         agentPatch.dynamic_variables = {
           dynamic_variable_placeholders: { ...existentes, ...dynamic_variable_placeholders },
         };
+        // deno-lint-ignore no-explicit-any
+        const toolsActuales: any[] = current?.conversation_config?.agent?.prompt?.tools ?? [];
+        if (toolsActuales.length > 0) {
+          agentPatch.prompt = {
+            tools: toolsActuales.map((tool) => tool.type === "webhook" ? {
+              ...tool,
+              dynamic_variables: {
+                ...(tool.dynamic_variables ?? {}),
+                dynamic_variable_placeholders: {
+                  ...(tool.dynamic_variables?.dynamic_variable_placeholders ?? {}),
+                  ...dynamic_variable_placeholders,
+                },
+              },
+            } : tool),
+          };
+        }
       }
       if (prompt !== undefined || temperature !== undefined || llm !== undefined || backup_llm !== undefined || reasoning_effort !== undefined) {
-        agentPatch.prompt = {};
+        agentPatch.prompt ??= {};
         if (prompt !== undefined) agentPatch.prompt.prompt = prompt;
         if (temperature !== undefined) agentPatch.prompt.temperature = temperature;
         if (llm !== undefined) agentPatch.prompt.llm = llm;

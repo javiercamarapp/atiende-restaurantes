@@ -31,7 +31,9 @@ insert into public.customers(restaurant_id,phone,name,order_count,last_order_at)
  ('67100000-0000-0000-0000-000000000001','9970000000','Global champion',999,now()-interval '1 year');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','67000000-0000-0000-0000-000000000001',true);
-do $$ declare n bigint; amount numeric; top_name text; begin
+do $$ declare n bigint; amount numeric; top_name text; restaurant_total bigint; begin
+  select restaurant_count into restaurant_total from public.superadmin_platform_stats();
+  if restaurant_total < 1 then raise exception 'platform stats did not count restaurants'; end if;
   select order_count,order_total into n,amount from public.superadmin_orders_summary('pending',null,null);
   if n < 101 or amount < 1010 then raise exception 'summary truncated: %, %', n, amount; end if;
   select name into top_name from public.superadmin_top_customers(10) limit 1;
