@@ -19,7 +19,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ModalFormularioElegante, CampoFormulario } from "@/components/ModalFormularioElegante";
+import { CampoFormulario } from "@/components/ModalFormularioElegante";
+import { ModalFormularioLateral } from "@/components/ModalFormularioLateral";
 import {
   Store, Copy, Check, Edit, Clock, Trash2, RotateCcw, Loader2, MapPin, Navigation, Search,
 } from "lucide-react";
@@ -629,132 +630,129 @@ const SucursalesSection = ({ restaurantId }: Props) => {
         </div>
       )}
 
-      {/* Editar sucursal — mismo ancho/proporciones que ModalClonarVoz: mapa
-          interactivo con pin arrastrable a la izquierda... a la derecha del
-          formulario, más "usar mi ubicación actual" (geolocalización real
-          del navegador). Arrastrar/tocar el mapa autocompleta la dirección
-          vía reverse geocoding de Nominatim (OSM, sin API key). */}
-      <Dialog open={!!modalTienda} onOpenChange={(v) => !v && setModalTienda(null)}>
-        <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-primary to-secondary" />
-
-          <div className="px-6 pt-6 pb-5 flex flex-col items-center text-center border-b border-border">
-            <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-              <Store className="w-5 h-5 text-primary" strokeWidth={1.75} />
-            </div>
-            <p className="font-display text-lg font-semibold text-foreground">Editar sucursal</p>
-            {modalTienda && <p className="text-[13px] text-muted-foreground mt-1">{modalTienda.name}</p>}
+      {/* Editar sucursal — mismo esqueleto literal que ModalClonarVoz.tsx
+          (riel izquierdo con ícono/título, columna derecha con el
+          contenido y los botones al pie), pedido real de Javier el
+          4-sep-2026: "como el de clona tu voz, idéntico, mismo forma,
+          esqueleto, todo". Mapa interactivo con pin arrastrable dentro de
+          la columna derecha, más "usar mi ubicación actual" (geolocalización
+          real del navegador) — arrastrar/tocar el mapa autocompleta la
+          dirección vía reverse geocoding de Nominatim (OSM, sin API key). */}
+      <ModalFormularioLateral
+        open={!!modalTienda}
+        onOpenChange={(v) => !v && setModalTienda(null)}
+        icono={Store}
+        titulo="Editar sucursal"
+        subtitulo={modalTienda?.name}
+        anchoClase="max-w-5xl"
+        footer={
+          <Button
+            className="rounded-full px-6"
+            onClick={guardarTienda}
+            disabled={guardandoTienda || !formTienda.name.trim()}
+          >
+            {guardandoTienda ? "Guardando…" : "Guardar cambios"}
+          </Button>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4 text-left">
+            <CampoFormulario id="sucursal-nombre" label="Nombre">
+              <Input id="sucursal-nombre" value={formTienda.name} onChange={(e) => setFormTienda({ ...formTienda, name: e.target.value })} />
+            </CampoFormulario>
+            <CampoFormulario id="sucursal-telefono" label="Teléfono">
+              <Input id="sucursal-telefono" value={formTienda.phone} onChange={(e) => setFormTienda({ ...formTienda, phone: e.target.value })} />
+            </CampoFormulario>
+            <CampoFormulario
+              id="sucursal-direccion"
+              label="Dirección"
+              hint="Se autocompleta al mover el pin en el mapa — puedes editarla a mano."
+            >
+              <Textarea
+                id="sucursal-direccion"
+                rows={3}
+                value={formTienda.address}
+                onChange={(e) => setFormTienda({ ...formTienda, address: e.target.value })}
+              />
+            </CampoFormulario>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_360px]">
-            <div className="p-6 space-y-4 border-b md:border-b-0 md:border-r border-border text-left">
-              <CampoFormulario id="sucursal-nombre" label="Nombre">
-                <Input id="sucursal-nombre" value={formTienda.name} onChange={(e) => setFormTienda({ ...formTienda, name: e.target.value })} />
-              </CampoFormulario>
-              <CampoFormulario id="sucursal-telefono" label="Teléfono">
-                <Input id="sucursal-telefono" value={formTienda.phone} onChange={(e) => setFormTienda({ ...formTienda, phone: e.target.value })} />
-              </CampoFormulario>
-              <CampoFormulario
-                id="sucursal-direccion"
-                label="Dirección"
-                hint="Se autocompleta al mover el pin en el mapa — puedes editarla a mano."
+          <div className="space-y-3 flex flex-col text-left">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[10.5px] uppercase tracking-wide text-muted-foreground">Ubicación</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-full px-3 text-[11.5px]"
+                onClick={usarUbicacionActual}
+                disabled={ubicando}
               >
-                <Textarea
-                  id="sucursal-direccion"
-                  rows={3}
-                  value={formTienda.address}
-                  onChange={(e) => setFormTienda({ ...formTienda, address: e.target.value })}
-                />
-              </CampoFormulario>
+                {ubicando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
+                Usar mi ubicación actual
+              </Button>
             </div>
 
-            <div className="p-6 space-y-3 flex flex-col text-left">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[10.5px] uppercase tracking-wide text-muted-foreground">Ubicación</span>
+            <div className="relative">
+              <div className="flex gap-1.5">
+                <Input
+                  placeholder="Buscar dirección o colonia…"
+                  className="h-8 text-[12.5px]"
+                  value={buscarTexto}
+                  onChange={(e) => setBuscarTexto(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarYMostrarResultados(); } }}
+                />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 rounded-full px-3 text-[11.5px]"
-                  onClick={usarUbicacionActual}
-                  disabled={ubicando}
+                  className="h-8 rounded-lg px-2.5 shrink-0"
+                  onClick={buscarYMostrarResultados}
+                  disabled={buscando || !buscarTexto.trim()}
                 >
-                  {ubicando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
-                  Usar mi ubicación actual
+                  {buscando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                 </Button>
               </div>
-
-              <div className="relative">
-                <div className="flex gap-1.5">
-                  <Input
-                    placeholder="Buscar dirección o colonia…"
-                    className="h-8 text-[12.5px]"
-                    value={buscarTexto}
-                    onChange={(e) => setBuscarTexto(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarYMostrarResultados(); } }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg px-2.5 shrink-0"
-                    onClick={buscarYMostrarResultados}
-                    disabled={buscando || !buscarTexto.trim()}
-                  >
-                    {buscando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                  </Button>
+              {resultadosBusqueda.length > 0 && (
+                <div className="absolute z-10 top-full mt-1 left-0 right-0 rounded-lg border border-border bg-card shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                  {resultadosBusqueda.map((r, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="w-full text-left px-2.5 py-1.5 text-[11.5px] hover:bg-muted transition-colors border-b border-border last:border-0 truncate"
+                      onClick={() => elegirResultadoBusqueda(r)}
+                    >
+                      {r.etiqueta}
+                    </button>
+                  ))}
                 </div>
-                {resultadosBusqueda.length > 0 && (
-                  <div className="absolute z-10 top-full mt-1 left-0 right-0 rounded-lg border border-border bg-card shadow-lg overflow-hidden max-h-40 overflow-y-auto">
-                    {resultadosBusqueda.map((r, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        className="w-full text-left px-2.5 py-1.5 text-[11.5px] hover:bg-muted transition-colors border-b border-border last:border-0 truncate"
-                        onClick={() => elegirResultadoBusqueda(r)}
-                      >
-                        {r.etiqueta}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl overflow-hidden border border-border h-[220px] shrink-0">
-                {modalTienda && (
-                  <MapaSucursalEditable lat={formTienda.lat} lng={formTienda.lng} onMoverPin={moverPin} />
-                )}
-              </div>
-
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                Arrastra el pin o toca el mapa para ajustar la ubicación exacta.
-              </p>
-
-              {formTienda.lat != null && formTienda.lng != null && (
-                <p className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
-                  {formTienda.lat.toFixed(5)}, {formTienda.lng.toFixed(5)}
-                </p>
               )}
             </div>
-          </div>
 
-          <div className="px-6 pb-6 pt-2">
-            <Button
-              className="rounded-full w-full"
-              onClick={guardarTienda}
-              disabled={guardandoTienda || !formTienda.name.trim()}
-            >
-              {guardandoTienda ? "Guardando…" : "Guardar cambios"}
-            </Button>
+            <div className="rounded-xl overflow-hidden border border-border h-[220px] shrink-0">
+              {modalTienda && (
+                <MapaSucursalEditable lat={formTienda.lat} lng={formTienda.lng} onMoverPin={moverPin} />
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              Arrastra el pin o toca el mapa para ajustar la ubicación exacta.
+            </p>
+
+            {formTienda.lat != null && formTienda.lng != null && (
+              <p className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
+                {formTienda.lat.toFixed(5)}, {formTienda.lng.toFixed(5)}
+              </p>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </ModalFormularioLateral>
 
       {/* Editar horario — por día de la semana, con atajo "mismo horario
           todos los días" (el default real de las sucursales) y toggle
           "cerrado" por día. Se serializa de vuelta a texto natural en
           `hours`, que es lo único que leen los prompts de los agentes. */}
-      <ModalFormularioElegante
+      <ModalFormularioLateral
         open={!!modalHorario}
         onOpenChange={(v) => !v && setModalHorario(null)}
         icono={Clock}
@@ -762,7 +760,7 @@ const SucursalesSection = ({ restaurantId }: Props) => {
         subtitulo={modalHorario?.name}
         onGuardar={guardarHorario}
         guardando={guardandoHorario}
-        anchoClase="max-w-4xl"
+        anchoClase="max-w-5xl"
       >
         <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3">
           <div>
@@ -817,7 +815,7 @@ const SucursalesSection = ({ restaurantId }: Props) => {
         <p className="text-[11px] text-muted-foreground leading-snug pt-1">
           Así se lo explican al cliente el agente de voz y el de WhatsApp.
         </p>
-      </ModalFormularioElegante>
+      </ModalFormularioLateral>
 
       {/* Confirmación de baja / reactivación */}
       <AlertDialog open={!!confirmarBaja} onOpenChange={(v) => !v && setConfirmarBaja(null)}>
