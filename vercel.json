@@ -22,6 +22,12 @@
     }
   ],
   "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": ".*\\.vercel\\.app" }],
+      "destination": "https://app.useatiende.ai/:path*",
+      "permanent": true
+    },
     { "source": "/", "destination": "/restaurantes", "permanent": false },
     { "source": "/admin/:path*", "destination": "/restaurantes/admin/:path*", "permanent": false },
     { "source": "/repartidor", "destination": "/restaurantes/repartidor", "permanent": false },

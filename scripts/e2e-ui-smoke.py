@@ -41,6 +41,15 @@ async def main() -> None:
         assert await page.get_by_role("button", name="Continuar con Google").is_visible()
         assert await page.get_by_role("button", name="Continuar con correo").is_visible()
 
+        # Public hosting aliases must converge to the official software URL.
+        for legacy_origin in filter(None, os.environ.get("LEGACY_ORIGINS", "").split(",")):
+            await page.goto(
+                f"{legacy_origin.rstrip('/')}/restaurantes/admin/login?qa=canonical",
+                wait_until="networkidle",
+            )
+            await page.get_by_placeholder("tu@correo.com").wait_for()
+            assert page.url == f"{BASE_URL}/admin/login?qa=canonical", page.url
+
         # Vite preview requires the base's trailing slash. Vercel additionally
         # serves the slashless entry through its hosting rewrite.
         entries = (BASE_URL, BASE_URL + "/") if os.environ.get("HOST_ROUTING") == "1" else (BASE_URL + "/",)
