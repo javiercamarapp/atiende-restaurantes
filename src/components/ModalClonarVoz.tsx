@@ -479,7 +479,7 @@ export function ModalClonarVoz({ restaurantId, open, onOpenChange, onVozClonada 
 
                 <div className="flex items-center gap-3 mb-6">
                   <video
-                    src="/media/orbe-agente.mp4"
+                    src={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
                     autoPlay loop muted playsInline
                     className="w-16 h-16 rounded-full object-cover shrink-0"
                   />

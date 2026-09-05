@@ -4,7 +4,7 @@ import os
 from playwright.async_api import async_playwright
 
 
-BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8080/restaurantes").rstrip("/")
 BROWSER = os.environ.get("BROWSER", "chromium")
 SIMULATE_CHUNK_FAILURE = os.environ.get("SIMULATE_CHUNK_FAILURE") == "1"
 
@@ -40,6 +40,19 @@ async def main() -> None:
         await page.get_by_placeholder("tu@correo.com").wait_for()
         assert await page.get_by_role("button", name="Continuar con Google").is_visible()
         assert await page.get_by_role("button", name="Continuar con correo").is_visible()
+
+        # Vite preview requires the base's trailing slash. Vercel additionally
+        # serves the slashless entry through its hosting rewrite.
+        entries = (BASE_URL, BASE_URL + "/") if os.environ.get("HOST_ROUTING") == "1" else (BASE_URL + "/",)
+        for entry in entries:
+            await page.goto(entry, wait_until="networkidle")
+            await page.get_by_placeholder("tu@correo.com").wait_for()
+            assert "/restaurantes/admin/login" in page.url, page.url
+
+        terms_link = page.get_by_role("link", name="Términos de Servicio")
+        assert await terms_link.get_attribute("href") == "/restaurantes/terminos"
+        await terms_link.click()
+        assert "/restaurantes/terminos" in page.url
 
         for path, heading in (
             ("/terminos", "Términos"),

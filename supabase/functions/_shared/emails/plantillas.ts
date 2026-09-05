@@ -4,7 +4,7 @@
 // otro disparador (bienvenida, etc).
 import { renderCorreo, moneda } from "./plantilla.ts";
 
-const APP_URL = Deno.env.get("APP_URL") ?? "https://atiende-restaurantes.vercel.app";
+const APP_URL = Deno.env.get("APP_URL") ?? "https://app.useatiende.ai/restaurantes";
 
 export interface PedidoCorreo {
   id: string;

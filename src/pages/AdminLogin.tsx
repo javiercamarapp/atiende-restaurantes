@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AtiendeMark, AtiendeWordmark } from "@/components/AtiendeLogo";
@@ -77,7 +77,7 @@ const AdminLogin = () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + "/admin/login" },
+      options: { redirectTo: window.location.origin + import.meta.env.BASE_URL + "admin/login" },
     });
     if (error) {
       toast({ title: "No se pudo continuar con Google", description: error.message, variant: "destructive" });
@@ -97,7 +97,7 @@ const AdminLogin = () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + "/admin/login" },
+      options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL + "admin/login" },
     });
     setLoading(false);
 
@@ -208,13 +208,13 @@ const AdminLogin = () => {
 
               <p className="login-entra mt-10 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "360ms" }}>
                 Al continuar, aceptas los{" "}
-                <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                <Link to="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
                   Términos de Servicio
-                </a>{" "}
+                </Link>{" "}
                 y el{" "}
-                <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                <Link to="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
                   Aviso de Privacidad
-                </a>{" "}
+                </Link>{" "}
                 de atiende.ai.
               </p>
             </div>
@@ -227,7 +227,7 @@ const AdminLogin = () => {
       <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
         <figure className="login-lamina min-h-0 flex-1 flex items-center justify-center">
           <img
-            src="/images/login-hero.png"
+            src={`${import.meta.env.BASE_URL}images/login-hero.png`}
             alt="Pase de una cocina comercial vacía en la hora azul, con vapor sobre la barra de acero."
             className="login-foto-marca absolute inset-0 w-full h-full object-cover"
           />

@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "headers": [
     {
-      "source": "/admin/:path*",
+      "source": "/restaurantes/:path*",
       "headers": [
         {
           "key": "Cache-Control",
@@ -20,13 +20,18 @@
       ]
     }
   ],
-  "routes": [
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/.*",
-      "dest": "/index.html"
-    }
+  "redirects": [
+    { "source": "/", "destination": "/restaurantes", "permanent": false },
+    { "source": "/admin/:path*", "destination": "/restaurantes/admin/:path*", "permanent": false },
+    { "source": "/repartidor", "destination": "/restaurantes/repartidor", "permanent": false },
+    { "source": "/terminos", "destination": "/restaurantes/terminos", "permanent": false },
+    { "source": "/privacidad", "destination": "/restaurantes/privacidad", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/restaurantes/assets/:path*", "destination": "/assets/:path*" },
+    { "source": "/restaurantes/images/:path*", "destination": "/images/:path*" },
+    { "source": "/restaurantes/media/:path*", "destination": "/media/:path*" },
+    { "source": "/restaurantes/favicon.svg", "destination": "/favicon.svg" },
+    { "source": "/restaurantes/:path*", "destination": "/index.html" }
   ]
 }

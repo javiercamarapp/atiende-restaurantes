@@ -1598,7 +1598,7 @@ function VistaPreviaAgentePantallaCompleta({
           >
             <video
               ref={videoOrbeRef}
-              src="/media/orbe-agente.mp4"
+              src={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
               autoPlay
               muted
               playsInline
