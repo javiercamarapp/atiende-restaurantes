@@ -123,7 +123,7 @@ const SuperAdminDashboard = () => {
           orders_today: Number(stats.orders_today ?? 0),
           revenue_today: Number(stats.revenue_today ?? 0),
         } : EMPTY_PLATFORM_STATS);
-        setRestaurantStats(Object.fromEntries(r.map((x: any) => [x.id, {
+        setRestaurantStats(Object.fromEntries(r.map((x) => [x.id, {
           orders: Number(x.order_count), revenue: Number(x.revenue), customers: Number(x.customer_count), pending: Number(x.pending_order_count),
         }])));
         setCustomers(c);

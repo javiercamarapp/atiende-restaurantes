@@ -28,7 +28,7 @@ export const useUserRole = (user: User | null) => {
     };
 
     fetchRoles();
-  }, [user?.id]);
+  }, [user]);
 
   const isAdmin = roles.includes('admin');
   const isRepartidor = roles.includes('repartidor');

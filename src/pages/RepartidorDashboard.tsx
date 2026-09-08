@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,6 +41,13 @@ import RepartidorSidebar from "@/components/repartidor/RepartidorSidebar";
 import { AtiendeWordmark } from "@/components/AtiendeLogo";
 import PedidoDetalleSection from "@/components/admin/PedidoDetalleSection";
 
+interface PedidoItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  price?: number;
+}
+
 interface Order {
   id: string;
   order_number: number | null;
@@ -48,7 +57,7 @@ interface Order {
   total: number;
   status: string | null;
   created_at: string;
-  items: any;
+  items: Json;
   branch: string | null;
   estimated_delivery_at: string | null;
   incident_note: string | null;
@@ -79,7 +88,7 @@ const esDemorado = (order: Order) =>
 
 const RepartidorDashboard = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -260,7 +269,7 @@ const RepartidorDashboard = () => {
 
   const OrderCard = ({ order, showActions = true }: { order: Order; showActions?: boolean }) => {
     const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-    const itemsList = Array.isArray(items) ? items : [];
+    const itemsList: PedidoItem[] = Array.isArray(items) ? (items as PedidoItem[]) : [];
 
     return (
       <Card className="mb-4">
@@ -293,7 +302,7 @@ const RepartidorDashboard = () => {
           <div className="bg-muted rounded-lg p-3 mb-3">
             <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground mb-2">Productos</p>
             <div className="space-y-1">
-              {itemsList.slice(0, 3).map((item: any, idx: number) => (
+              {itemsList.slice(0, 3).map((item, idx) => (
                 <p key={idx} className="text-sm text-foreground">
                   {item.quantity}x {item.name}
                 </p>

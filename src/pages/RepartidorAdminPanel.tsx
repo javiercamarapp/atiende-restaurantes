@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Truck, Phone, Mail, Calendar, Package, Clock, CheckCircle, DollarSign, MapPin } from "lucide-react";
@@ -27,7 +28,7 @@ interface Order {
   total: number;
   status: string | null;
   created_at: string;
-  items: any;
+  items: Json;
 }
 
 const RepartidorAdminPanel = () => {

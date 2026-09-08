@@ -71,7 +71,7 @@ const AdminLogin = () => {
       if (session) routeAfterAuth(navigate);
     });
     return () => sub.subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, toast]);
 
   const handleGoogle = async () => {
     setLoading(true);
