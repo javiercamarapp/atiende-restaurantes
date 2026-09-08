@@ -105,6 +105,7 @@ export type Database = {
           address: string | null
           created_at: string
           display_order: number | null
+          elevenlabs_agent_id: string | null
           hours: string | null
           id: string
           is_active: boolean
@@ -122,6 +123,7 @@ export type Database = {
           address?: string | null
           created_at?: string
           display_order?: number | null
+          elevenlabs_agent_id?: string | null
           hours?: string | null
           id?: string
           is_active?: boolean
@@ -139,6 +141,7 @@ export type Database = {
           address?: string | null
           created_at?: string
           display_order?: number | null
+          elevenlabs_agent_id?: string | null
           hours?: string | null
           id?: string
           is_active?: boolean
@@ -1292,6 +1295,10 @@ export type Database = {
         Returns: boolean
       }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
+      notification_unread_count: {
+        Args: { p_restaurant_id: string }
+        Returns: number
+      }
       operational_alert_snapshot: {
         Args: { p_restaurant_id: string; p_window_minutes?: number }
         Returns: Json
