@@ -77,4 +77,5 @@ const CardsParallax: FC<iCardSlideProps> = ({
       </Carousel>
     </div>;
 };
-export { CardsParallax, type iCardItem };
+export { CardsParallax };
+export type { iCardItem };
