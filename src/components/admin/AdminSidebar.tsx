@@ -202,27 +202,55 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
         })}
       </nav>
 
-      {/* Bloque de cuenta — el recuadro gris real de Likida (sobresale del
-          blanco del sidebar, sin borde propio, contenido dentro del padding
-          para que no se desborde), separado del chip de usuario de abajo. */}
-      <div className="p-2 space-y-0.5 shrink-0">
+      {/* Bloque de cuenta — mismo patrón de dos capas que dashboard/chrome.tsx
+          de Likida: la zona de ayuda/accesos/tema vive en un tono hundido
+          (bg-muted, a todo lo ancho, con sombra interior) y la tarjeta de
+          usuario queda SOBREPUESTA encima (bg-card + sombra + margen
+          negativo que la monta sobre el gris) en vez de solo separada por
+          un borde. */}
+      <div className="shrink-0 border-t border-border">
         {!collapsed && (
-          <div className="rounded-xl bg-muted/60 p-1.5 space-y-0.5 mb-1.5">
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[13px] border border-border bg-card hover:bg-muted transition-colors">
+          <div className="bg-muted px-2 pt-2 pb-5 space-y-0.5 shadow-[inset_0_2px_5px_-2px_rgba(0,0,0,0.08)]">
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[13px] border border-border bg-card hover:bg-background transition-colors">
               <HelpCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
               <span className="truncate">Centro de ayuda</span>
             </button>
+            {/* Mismos 5 ítems y mismo orden que el bloque ABAJO real de
+                Likida (Notificaciones/Mi perfil/Centro de ayuda arriba/Plan y
+                facturación/Configuración), con la MISMA anatomía de píldora
+                que el nav principal: activo = relleno sólido bg-primary
+                (azul de atiende, nunca el negro/naranja de Likida). Solo
+                "Notificaciones" tiene página real hoy en este repo — el
+                resto sigue "Pronto" (esqueleto honesto, no se finge que
+                llevan a algo que no existe todavía). */}
             {[
-              { label: 'Mi perfil', icon: UserRound },
-              { label: 'Plan y facturación', icon: CreditCard },
-              { label: 'Configuración', icon: Settings },
+              { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
+              { id: 'mi-perfil', label: 'Mi perfil', icon: UserRound, disabled: true },
+              { id: 'plan-facturacion', label: 'Plan y facturación', icon: CreditCard, disabled: true },
+              { id: 'configuracion', label: 'Configuración', icon: Settings, disabled: true },
             ].map((it) => (
               <button
-                key={it.label}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] text-muted-foreground hover:bg-background transition-colors"
+                key={it.id}
+                onClick={() => !it.disabled && onSectionChange(it.id)}
+                disabled={it.disabled}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[13px] transition-colors",
+                  it.disabled
+                    ? "text-muted-foreground/50 cursor-not-allowed"
+                    : activeSection === it.id
+                      ? "bg-primary text-primary-foreground font-medium"
+                      : "text-muted-foreground hover:bg-background"
+                )}
               >
                 <it.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">{it.label}</span>
+                <span className="flex-1 flex items-center justify-between min-w-0 gap-2">
+                  <span className="truncate">{it.label}</span>
+                  {it.disabled && (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">
+                      Pronto
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
             <div className="pt-1.5 pb-0.5 flex justify-center">
@@ -231,10 +259,12 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
           </div>
         )}
 
-        {/* Usuario — plano, separado solo por un borde superior fino */}
-        <div className={cn("border-t border-border pt-1.5", collapsed ? "px-0" : "px-1")}>
+        {/* Tarjeta de usuario — montada con margen negativo sobre la zona
+            gris de arriba, con su propio fondo/borde/sombra para que se
+            note que está encima, no solo debajo. */}
+        <div className={cn("relative px-2 pb-2", collapsed ? "-mt-1" : "-mt-3.5")}>
           {!collapsed ? (
-            <div className="flex items-center gap-2 px-2 py-1">
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-sm">
               <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || 'A'}
               </div>
@@ -247,7 +277,7 @@ const AdminSidebar = ({ user, activeSection, onSectionChange, onLogout }: AdminS
               </button>
             </div>
           ) : (
-            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full">
+            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full rounded-xl border border-border bg-card shadow-sm">
               <LogOut className="w-5 h-5" />
             </Button>
           )}
