@@ -10,6 +10,7 @@ tests=(
   supabase/tests/admin_channel_stats.sql
   supabase/tests/privilege_escalation.sql
   supabase/tests/messaging_outbox.sql
+  supabase/tests/order_status_whatsapp.sql
   supabase/tests/privacy_dsar.sql
   supabase/tests/operational_observability.sql
   supabase/tests/superadmin_platform_rpc.sql
