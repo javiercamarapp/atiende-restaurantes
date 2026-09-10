@@ -3165,7 +3165,7 @@ const AdminDashboard = () => {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h1 className="text-xl font-semibold text-foreground">
-                  {saludoHorario()}, {nombreSaludo || 'de vuelta'} 👋
+                  {saludoHorario()}, {nombreSaludo || 'de vuelta'}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Todo listo para que sigas administrando tu restaurante.

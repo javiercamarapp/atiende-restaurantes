@@ -403,7 +403,7 @@ const SuperAdminDashboard = () => {
           ) : section === "resumen" ? (
             <>
               <h1 className="text-xl font-semibold text-foreground mb-1">
-                {saludoHorario()}, {nombreSaludo || 'de vuelta'} 👋
+                {saludoHorario()}, {nombreSaludo || 'de vuelta'}
               </h1>
               <p className="text-sm text-muted-foreground mb-6">Toda la plataforma en una pantalla — cifras reales, de todos los restaurantes</p>
 

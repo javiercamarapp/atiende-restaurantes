@@ -82,7 +82,7 @@ const Privacidad = () => (
     aviso={
       !RESPONSABLE.razonSocial && (
         <FaltaDato>
-          🔴 Falta capturar aquí la razón social y el domicilio exactos de la entidad responsable
+          Falta capturar aquí la razón social y el domicilio exactos de la entidad responsable
           (atiende.ai) para efectos del aviso de privacidad. Este documento no inventa esos datos —
           se completan cuando existan.
         </FaltaDato>

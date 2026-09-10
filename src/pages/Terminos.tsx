@@ -121,7 +121,7 @@ const Terminos = () => (
     aviso={
       !PRESTADOR.razonSocial && (
         <FaltaDato>
-          🔴 Falta capturar aquí la razón social, el domicilio fiscal y la jurisdicción exactos de la
+          Falta capturar aquí la razón social, el domicilio fiscal y la jurisdicción exactos de la
           entidad que opera atiende.ai. Este documento no inventa esos datos — se completan cuando
           existan.
         </FaltaDato>

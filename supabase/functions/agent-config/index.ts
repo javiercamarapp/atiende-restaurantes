@@ -831,7 +831,7 @@ Deno.serve(async (req: Request) => {
         const [primera, segunda] = distancias;
         if (!primera) continue;
         const aviso = segunda && segunda.km - primera.km < 1
-          ? "  ⚠️ muy cerca de la 2ª opción, revisar coordenadas si algo se ve raro"
+          ? "  ADVERTENCIA: muy cerca de la 2ª opción, revisar coordenadas si algo se ve raro"
           : "";
         textoColonias +=
           `- ${c.nombre} → **${primera.nombre}** (${primera.km} km)${
