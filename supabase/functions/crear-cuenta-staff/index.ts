@@ -16,6 +16,7 @@
 // perfil/rol/vínculo al restaurante.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
+import { dispararCorreoBienvenidaStaff } from "../_shared/emails/bienvenida.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -144,6 +145,21 @@ Deno.serve(async (req: Request) => {
         role: staffRole,
       });
       if (staffError) return await limpiarYFallar(`No se pudo vincular al restaurante: ${staffError.message}`);
+    }
+
+    // Best-effort: la cuenta ya quedó creada y utilizable (entra con Google
+    // o enlace mágico) incluso si el correo de bienvenida falla o el
+    // proveedor no está configurado — nunca se bloquea ni se revierte el
+    // alta por esto.
+    try {
+      await dispararCorreoBienvenidaStaff(supabaseAdmin, {
+        userId: nuevoUserId,
+        email: emailLimpio,
+        role: role as RolStaff,
+        restaurantId: role === "superadmin" ? null : restaurantId,
+      });
+    } catch (err) {
+      console.error("crear-cuenta-staff: no se pudo enviar el correo de bienvenida", err);
     }
 
     return json({ ok: true, user_id: nuevoUserId });

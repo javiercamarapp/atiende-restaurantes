@@ -20,6 +20,7 @@
 // para no dejar una cuenta a medias (con rol pero sin perfil operativo).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.86.0";
+import { dispararCorreoBienvenidaRepartidor } from "../_shared/emails/bienvenida.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,6 +134,16 @@ Deno.serve(async (req: Request) => {
       await supabaseAdmin.auth.admin.deleteUser(userId);
       console.error("crear-repartidor: rollback tras fallo de repartidor_perfil:", errorPerfil);
       return json({ error: `No se pudo guardar el perfil operativo: ${errorPerfil.message}` }, 500);
+    }
+
+    // Best-effort: el repartidor ya quedó dado de alta y puede entrar con
+    // Google o enlace mágico aunque el correo de bienvenida falle o el
+    // proveedor no esté configurado — nunca se bloquea ni se revierte el
+    // alta por esto.
+    try {
+      await dispararCorreoBienvenidaRepartidor({ userId, email: correo });
+    } catch (err) {
+      console.error("crear-repartidor: no se pudo enviar el correo de bienvenida", err);
     }
 
     return json({ user_id: userId, email: correo });
