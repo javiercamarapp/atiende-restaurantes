@@ -1,28 +1,56 @@
-# atiende.ai para restaurantes
+<p align="center">
+  <img src="docs/brand/atiende-wordmark.svg" width="240" alt="atiende" />
+</p>
 
-Vertical de restaurantes de **atiende.ai** — el mismo tipo de agente de IA que opera un
-negocio 24/7 por voz y WhatsApp, aplicado a toma de pedidos, memoria de clientes y
-despacho a cocina. Piloto: **Los Taquitos de PM** (7 sucursales, Mérida).
+<h3 align="center">Agentes de voz y WhatsApp que toman el pedido de un restaurante y lo mandan directo a cocina.</h3>
 
-No es un chatbot de menú fijo: el agente identifica al cliente por teléfono, recuerda su
-nombre y direcciones guardadas, arma el pedido contra el menú real (con precio validado en
-servidor, nunca inventado), recomienda de forma natural, y el pedido cae directo al panel de
-cocina — todo antes de colgar o cerrar el chat.
+<p align="center">
+  <a href="https://atiende-restaurantes.vercel.app">Demo en vivo</a>
+</p>
 
-## Qué hay hoy
+---
 
-- **Backend real en Supabase**: menú (245 productos reales, incluye kilos a domicilio con
-  precio ya calculado por 250g/500g/750g/1kg), 7 sucursales, memoria de clientes
-  (`customers` + `customer_addresses`), pedidos con precio recalculado server-side.
-- **Agente de voz** (ElevenLabs Conversational AI): prompt y contrato de herramientas listos
-  en `docs/agente-voz/system-prompt.md`.
+> *Hoy el mesero contesta WhatsApp a mano entre mesas y el pedido se pierde o llega mal
+> anotado. El agente confirma la dirección guardada del cliente, arma el pedido contra el
+> menú real con precio validado en servidor, y lo manda a cocina antes de colgar.*
+
+---
+
+**Sin menú de opciones fijas, sin plantillas rígidas de WhatsApp: el agente conversa,
+recuerda al cliente y nunca inventa un precio.**
+
+## El problema
+
+En México, la mayoría de los restaurantes independientes toma pedidos a domicilio por
+teléfono o por WhatsApp operado a mano: un mesero o encargado escribiendo mientras atiende
+el salón, sin memoria del cliente entre pedidos, sin verificación de precio contra el menú
+real, y sin registro que llegue limpio a cocina. Cuando el volumen sube, esa cadena manual es
+la que primero se rompe — pedidos duplicados, direcciones mal copiadas, tiempos de espera que
+nadie confirmó.
+
+## Mercado
+
+La industria restaurantera en México representa el 12.2% de todos los negocios del país y
+genera poco más de dos millones de empleos; 96 de cada 100 unidades económicas del sector son
+microempresas (INEGI–CANIRAC, *Conociendo la industria restaurantera*). Es, casi en su
+totalidad, el tipo de negocio operado directamente por su dueño o un equipo pequeño — el
+perfil que hoy resuelve sus pedidos a mano por teléfono o WhatsApp, y el que este agente
+atiende primero.
+
+## Qué hace hoy
+
+- **Backend real en Supabase**: menú con 245 productos reales (incluye kilos a domicilio con
+  precio ya calculado por 250 g / 500 g / 750 g / 1 kg), 7 sucursales, memoria de clientes
+  (`customers` + `customer_addresses`) y pedidos con precio siempre recalculado server-side
+  (`cotizar-pedido`), nunca confiado al mensaje del cliente ni al agente.
+- **Agente de voz** (ElevenLabs Conversational AI): prompt y contrato de herramientas
+  versionados en `docs/agente-voz/system-prompt.md`.
 - **Agente de WhatsApp** (Meta Cloud API + OpenRouter): `supabase/functions/whatsapp-webhook`,
   con memoria de cliente inyectada en cada turno — saluda, confirma dirección guardada, arma
   el pedido, recuerda qué incluye, da el total y el tiempo de espera.
 - **Sitio de pedidos + panel admin/repartidor**: heredado del piloto original de Taquitos DPM
   (Vite + React + shadcn/ui), recoloreado a la paleta de este producto (blanco / azul / azul
-  cielo) siguiendo la disciplina de diseño documentada en Likida (proyect-x-), no su paleta
-  literal.
+  cielo) siguiendo la disciplina de diseño documentada en Likida, no su paleta literal.
 
 ## Stack
 
@@ -30,6 +58,13 @@ Frontend: Vite + React + TypeScript + shadcn/ui + Tailwind
 Backend: Supabase (Postgres + RLS + Edge Functions en Deno)
 Voz: ElevenLabs Conversational AI
 WhatsApp: Meta Cloud API + OpenRouter
+
+## Estado
+
+Piloto real en producción con **Los Taquitos de PM** (7 sucursales, Mérida) — no es todavía
+un producto vendido a otros restaurantes. El código, las pruebas y la operación (voz +
+WhatsApp + panel) corren contra ese único cliente hoy; la siguiente vertical no arranca hasta
+que este piloto esté sólido de punta a punta.
 
 ## Desarrollo local
 
