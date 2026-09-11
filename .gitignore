@@ -31,3 +31,8 @@ supabase/.temp/
 !.env.example
 supabase/.branches/
 .vercel
+
+# Dump huérfano: la fuente real del esquema es supabase/migrations/*.sql (ver README).
+# No existe script generador para este archivo; si algún día se agrega uno,
+# quitar esta línea y conectarlo a "npm run quality".
+/schema.sql
