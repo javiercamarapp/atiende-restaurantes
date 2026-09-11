@@ -729,7 +729,13 @@ export async function runAgentTurn(
       | Array<{ id: string; function: { name: string; arguments: string } }>
       | undefined;
     if (!toolCalls || toolCalls.length === 0) {
-      const reply = safeReply(msg.content || "¿Me puedes repetir tu pedido?");
+      const reply = safeReply(
+        enforcePendingQuestion(
+          msg.content || "¿Me puedes repetir tu pedido?",
+          branchId,
+          orderId,
+        ),
+      );
       messages[messages.length - 1].content = reply;
       return {
         reply,
@@ -923,6 +929,42 @@ export async function runAgentTurn(
     orderId,
     branchId,
   };
+}
+
+// El wizard de pasos fijos (saludo -> nombre -> dirección -> sucursal ->
+// items -> cotizar -> pago -> crear_pedido) hoy vive solo en
+// BASE_SYSTEM_PROMPT como texto ("Nunca cierres un turno diciendo solo 'voy
+// a revisar'... termina con una pregunta concreta"), sin nada en código que
+// lo haga cumplir. El único guard determinista real era el fallback para
+// content vacío del LLM (ver más abajo). Este guard generaliza esa idea:
+// si el turno termina SIN llamar ninguna herramienta y SIN que el pedido ya
+// exista, el texto tiene que terminar en una pregunta real — si no la
+// tiene, se le anexa la pregunta concreta que corresponde al siguiente paso
+// pendiente del flujo (colonia/sucursal si branchId aún no se resolvió;
+// qué quiere pedir en cualquier otro caso). Mismo patrón que
+// enforceBistecPackNotice: una capa post-LLM determinista, no un juicio del
+// modelo.
+export function pendingQuestionForMissingData(
+  branchId: string | null,
+  orderId: string | null,
+): string | null {
+  if (orderId) return null; // el pedido ya quedó creado, no hay nada pendiente que forzar
+  if (!branchId) {
+    return "¿Me compartes tu colonia o una referencia cercana para ubicar la sucursal más cercana?";
+  }
+  return "¿Qué te gustaría pedir, o hay algo más en lo que te pueda ayudar?";
+}
+
+export function enforcePendingQuestion(
+  reply: string,
+  branchId: string | null,
+  orderId: string | null,
+): string {
+  const trimmed = reply.trim();
+  if (/[?¿]/.test(trimmed)) return reply;
+  const pending = pendingQuestionForMissingData(branchId, orderId);
+  if (!pending) return reply;
+  return trimmed ? `${trimmed} ${pending}` : pending;
 }
 
 export function providerFailureReply(orderId: string | null): string {

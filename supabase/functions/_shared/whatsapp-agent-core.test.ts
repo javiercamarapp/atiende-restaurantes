@@ -391,6 +391,110 @@ Deno.test("a full agent turn overrides a hallucinated total with the real cotiza
   }
 });
 
+Deno.test("pendingQuestionForMissingData asks for colonia before a branch is resolved", () => {
+  const question = whatsappCore.pendingQuestionForMissingData(null, null);
+  if (!question || !question.includes("colonia")) {
+    throw new Error(`expected a colonia question, got: ${question}`);
+  }
+});
+
+Deno.test("pendingQuestionForMissingData asks a generic next step once a branch is known", () => {
+  const question = whatsappCore.pendingQuestionForMissingData("branch-1", null);
+  if (!question || question.includes("colonia")) {
+    throw new Error(`expected a generic next-step question, got: ${question}`);
+  }
+});
+
+Deno.test("pendingQuestionForMissingData has nothing pending once the order was created", () => {
+  const question = whatsappCore.pendingQuestionForMissingData("branch-1", "order-1");
+  if (question !== null) {
+    throw new Error(`expected no pending question after order creation, got: ${question}`);
+  }
+});
+
+Deno.test("enforcePendingQuestion appends the concrete pending question to a closing statement", () => {
+  const result = whatsappCore.enforcePendingQuestion(
+    "Voy a revisar tu pedido.",
+    null,
+    null,
+  );
+  if (!result.includes("colonia")) {
+    throw new Error(`stalling reply was not forced into a concrete question: ${result}`);
+  }
+});
+
+Deno.test("enforcePendingQuestion leaves a reply that already asks something untouched", () => {
+  const original = "¿Me confirmas tu dirección de entrega?";
+  const result = whatsappCore.enforcePendingQuestion(original, null, null);
+  if (result !== original) {
+    throw new Error(`a reply that already asks a question was rewritten: ${result}`);
+  }
+});
+
+Deno.test("enforcePendingQuestion never appends once the order already exists", () => {
+  const original = "¡Gracias! Tu pedido va en camino.";
+  const result = whatsappCore.enforcePendingQuestion(original, "branch-1", "order-1");
+  if (result !== original) {
+    throw new Error(`a post-order closing statement was altered: ${result}`);
+  }
+});
+
+Deno.test("a stalling reply with no tool call and no branch resolved gets a concrete question forced in", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{
+            message: {
+              role: "assistant",
+              // Justo el patrón que la regla dura ya prohíbe por prompt pero
+              // nada hacía cumplir: cerrar el turno con una afirmación
+              // ("voy a revisar") en vez de una pregunta concreta.
+              content: "Voy a revisar los productos disponibles.",
+            },
+          }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as typeof fetch;
+  const configChain = {
+    select() {
+      return this;
+    },
+    eq() {
+      return this;
+    },
+    maybeSingle() {
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const supabase = {
+    from() {
+      return configChain;
+    },
+    rpc() {
+      return Promise.resolve({ data: "test-openrouter-key", error: null });
+    },
+  };
+  try {
+    const result = await whatsappCore.runAgentTurn(
+      supabase,
+      [{ role: "user", content: "Hola, quiero pedir" }],
+      "widget-qa-pending-question",
+      { is_new: true },
+      whatsappCore.RESTAURANT_ID,
+    );
+    if (!/[?¿]/.test(result.reply)) {
+      throw new Error(
+        `a stalling non-question reply reached the customer unchanged: ${result.reply}`,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("provider failure never denies an order that was already created", () => {
   if (
     !whatsappCore.providerFailureReply("order-123").includes(
@@ -515,7 +619,11 @@ Deno.test("a transient primary-provider failure retries once with the cross-prov
     if (JSON.stringify(models) !== JSON.stringify(expected)) {
       throw new Error(`expected model cascade ${expected}, got ${models}`);
     }
-    if (result.reply !== "Respaldo activo") {
+    // "Respaldo activo" no termina en pregunta y aún no hay sucursal
+    // resuelta — enforcePendingQuestion (patrón 7) le anexa correctamente la
+    // pregunta pendiente concreta; esta prueba solo verifica que el texto
+    // original del respaldo cross-provider sigue llegando intacto al inicio.
+    if (!result.reply.startsWith("Respaldo activo")) {
       throw new Error(`unexpected backup reply: ${result.reply}`);
     }
   } finally {
