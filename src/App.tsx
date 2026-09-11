@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react";
+import { RequireRole } from "@/components/RequireRole";
 
 type LazyModule = { default: React.ComponentType };
 
@@ -117,10 +118,38 @@ const App = () => (
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/terminos" element={<Terminos />} />
               <Route path="/privacidad" element={<Privacidad />} />
-              <Route path="/admin/superadmin" element={<SuperAdminDashboard />} />
-              <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/repartidor/:userId" element={<RepartidorAdminPanel />} />
-              <Route path="/repartidor" element={<RepartidorDashboard />} />
+              <Route
+                path="/admin/superadmin"
+                element={
+                  <RequireRole>
+                    <SuperAdminDashboard />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <RequireRole>
+                    <AdminDashboard />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/admin/repartidor/:userId"
+                element={
+                  <RequireRole>
+                    <RepartidorAdminPanel />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/repartidor"
+                element={
+                  <RequireRole>
+                    <RepartidorDashboard />
+                  </RequireRole>
+                }
+              />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

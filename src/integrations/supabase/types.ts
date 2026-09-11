@@ -967,6 +967,33 @@ export type Database = {
         }
         Relationships: []
       }
+      route_access_denials: {
+        Row: {
+          actual_roles: string[]
+          attempted_path: string
+          created_at: string
+          has_tenant_membership: boolean
+          id: number
+          user_id: string
+        }
+        Insert: {
+          actual_roles?: string[]
+          attempted_path: string
+          created_at?: string
+          has_tenant_membership?: boolean
+          id?: never
+          user_id: string
+        }
+        Update: {
+          actual_roles?: string[]
+          attempted_path?: string
+          created_at?: string
+          has_tenant_membership?: boolean
+          id?: never
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -1341,6 +1368,10 @@ export type Database = {
           p_restaurant_id: string
           p_severity: string
         }
+        Returns: number
+      }
+      record_route_access_denial: {
+        Args: { p_attempted_path: string; p_has_tenant_membership?: boolean }
         Returns: number
       }
       run_privacy_retention: {

@@ -121,6 +121,64 @@ export function enforceBistecPackNotice(
   return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice;
 }
 
+// La aritmética que de verdad cobra ya está blindada en servidor:
+// create-order-core.ts recalcula precio/total desde branch_products sin
+// confiar nunca en lo que dijo el LLM ("price re-validation logic can't
+// drift"). Pero el TEXTO libre que el modelo le escribe al cliente en el
+// chat no pasa por ahí — solo se le pide por prompt ("repite exactamente el
+// total... nunca hagas aritmética mental"), y un LLM puede alucinar una
+// cifra distinta a la que cotizar_pedido en verdad devolvió: el pedido se
+// cobraría correcto, pero el cliente leería un número equivocado en el chat.
+// Mismo patrón determinista que enforceBistecPackNotice: una capa
+// post-LLM revisa el texto de salida contra el último total real conocido
+// (guardado en runAgentTurn cada vez que cotizar_pedido/crear_pedido
+// responden con éxito) y corrige cualquier cifra que acompañe a la palabra
+// "total" antes de mandar la respuesta al cliente.
+const MONEY_TOKEN = "\\$\\s?\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?|" +
+  "\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?\\s*pesos\\b";
+const TOTAL_WITH_MONEY = new RegExp(
+  `(total[^$\\d]{0,40})(${MONEY_TOKEN})`,
+  "gi",
+);
+
+function parseMoneyToken(token: string): number {
+  const digits = token.replace(/[^\d.]/g, "");
+  return Number(digits);
+}
+
+function formatRealTotal(total: number): string {
+  return `$${total.toFixed(2)}`;
+}
+
+export function enforceQuotedTotal(
+  reply: string,
+  lastQuoteTotal: number | null,
+): string {
+  if (lastQuoteTotal === null || !Number.isFinite(lastQuoteTotal)) {
+    return reply;
+  }
+  let corrected = false;
+  const next = reply.replace(
+    TOTAL_WITH_MONEY,
+    (full: string, prefix: string, moneyToken: string) => {
+      const stated = parseMoneyToken(moneyToken);
+      if (
+        !Number.isFinite(stated) ||
+        Math.abs(stated - lastQuoteTotal) < 0.01
+      ) {
+        return full;
+      }
+      corrected = true;
+      return `${prefix}${formatRealTotal(lastQuoteTotal)}`;
+    },
+  );
+  if (!corrected) return reply;
+  console.error(
+    "enforceQuotedTotal corrigió un total alucinado en la respuesta del agente",
+  );
+  return next;
+}
+
 // Bug real confirmado 4-sep-2026: el agente saludaba con "Buenas tardes" fijo
 // sin importar la hora real (el LLM no tiene forma de saber la hora real por
 // su cuenta) — pedido de Javier: "que el agente empiece con buenos dias,
@@ -523,7 +581,64 @@ export async function runAgentTurn(
   // this turn. Mutating it here made that slice empty and silently erased the
   // agent's context between messages.
   const messages = structuredClone(inputMessages);
-  const safeReply = (reply: string) => enforceBistecPackNotice(reply, messages);
+  // Último total REAL devuelto por cotizar_pedido/crear_pedido en este turno
+  // — nunca lo que el LLM haya escrito. safeReply lo usa para corregir
+  // cualquier cifra de dinero que el modelo alucine junto a "total".
+  let lastQuoteTotal: number | null = null;
+  const safeReply = (reply: string) =>
+    enforceQuotedTotal(
+      enforceBistecPackNotice(reply, messages),
+      lastQuoteTotal,
+    );
+
+  // Fast-path determinista de alto riesgo (patrón 8): se evalúa contra el
+  // ÚLTIMO mensaje entrante del cliente, antes de gastar ni un solo turno de
+  // OpenRouter. Si coincide, el turno completo se resuelve aquí — nunca
+  // depende de que el LLM decida clasificarlo bien.
+  const latestUserMessage = [...messages].reverse().find(
+    (message) => message?.role === "user" && typeof message?.content === "string",
+  );
+  if (latestUserMessage) {
+    const highRisk = classifyHighRiskIntent(
+      latestUserMessage.content as string,
+    );
+    if (highRisk) {
+      const reply = safeReply(highRisk.reply);
+      const callbackRequest = {
+        restaurant_id: restaurantId,
+        branch_id: null,
+        customer_name: customer?.name ?? "Cliente sin nombre registrado",
+        customer_phone: phone,
+        reason: `alto_riesgo:${highRisk.intent}`,
+        message: latestUserMessage.content as string,
+        source: "whatsapp",
+        source_event_id: idempotencyKey ?? null,
+      };
+      try {
+        const { error } = idempotencyKey
+          ? await supabase.from("callback_requests").upsert(
+            callbackRequest,
+            {
+              onConflict: "restaurant_id,source_event_id",
+              ignoreDuplicates: true,
+            },
+          )
+          : await supabase.from("callback_requests").insert(callbackRequest);
+        if (error) throw error;
+      } catch (err) {
+        // Aunque falle el registro, el cliente sigue recibiendo la
+        // respuesta honesta — nunca se le hace esperar una clasificación
+        // del LLM por un problema de escritura en la base.
+        console.error(
+          "No se pudo registrar el intento de alto riesgo:",
+          err,
+        );
+      }
+      messages.push({ role: "assistant", content: reply });
+      return { reply, updatedMessages: messages, orderId: null, branchId: null };
+    }
+  }
+
   // A complete agent turn may invoke the provider more than once after tool
   // calls. Bound the whole turn, not only each individual HTTP request.
   const turnDeadline = Date.now() + 45_000;
@@ -663,7 +778,13 @@ export async function runAgentTurn(
       | Array<{ id: string; function: { name: string; arguments: string } }>
       | undefined;
     if (!toolCalls || toolCalls.length === 0) {
-      const reply = safeReply(msg.content || "¿Me puedes repetir tu pedido?");
+      const reply = safeReply(
+        enforcePendingQuestion(
+          msg.content || "¿Me puedes repetir tu pedido?",
+          branchId,
+          orderId,
+        ),
+      );
       messages[messages.length - 1].content = reply;
       return {
         reply,
@@ -745,6 +866,7 @@ export async function runAgentTurn(
               adult_confirmed: input.adult_confirmed === true,
             });
             branchId = quote.branch_id;
+            if (typeof quote.total === "number") lastQuoteTotal = quote.total;
             result = { quote };
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
@@ -773,6 +895,7 @@ export async function runAgentTurn(
             });
             orderId = order.id;
             branchId = order.branch_id ?? null;
+            if (typeof order.total === "number") lastQuoteTotal = order.total;
             result = { order };
           } else if (call.function.name === "registrar_contacto") {
             const callbackRequest = {
@@ -855,6 +978,105 @@ export async function runAgentTurn(
     orderId,
     branchId,
   };
+}
+
+// El wizard de pasos fijos (saludo -> nombre -> dirección -> sucursal ->
+// items -> cotizar -> pago -> crear_pedido) hoy vive solo en
+// BASE_SYSTEM_PROMPT como texto ("Nunca cierres un turno diciendo solo 'voy
+// a revisar'... termina con una pregunta concreta"), sin nada en código que
+// lo haga cumplir. El único guard determinista real era el fallback para
+// content vacío del LLM (ver más abajo). Este guard generaliza esa idea:
+// si el turno termina SIN llamar ninguna herramienta y SIN que el pedido ya
+// exista, el texto tiene que terminar en una pregunta real — si no la
+// tiene, se le anexa la pregunta concreta que corresponde al siguiente paso
+// pendiente del flujo (colonia/sucursal si branchId aún no se resolvió;
+// qué quiere pedir en cualquier otro caso). Mismo patrón que
+// enforceBistecPackNotice: una capa post-LLM determinista, no un juicio del
+// modelo.
+export function pendingQuestionForMissingData(
+  branchId: string | null,
+  orderId: string | null,
+): string | null {
+  if (orderId) return null; // el pedido ya quedó creado, no hay nada pendiente que forzar
+  if (!branchId) {
+    return "¿Me compartes tu colonia o una referencia cercana para ubicar la sucursal más cercana?";
+  }
+  return "¿Qué te gustaría pedir, o hay algo más en lo que te pueda ayudar?";
+}
+
+export function enforcePendingQuestion(
+  reply: string,
+  branchId: string | null,
+  orderId: string | null,
+): string {
+  const trimmed = reply.trim();
+  if (/[?¿]/.test(trimmed)) return reply;
+  const pending = pendingQuestionForMissingData(branchId, orderId);
+  if (!pending) return reply;
+  return trimmed ? `${trimmed} ${pending}` : pending;
+}
+
+// No existe ningún tool ni ruta de cancelación de pedido en este código —
+// una cancelación real solo la hace staff desde el panel de admin. Para
+// queja/cobro duplicado/urgencia/ARCO, la única lógica hoy es una
+// instrucción de prompt: la clasificación de que un mensaje entrante es de
+// alto riesgo queda 100% a criterio del LLM antes de decidir qué tool
+// llamar (o si llama alguno). Este clasificador determinista por
+// palabra clave intercepta el mensaje ANTES de la primera llamada a
+// OpenRouter — si detecta una coincidencia, el turno nunca depende de que
+// el modelo decida actuar: se registra el intento en callback_requests
+// (mismo mecanismo real que ya usa registrar_contacto) y se responde con un
+// mensaje fijo y honesto, sin inventar que se resolvió nada que en
+// realidad solo puede resolver el equipo humano.
+export type HighRiskIntent =
+  | "cancelacion"
+  | "cobro_duplicado"
+  | "urgencia"
+  | "privacidad_arco";
+
+export interface HighRiskMatch {
+  intent: HighRiskIntent;
+  reply: string;
+}
+
+const HIGH_RISK_PATTERNS: Array<
+  { intent: HighRiskIntent; pattern: RegExp; reply: string }
+> = [
+  {
+    intent: "cancelacion",
+    pattern:
+      /\bcancelar\b[^.!?\n]{0,40}\bpedido\b|\bpedido\b[^.!?\n]{0,40}\bcancelar\b|\bcancela(?:r|me)?\s+mi\s+pedido\b/i,
+    reply:
+      "Entendido, quieres cancelar tu pedido — eso solo lo puede confirmar alguien del restaurante directamente, ya le avisé al equipo para que te contacte lo antes posible.",
+  },
+  {
+    intent: "cobro_duplicado",
+    pattern:
+      /cobr(?:o|aron|é)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces/i,
+    reply:
+      "Lamento el problema con el cobro — ya le avisé al equipo para que revise tu caso directamente y te contacte lo antes posible.",
+  },
+  {
+    intent: "urgencia",
+    pattern: /\burgen(?:te|cia)\b/i,
+    reply:
+      "Entendido, es urgente — ya le avisé al equipo para que te contacte de inmediato.",
+  },
+  {
+    intent: "privacidad_arco",
+    pattern:
+      /\b(?:borrar|eliminar)\s+mis\s+datos\b|\bderechos?\s+arco\b|\barco\b.{0,20}\bdatos\b|\bmis\s+datos\s+personales\b.{0,30}\b(?:borrar|eliminar|acceder|rectificar|corregir)\b/i,
+    reply:
+      "Recibido — para ejercer tus derechos ARCO (acceso, rectificación, cancelación u oposición) sobre tus datos, ya le avisé al equipo para que te contacte y gestione tu solicitud directamente.",
+  },
+];
+
+/** Pura: qué intent de alto riesgo detecta el texto entrante, si alguno. */
+export function classifyHighRiskIntent(text: string): HighRiskMatch | null {
+  for (const { intent, pattern, reply } of HIGH_RISK_PATTERNS) {
+    if (pattern.test(text)) return { intent, reply };
+  }
+  return null;
 }
 
 export function providerFailureReply(orderId: string | null): string {
