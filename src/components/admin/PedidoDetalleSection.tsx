@@ -91,17 +91,17 @@ export default function PedidoDetalleSection({
 
   useEffect(() => {
     let cancelado = false;
-    setCargando(true);
-    setDetalle(null);
-    setErrorDetalle(null);
-    supabase
-      .from("orders")
-      .select("id, order_number, customer_name, customer_phone, customer_address, total, status, created_at, source, branch, branch_id, restaurant_id, incident_note, items, notes, payment_method, delivered_at")
-      .eq("id", orderId)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    (async () => {
+      setCargando(true);
+      setDetalle(null);
+      setErrorDetalle(null);
+      try {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("id, order_number, customer_name, customer_phone, customer_address, total, status, created_at, source, branch, branch_id, restaurant_id, incident_note, items, notes, payment_method, delivered_at")
+          .eq("id", orderId)
+          .maybeSingle();
         if (cancelado) return;
-        setCargando(false);
         if (error) {
           setErrorDetalle(error.message);
           return;
@@ -111,14 +111,14 @@ export default function PedidoDetalleSection({
           return;
         }
         setDetalle(data as unknown as PedidoDetalle | null);
-      })
-      .catch((error: unknown) => {
+      } catch (error) {
         if (cancelado) return;
-        setCargando(false);
         setErrorDetalle(error instanceof Error ? error.message : "No fue posible consultar el pedido.");
-      });
+      } finally {
+        if (!cancelado) setCargando(false);
+      }
+    })();
     return () => { cancelado = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, reintento]);
 
   // "Otros pedidos recientes": mismo restaurante, excluyendo el pedido

@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "build:budget": "npm run build && node scripts/check-bundle-budget.mjs",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "npm run test:edge",
     "test:edge": "deno test --allow-env supabase/functions/_shared/*.test.ts",
     "qa:voice-widget": "node scripts/voice-widget-console.mjs",

@@ -2775,7 +2775,16 @@ const AdminDashboard = () => {
   };
   const handlePromoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!restaurantId) {
+      toast({
+        title: "Error",
+        description: "No se pudo determinar el restaurante actual.",
+        variant: "destructive"
+      });
+      return;
+    }
     const promoData = {
+      restaurant_id: restaurantId,
       title: promoForm.title,
       description: promoForm.description || null,
       image_url: promoForm.image_url || null,
