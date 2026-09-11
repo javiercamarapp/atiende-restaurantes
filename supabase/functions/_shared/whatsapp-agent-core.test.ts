@@ -194,6 +194,203 @@ Deno.test("stored legacy prompts cannot remove current identity and complement r
   }
 });
 
+Deno.test("enforceQuotedTotal corrects a hallucinated total next to the word total", () => {
+  const corrected = whatsappCore.enforceQuotedTotal(
+    "¡Listo! Tu pedido quedó registrado, el total es $185.00.",
+    193.5,
+  );
+  if (!corrected.includes("$193.50")) {
+    throw new Error(`hallucinated total was not corrected: ${corrected}`);
+  }
+  if (corrected.includes("$185.00")) {
+    throw new Error(`hallucinated total survived the correction: ${corrected}`);
+  }
+});
+
+Deno.test("enforceQuotedTotal corrects a hallucinated total stated in words (pesos)", () => {
+  const corrected = whatsappCore.enforceQuotedTotal(
+    "El total son 150 pesos.",
+    162,
+  );
+  if (!corrected.includes("$162.00")) {
+    throw new Error(`hallucinated worded total was not corrected: ${corrected}`);
+  }
+});
+
+Deno.test("enforceQuotedTotal leaves a correct total untouched", () => {
+  const original = "Tu total es $193.50, ¿cómo vas a pagar?";
+  const result = whatsappCore.enforceQuotedTotal(original, 193.5);
+  if (result !== original) {
+    throw new Error(`a correct total was rewritten unnecessarily: ${result}`);
+  }
+});
+
+Deno.test("enforceQuotedTotal never touches per-item prices unrelated to the word total", () => {
+  const original =
+    "Los tacos de pastor están a $18 cada uno, ¿cuántos quieres?";
+  const result = whatsappCore.enforceQuotedTotal(original, 193.5);
+  if (result !== original) {
+    throw new Error(
+      `a per-item price with no "total" nearby was altered: ${result}`,
+    );
+  }
+});
+
+Deno.test("enforceQuotedTotal is a no-op without a known real total yet", () => {
+  const original = "¿Cuántos tacos de bistec quieres?";
+  const result = whatsappCore.enforceQuotedTotal(original, null);
+  if (result !== original) {
+    throw new Error(`reply was altered with no real total to check against: ${result}`);
+  }
+});
+
+// Base de datos real (mock) que deja a quoteOrderCore hacer su trabajo real
+// de verdad — 3 refrescos individuales a $62 = $186 real. La prueba deja al
+// LLM (mockeado) alucinar $999 en el texto libre del turno siguiente y
+// verifica que safeReply lo corrija con el total real que sí calculó
+// quoteOrderCore, no el que dijo el modelo.
+function fakeSupabaseForQuotedTotalTest() {
+  const genericChain = {
+    select() {
+      return this;
+    },
+    eq() {
+      return this;
+    },
+    maybeSingle() {
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  return {
+    from(table: string) {
+      if (table === "branches") {
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: "branch-1",
+                name: "Altabrisa",
+                is_active: true,
+                restaurant_id: whatsappCore.RESTAURANT_ID,
+              },
+              error: null,
+            });
+          },
+        };
+      }
+      if (table === "branch_products") {
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          in() {
+            return Promise.resolve({
+              data: [{
+                price: 62,
+                is_available: true,
+                products: {
+                  id: "11111111-1111-4111-8111-111111111111",
+                  name: "Refresco de cola",
+                  description: "individual",
+                  categories: { name: "Bebidas" },
+                },
+              }],
+              error: null,
+            });
+          },
+        };
+      }
+      return genericChain;
+    },
+    rpc() {
+      return Promise.resolve({ data: "test-openrouter-key", error: null });
+    },
+  };
+}
+
+Deno.test("a full agent turn overrides a hallucinated total with the real cotizar_pedido total", async () => {
+  const originalFetch = globalThis.fetch;
+  let call = 0;
+  globalThis.fetch = (() => {
+    call++;
+    if (call === 1) {
+      // Primer turno: el modelo pide cotizar_pedido.
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [{
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [{
+                  id: "call-1",
+                  function: {
+                    name: "cotizar_pedido",
+                    arguments: JSON.stringify({
+                      branch_slug: "altabrisa",
+                      items: [{
+                        product_id: "11111111-1111-4111-8111-111111111111",
+                        product_name: "Refresco de cola",
+                        requested_quantity: 3,
+                      }],
+                    }),
+                  },
+                }],
+              },
+            }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    // Segundo turno: ya con el total REAL ($186) en el resultado de la
+    // herramienta, el modelo alucina otra cifra distinta en el texto libre.
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{
+            message: {
+              role: "assistant",
+              content: "¡Listo! El total de tu pedido es $999.00, ¿cómo pagas?",
+            },
+          }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+  }) as typeof fetch;
+  try {
+    const result = await whatsappCore.runAgentTurn(
+      fakeSupabaseForQuotedTotalTest(),
+      [{ role: "user", content: "Quiero 3 refrescos de cola" }],
+      "widget-qa-total-guard",
+      { is_new: true },
+      whatsappCore.RESTAURANT_ID,
+    );
+    if (result.reply.includes("$999.00")) {
+      throw new Error(
+        `hallucinated total reached the customer unchanged: ${result.reply}`,
+      );
+    }
+    if (!result.reply.includes("$186.00")) {
+      throw new Error(
+        `reply was not corrected to the real cotizar_pedido total: ${result.reply}`,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("provider failure never denies an order that was already created", () => {
   if (
     !whatsappCore.providerFailureReply("order-123").includes(

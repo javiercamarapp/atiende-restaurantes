@@ -121,6 +121,64 @@ export function enforceBistecPackNotice(
   return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice;
 }
 
+// La aritmética que de verdad cobra ya está blindada en servidor:
+// create-order-core.ts recalcula precio/total desde branch_products sin
+// confiar nunca en lo que dijo el LLM ("price re-validation logic can't
+// drift"). Pero el TEXTO libre que el modelo le escribe al cliente en el
+// chat no pasa por ahí — solo se le pide por prompt ("repite exactamente el
+// total... nunca hagas aritmética mental"), y un LLM puede alucinar una
+// cifra distinta a la que cotizar_pedido en verdad devolvió: el pedido se
+// cobraría correcto, pero el cliente leería un número equivocado en el chat.
+// Mismo patrón determinista que enforceBistecPackNotice: una capa
+// post-LLM revisa el texto de salida contra el último total real conocido
+// (guardado en runAgentTurn cada vez que cotizar_pedido/crear_pedido
+// responden con éxito) y corrige cualquier cifra que acompañe a la palabra
+// "total" antes de mandar la respuesta al cliente.
+const MONEY_TOKEN = "\\$\\s?\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?|" +
+  "\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?\\s*pesos\\b";
+const TOTAL_WITH_MONEY = new RegExp(
+  `(total[^$\\d]{0,40})(${MONEY_TOKEN})`,
+  "gi",
+);
+
+function parseMoneyToken(token: string): number {
+  const digits = token.replace(/[^\d.]/g, "");
+  return Number(digits);
+}
+
+function formatRealTotal(total: number): string {
+  return `$${total.toFixed(2)}`;
+}
+
+export function enforceQuotedTotal(
+  reply: string,
+  lastQuoteTotal: number | null,
+): string {
+  if (lastQuoteTotal === null || !Number.isFinite(lastQuoteTotal)) {
+    return reply;
+  }
+  let corrected = false;
+  const next = reply.replace(
+    TOTAL_WITH_MONEY,
+    (full: string, prefix: string, moneyToken: string) => {
+      const stated = parseMoneyToken(moneyToken);
+      if (
+        !Number.isFinite(stated) ||
+        Math.abs(stated - lastQuoteTotal) < 0.01
+      ) {
+        return full;
+      }
+      corrected = true;
+      return `${prefix}${formatRealTotal(lastQuoteTotal)}`;
+    },
+  );
+  if (!corrected) return reply;
+  console.error(
+    "enforceQuotedTotal corrigió un total alucinado en la respuesta del agente",
+  );
+  return next;
+}
+
 // Bug real confirmado 4-sep-2026: el agente saludaba con "Buenas tardes" fijo
 // sin importar la hora real (el LLM no tiene forma de saber la hora real por
 // su cuenta) — pedido de Javier: "que el agente empiece con buenos dias,
@@ -523,7 +581,15 @@ export async function runAgentTurn(
   // this turn. Mutating it here made that slice empty and silently erased the
   // agent's context between messages.
   const messages = structuredClone(inputMessages);
-  const safeReply = (reply: string) => enforceBistecPackNotice(reply, messages);
+  // Último total REAL devuelto por cotizar_pedido/crear_pedido en este turno
+  // — nunca lo que el LLM haya escrito. safeReply lo usa para corregir
+  // cualquier cifra de dinero que el modelo alucine junto a "total".
+  let lastQuoteTotal: number | null = null;
+  const safeReply = (reply: string) =>
+    enforceQuotedTotal(
+      enforceBistecPackNotice(reply, messages),
+      lastQuoteTotal,
+    );
   // A complete agent turn may invoke the provider more than once after tool
   // calls. Bound the whole turn, not only each individual HTTP request.
   const turnDeadline = Date.now() + 45_000;
@@ -745,6 +811,7 @@ export async function runAgentTurn(
               adult_confirmed: input.adult_confirmed === true,
             });
             branchId = quote.branch_id;
+            if (typeof quote.total === "number") lastQuoteTotal = quote.total;
             result = { quote };
           } else if (call.function.name === "crear_pedido") {
             const order = await createOrderCore(supabase, {
@@ -773,6 +840,7 @@ export async function runAgentTurn(
             });
             orderId = order.id;
             branchId = order.branch_id ?? null;
+            if (typeof order.total === "number") lastQuoteTotal = order.total;
             result = { order };
           } else if (call.function.name === "registrar_contacto") {
             const callbackRequest = {
