@@ -15,7 +15,7 @@ import { AtiendeMark } from "@/components/AtiendeLogo";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import {
   Users, Search, UploadCloud, Phone, MapPin, Award, Clock, DollarSign, Repeat,
-  Loader2, CheckCircle2, AlertCircle, FileSpreadsheet, ChevronDown, Crown, Gem, Star, Circle, Store,
+  Loader2, CheckCircle2, AlertCircle, FileSpreadsheet, ChevronDown, Crown, Gem, Star, Circle,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -69,7 +69,10 @@ const RANGOS_FRECUENCIA: { id: string; label: string; test: (n: number) => boole
   { id: "10+", label: "10 pedidos o más", test: (n) => n >= 10 },
 ];
 
-/* ── Tipos que reflejan el schema real (customers / customer_addresses / orders) ── */
+/* ── Tipos que reflejan el schema real (customers / customer_addresses / orders) ──
+   `customers` no tiene branch_id: es memoria a nivel restaurante (no por sucursal),
+   ver 20260902040000_customers.sql — un cliente de una cadena multi-sucursal puede
+   pedir de más de una, así que "la sucursal del cliente" no es un campo 1:1 real. */
 interface CustomerRow {
   id: string;
   phone: string;
@@ -78,7 +81,6 @@ interface CustomerRow {
   last_order_at: string | null;
   created_at: string;
   restaurant_id: string;
-  branch_id: string | null;
 }
 interface AddressRow {
   id: string;
@@ -90,10 +92,6 @@ interface AddressRow {
 interface OrderMoneyRow {
   customer_id: string | null;
   total: number;
-}
-interface BranchOption {
-  id: string;
-  name: string;
 }
 
 interface ClienteConTier extends CustomerRow {
@@ -191,7 +189,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
   const [clientes, setClientes] = useState<CustomerRow[]>([]);
   const [direcciones, setDirecciones] = useState<AddressRow[]>([]);
   const [ordenes, setOrdenes] = useState<OrderMoneyRow[]>([]);
-  const [sucursales, setSucursales] = useState<BranchOption[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [recargarNonce, setRecargarNonce] = useState(0);
@@ -199,7 +196,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
   const [busqueda, setBusqueda] = useState("");
   const [tierFiltro, setTierFiltro] = useState<"todos" | Tier | "sin_tier">("todos");
   const [frecuenciaFiltro, setFrecuenciaFiltro] = useState<"todos" | string>("todos");
-  const [sucursalFiltro, setSucursalFiltro] = useState<"todas" | string>("todas");
   const [modalImportarAbierto, setModalImportarAbierto] = useState(false);
 
   useEffect(() => {
@@ -212,10 +208,9 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
       // reales con phone = "widget-<uuid>" para poder probar la conversación
       // de punta a punta — no son clientes reales, no deben aparecer en el
       // CRM ni contar en tiers/KPIs.
-      const [{ data: clientesData, error: errClientes }, { data: ordenesData, error: errOrdenes }, { data: sucursalesData, error: errSucursales }] = await Promise.all([
+      const [{ data: clientesData, error: errClientes }, { data: ordenesData, error: errOrdenes }] = await Promise.all([
         supabase.from("customers").select("*").eq("restaurant_id", restaurantId).not("phone", "ilike", "widget-%").order("created_at", { ascending: false }),
         supabase.from("orders").select("customer_id, total").eq("restaurant_id", restaurantId).not("customer_phone", "ilike", "widget-%"),
-        supabase.from("branches").select("id, name").eq("restaurant_id", restaurantId).order("display_order"),
       ]);
       if (cancelado) return;
       if (errClientes || errOrdenes) {
@@ -223,7 +218,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
         setCargando(false);
         return;
       }
-      if (!errSucursales) setSucursales((sucursalesData ?? []) as BranchOption[]);
       const listaClientes = (clientesData ?? []) as CustomerRow[];
       const ids = listaClientes.map((c) => c.id);
       let listaDirecciones: AddressRow[] = [];
@@ -344,7 +338,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
         const rango = RANGOS_FRECUENCIA.find((r) => r.id === frecuenciaFiltro);
         if (rango && !rango.test(c.order_count)) return false;
       }
-      if (sucursalFiltro !== "todas" && c.branch_id !== sucursalFiltro) return false;
       if (buscar) {
         const enNombre = buscarNorm ? normalizarTexto(c.name ?? "").includes(buscarNorm) : false;
         const enTelefono = buscarDigits ? c.phone.replace(/\D/g, "").includes(buscarDigits) : false;
@@ -352,11 +345,7 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
       }
       return true;
     });
-  }, [clientesConTier, busqueda, tierFiltro, frecuenciaFiltro, sucursalFiltro]);
-
-  // Nombre de sucursal por id — para mostrar la píldora en cada fila sin
-  // recorrer `sucursales` en cada render.
-  const nombrePorSucursal = useMemo(() => new Map(sucursales.map((s) => [s.id, s.name])), [sucursales]);
+  }, [clientesConTier, busqueda, tierFiltro, frecuenciaFiltro]);
 
   const opcionesTier = [
     { id: "todos" as const, label: "Todos los tiers" },
@@ -367,7 +356,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
     { id: "sin_tier" as const, label: "Sin tier todavía" },
   ];
   const opcionesFrecuencia = [{ id: "todos", label: "Cualquier frecuencia" }, ...RANGOS_FRECUENCIA.map((r) => ({ id: r.id, label: r.label }))];
-  const opcionesSucursal = [{ id: "todas", label: "Todas las sucursales" }, ...sucursales.map((s) => ({ id: s.id, label: s.name }))];
 
   return (
     <>
@@ -448,7 +436,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
           </div>
           <FiltroDropdown<"todos" | Tier | "sin_tier"> etiqueta="Tier" valor={tierFiltro} opciones={opcionesTier} onChange={setTierFiltro} />
           <FiltroDropdown<string> etiqueta="Frecuencia" valor={frecuenciaFiltro} opciones={opcionesFrecuencia} onChange={setFrecuenciaFiltro} />
-          <FiltroDropdown<string> etiqueta="Sucursal" valor={sucursalFiltro} opciones={opcionesSucursal} onChange={setSucursalFiltro} />
         </div>
 
         {cargando ? (
@@ -497,13 +484,6 @@ export default function ClientesSection({ restaurantId }: { restaurantId: string
                   {c.order_count > 0 ? `${c.order_count} pedido${c.order_count === 1 ? "" : "s"}` : "Sin pedidos aún"}
                   {c.last_order_at && <span className="opacity-70"> · hace {diasDesde(c.last_order_at)}d</span>}
                 </div>
-
-                {c.branch_id && nombrePorSucursal.get(c.branch_id) ? (
-                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium shrink-0 bg-muted text-muted-foreground border border-border">
-                    <Store className="w-3 h-3" strokeWidth={2} />
-                    {nombrePorSucursal.get(c.branch_id)}
-                  </div>
-                ) : null}
 
                 {c.tier ? (
                   <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium shrink-0 ${TIER_META[c.tier].clase}`}>

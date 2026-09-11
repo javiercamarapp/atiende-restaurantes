@@ -16,7 +16,7 @@ import {
   Clock,
   CheckCircle,
   Phone,
-  User,
+  User as UserIcon,
   DollarSign,
   Truck,
   Menu,
@@ -277,7 +277,7 @@ const RepartidorDashboard = () => {
           <div className="flex items-start justify-between mb-3">
             <div className="cursor-pointer" onClick={() => setDetalleId(order.id)}>
               <div className="flex items-center gap-2 mb-1">
-                <User className="w-4 h-4 text-muted-foreground" />
+                <UserIcon className="w-4 h-4 text-muted-foreground" />
                 <span className="font-semibold text-foreground">{order.customer_name}</span>
               </div>
               <p className="font-mono text-[11px] text-muted-foreground">
@@ -822,7 +822,7 @@ const RepartidorDashboard = () => {
     <div className="min-h-screen bg-background flex w-full">
       {/* Desktop Sidebar */}
       <RepartidorSidebar
-        user={user}
+        user={user ? { email: user.email ?? "" } : null}
         activeSection={activeSection}
         onSectionChange={setActiveSection}
         onLogout={handleLogout}
