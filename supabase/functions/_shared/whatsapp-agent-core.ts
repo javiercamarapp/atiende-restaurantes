@@ -590,6 +590,55 @@ export async function runAgentTurn(
       enforceBistecPackNotice(reply, messages),
       lastQuoteTotal,
     );
+
+  // Fast-path determinista de alto riesgo (patrón 8): se evalúa contra el
+  // ÚLTIMO mensaje entrante del cliente, antes de gastar ni un solo turno de
+  // OpenRouter. Si coincide, el turno completo se resuelve aquí — nunca
+  // depende de que el LLM decida clasificarlo bien.
+  const latestUserMessage = [...messages].reverse().find(
+    (message) => message?.role === "user" && typeof message?.content === "string",
+  );
+  if (latestUserMessage) {
+    const highRisk = classifyHighRiskIntent(
+      latestUserMessage.content as string,
+    );
+    if (highRisk) {
+      const reply = safeReply(highRisk.reply);
+      const callbackRequest = {
+        restaurant_id: restaurantId,
+        branch_id: null,
+        customer_name: customer?.name ?? "Cliente sin nombre registrado",
+        customer_phone: phone,
+        reason: `alto_riesgo:${highRisk.intent}`,
+        message: latestUserMessage.content as string,
+        source: "whatsapp",
+        source_event_id: idempotencyKey ?? null,
+      };
+      try {
+        const { error } = idempotencyKey
+          ? await supabase.from("callback_requests").upsert(
+            callbackRequest,
+            {
+              onConflict: "restaurant_id,source_event_id",
+              ignoreDuplicates: true,
+            },
+          )
+          : await supabase.from("callback_requests").insert(callbackRequest);
+        if (error) throw error;
+      } catch (err) {
+        // Aunque falle el registro, el cliente sigue recibiendo la
+        // respuesta honesta — nunca se le hace esperar una clasificación
+        // del LLM por un problema de escritura en la base.
+        console.error(
+          "No se pudo registrar el intento de alto riesgo:",
+          err,
+        );
+      }
+      messages.push({ role: "assistant", content: reply });
+      return { reply, updatedMessages: messages, orderId: null, branchId: null };
+    }
+  }
+
   // A complete agent turn may invoke the provider more than once after tool
   // calls. Bound the whole turn, not only each individual HTTP request.
   const turnDeadline = Date.now() + 45_000;
@@ -965,6 +1014,69 @@ export function enforcePendingQuestion(
   const pending = pendingQuestionForMissingData(branchId, orderId);
   if (!pending) return reply;
   return trimmed ? `${trimmed} ${pending}` : pending;
+}
+
+// No existe ningún tool ni ruta de cancelación de pedido en este código —
+// una cancelación real solo la hace staff desde el panel de admin. Para
+// queja/cobro duplicado/urgencia/ARCO, la única lógica hoy es una
+// instrucción de prompt: la clasificación de que un mensaje entrante es de
+// alto riesgo queda 100% a criterio del LLM antes de decidir qué tool
+// llamar (o si llama alguno). Este clasificador determinista por
+// palabra clave intercepta el mensaje ANTES de la primera llamada a
+// OpenRouter — si detecta una coincidencia, el turno nunca depende de que
+// el modelo decida actuar: se registra el intento en callback_requests
+// (mismo mecanismo real que ya usa registrar_contacto) y se responde con un
+// mensaje fijo y honesto, sin inventar que se resolvió nada que en
+// realidad solo puede resolver el equipo humano.
+export type HighRiskIntent =
+  | "cancelacion"
+  | "cobro_duplicado"
+  | "urgencia"
+  | "privacidad_arco";
+
+export interface HighRiskMatch {
+  intent: HighRiskIntent;
+  reply: string;
+}
+
+const HIGH_RISK_PATTERNS: Array<
+  { intent: HighRiskIntent; pattern: RegExp; reply: string }
+> = [
+  {
+    intent: "cancelacion",
+    pattern:
+      /\bcancelar\b[^.!?\n]{0,40}\bpedido\b|\bpedido\b[^.!?\n]{0,40}\bcancelar\b|\bcancela(?:r|me)?\s+mi\s+pedido\b/i,
+    reply:
+      "Entendido, quieres cancelar tu pedido — eso solo lo puede confirmar alguien del restaurante directamente, ya le avisé al equipo para que te contacte lo antes posible.",
+  },
+  {
+    intent: "cobro_duplicado",
+    pattern:
+      /cobr(?:o|aron|é)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces/i,
+    reply:
+      "Lamento el problema con el cobro — ya le avisé al equipo para que revise tu caso directamente y te contacte lo antes posible.",
+  },
+  {
+    intent: "urgencia",
+    pattern: /\burgen(?:te|cia)\b/i,
+    reply:
+      "Entendido, es urgente — ya le avisé al equipo para que te contacte de inmediato.",
+  },
+  {
+    intent: "privacidad_arco",
+    pattern:
+      /\b(?:borrar|eliminar)\s+mis\s+datos\b|\bderechos?\s+arco\b|\barco\b.{0,20}\bdatos\b|\bmis\s+datos\s+personales\b.{0,30}\b(?:borrar|eliminar|acceder|rectificar|corregir)\b/i,
+    reply:
+      "Recibido — para ejercer tus derechos ARCO (acceso, rectificación, cancelación u oposición) sobre tus datos, ya le avisé al equipo para que te contacte y gestione tu solicitud directamente.",
+  },
+];
+
+/** Pura: qué intent de alto riesgo detecta el texto entrante, si alguno. */
+export function classifyHighRiskIntent(text: string): HighRiskMatch | null {
+  for (const { intent, pattern, reply } of HIGH_RISK_PATTERNS) {
+    if (pattern.test(text)) return { intent, reply };
+  }
+  return null;
 }
 
 export function providerFailureReply(orderId: string | null): string {

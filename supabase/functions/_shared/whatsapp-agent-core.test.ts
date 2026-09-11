@@ -495,6 +495,115 @@ Deno.test("a stalling reply with no tool call and no branch resolved gets a conc
   }
 });
 
+Deno.test("classifyHighRiskIntent detects a cancellation request", () => {
+  const match = whatsappCore.classifyHighRiskIntent(
+    "hola quiero cancelar mi pedido porfa",
+  );
+  if (match?.intent !== "cancelacion") {
+    throw new Error(`expected cancelacion, got: ${JSON.stringify(match)}`);
+  }
+});
+
+Deno.test("classifyHighRiskIntent detects a duplicate charge complaint", () => {
+  const match = whatsappCore.classifyHighRiskIntent(
+    "oigan me cobraron dos veces el mismo pedido",
+  );
+  if (match?.intent !== "cobro_duplicado") {
+    throw new Error(`expected cobro_duplicado, got: ${JSON.stringify(match)}`);
+  }
+});
+
+Deno.test("classifyHighRiskIntent detects urgency", () => {
+  const match = whatsappCore.classifyHighRiskIntent("es urgente, necesito ayuda");
+  if (match?.intent !== "urgencia") {
+    throw new Error(`expected urgencia, got: ${JSON.stringify(match)}`);
+  }
+});
+
+Deno.test("classifyHighRiskIntent detects an ARCO/privacy rights request", () => {
+  const match = whatsappCore.classifyHighRiskIntent(
+    "quiero borrar mis datos de su sistema",
+  );
+  if (match?.intent !== "privacidad_arco") {
+    throw new Error(`expected privacidad_arco, got: ${JSON.stringify(match)}`);
+  }
+});
+
+Deno.test("classifyHighRiskIntent does not misfire on a normal order message", () => {
+  const match = whatsappCore.classifyHighRiskIntent(
+    "quiero 3 tacos de pastor y un refresco",
+  );
+  if (match !== null) {
+    throw new Error(`false positive on a normal order: ${JSON.stringify(match)}`);
+  }
+});
+
+Deno.test("a cancellation message short-circuits before any OpenRouter call and logs a callback request", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = (() => {
+    fetchCalled = true;
+    throw new Error("OpenRouter should never be called for a high-risk fast-path");
+  }) as typeof fetch;
+  const capture: { row: Record<string, unknown> | null } = { row: null };
+  const supabase = {
+    from(table: string) {
+      if (table === "callback_requests") {
+        return {
+          insert(row: Record<string, unknown>) {
+            capture.row = row;
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+      return {
+        select() {
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        maybeSingle() {
+          return Promise.resolve({ data: null, error: null });
+        },
+      };
+    },
+    rpc() {
+      return Promise.resolve({ data: "test-openrouter-key", error: null });
+    },
+  };
+  try {
+    const result = await whatsappCore.runAgentTurn(
+      supabase,
+      [{ role: "user", content: "quiero cancelar mi pedido" }],
+      "widget-qa-high-risk",
+      { is_new: true, name: "Ana" },
+      whatsappCore.RESTAURANT_ID,
+    );
+    if (fetchCalled) {
+      throw new Error("OpenRouter was called despite the deterministic fast-path");
+    }
+    if (result.orderId !== null) {
+      throw new Error("a high-risk fast-path must never create an order");
+    }
+    const insertedRow = capture.row;
+    if (!insertedRow || insertedRow.reason !== "alto_riesgo:cancelacion") {
+      throw new Error(
+        `expected a logged callback_requests row for cancelacion, got: ${
+          JSON.stringify(insertedRow)
+        }`,
+      );
+    }
+    if (insertedRow.customer_name !== "Ana") {
+      throw new Error(
+        `expected the known customer name to be used, got: ${insertedRow.customer_name}`,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("provider failure never denies an order that was already created", () => {
   if (
     !whatsappCore.providerFailureReply("order-123").includes(
